@@ -283,3 +283,66 @@ class SoundscapeDataset:
             raise RuntimeError("SoundscapeDataset: no valid samples found.")
 
         return np.stack(clips), np.stack(labels)
+
+
+# ── CachedEmbeddingDataset ───────────────────────────────────────────────────
+
+class CachedEmbeddingDataset:
+    """
+    Load pre-computed Perch embeddings from disk (output of extract_embeddings.py).
+
+    Skips the heavy Perch backbone entirely; only the lightweight MLP head is
+    trained, making each epoch orders-of-magnitude faster.
+    """
+
+    def __init__(
+        self,
+        manifest_csv: str,
+        species_to_idx: Dict[str, int],
+        num_classes: int,
+        split: str = "train",
+        class_weights: Optional[np.ndarray] = None,
+    ):
+        df = pd.read_csv(manifest_csv)
+        self.df = df[df["split"] == split].reset_index(drop=True)
+        self.species_to_idx = species_to_idx
+        self.num_classes = num_classes
+        self.class_weights = class_weights
+        print(f"[CachedEmbeddingDataset] {len(self.df)} embeddings (split={split})")
+
+    @property
+    def embedding_dim(self) -> int:
+        return int(np.load(self.df.iloc[0]["npy_path"]).shape[-1])
+
+    def _make_label(self, label_str: str) -> np.ndarray:
+        label = np.zeros(self.num_classes, dtype=np.float32)
+        primary = str(label_str).strip()
+        if primary in self.species_to_idx:
+            label[self.species_to_idx[primary]] = 1.0
+        return label
+
+    def generate_samples(self) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+        indices = np.arange(len(self.df))
+        if self.class_weights is not None:
+            weights = np.array([
+                float(self.class_weights[self.species_to_idx[str(self.df.iloc[i]["label"]).strip()]])
+                if str(self.df.iloc[i]["label"]).strip() in self.species_to_idx else 1.0
+                for i in range(len(self.df))
+            ], dtype=np.float32)
+            weights /= weights.sum()
+            indices = np.random.choice(len(self.df), size=len(self.df), replace=True, p=weights)
+        else:
+            np.random.shuffle(indices)
+        for idx in indices:
+            row = self.df.iloc[idx]
+            emb = np.load(row["npy_path"]).astype(np.float32)
+            yield emb, self._make_label(row["label"])
+
+    def get_all_samples(self) -> Tuple[np.ndarray, np.ndarray]:
+        embs, labels = [], []
+        for emb, label in self.generate_samples():
+            embs.append(emb)
+            labels.append(label)
+        if not embs:
+            raise RuntimeError("CachedEmbeddingDataset: no embeddings found.")
+        return np.stack(embs), np.stack(labels)

@@ -52,15 +52,22 @@ class PerchClassifier:
         mode: str = "embedding_head",
         hidden_dim: int = 512,
         dropout: float = 0.3,
+        embedding_dim: int = None,
     ):
         self.mode = mode
         self.num_classes = num_classes
 
-        print(f"Loading Perch model from: {perch_dir}")
-        self._perch = tf.saved_model.load(perch_dir)
-
-        self._embedding_key, self.embedding_dim = self._probe_model()
-        print(f"  Output key : '{self._embedding_key}'  dim={self.embedding_dim}")
+        if embedding_dim is not None and mode == "embedding_head":
+            # Cache mode: skip loading the heavy Perch backbone entirely.
+            self._perch = None
+            self._embedding_key = None
+            self.embedding_dim = embedding_dim
+            print(f"  Cache mode: Perch backbone skipped, embedding_dim={embedding_dim}")
+        else:
+            print(f"Loading Perch model from: {perch_dir}")
+            self._perch = tf.saved_model.load(perch_dir)
+            self._embedding_key, self.embedding_dim = self._probe_model()
+            print(f"  Output key : '{self._embedding_key}'  dim={self.embedding_dim}")
 
         self.head = ClassificationHead(num_classes, hidden_dim, dropout)
         # Build head weights by running a dummy input

@@ -17,10 +17,11 @@ import os
 import time
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 
 from src.utils.config import load_config, save_config, DotDict
 from src.utils.metrics import padded_cmap
-from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, compute_class_weights
+from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, CachedEmbeddingDataset, compute_class_weights
 from src.data.augment import apply_mixup_batch
 from src.model.classifier import PerchClassifier
 from src.model.losses import FocalBCELoss
@@ -94,15 +95,17 @@ def train_epoch(
 ) -> float:
     total_loss, n_batches = 0.0, 0
 
-    for audio_batch, label_batch in dataset:
-        audio_np = audio_batch.numpy()
-        label_np = label_batch.numpy()
-
+    pbar = tqdm(dataset, desc="  train", leave=False, unit="batch")
+    for audio_batch, label_batch in pbar:
         if mixup_alpha > 0:
-            audio_np, label_np = apply_mixup_batch(audio_np, label_np, mixup_alpha)
-
-        audio_tf = tf.constant(audio_np, dtype=tf.float32)
-        label_tf = tf.constant(label_np, dtype=tf.float32)
+            audio_np, label_np = apply_mixup_batch(
+                audio_batch.numpy(), label_batch.numpy(), mixup_alpha
+            )
+            audio_tf = tf.constant(audio_np, dtype=tf.float32)
+            label_tf = tf.constant(label_np, dtype=tf.float32)
+        else:
+            audio_tf = audio_batch
+            label_tf = label_batch
 
         with tf.GradientTape() as tape:
             logits = model(audio_tf, training=True)
@@ -113,6 +116,7 @@ def train_epoch(
 
         total_loss += float(loss)
         n_batches += 1
+        pbar.set_postfix(loss=f"{total_loss / n_batches:.4f}")
 
     return total_loss / max(n_batches, 1)
 
@@ -130,6 +134,59 @@ def evaluate(
     for start in range(0, len(val_clips), batch_size):
         batch = tf.constant(val_clips[start : start + batch_size], dtype=tf.float32)
         logits = model(batch, training=False)
+        preds.append(tf.sigmoid(logits).numpy())
+    return padded_cmap(val_labels, np.concatenate(preds, axis=0))
+
+
+# ── Cached-embedding fast path (embedding_head + pre-extracted cache) ─────────
+
+@tf.function
+def _train_step_cached(emb_batch, label_batch, head, optimizer, loss_fn, mixup_alpha):
+    """Single gradient-update step on pre-computed embeddings (graph mode)."""
+    if mixup_alpha > 0.0:
+        batch_size = tf.shape(emb_batch)[0]
+        indices = tf.random.shuffle(tf.range(batch_size))
+        lam = tf.random.uniform([batch_size, 1], dtype=tf.float32)
+        emb_batch   = lam * emb_batch   + (1.0 - lam) * tf.gather(emb_batch,   indices)
+        label_batch = lam * label_batch + (1.0 - lam) * tf.gather(label_batch, indices)
+    with tf.GradientTape() as tape:
+        logits = head(emb_batch, training=True)
+        loss = loss_fn(label_batch, logits)
+    grads = tape.gradient(loss, head.trainable_variables)
+    optimizer.apply_gradients(zip(grads, head.trainable_variables))
+    return loss
+
+
+def train_epoch_cached(
+    model: PerchClassifier,
+    dataset: tf.data.Dataset,
+    optimizer: tf.keras.optimizers.Optimizer,
+    loss_fn,
+    mixup_alpha: float,
+) -> float:
+    total_loss, n_batches = 0.0, 0
+    pbar = tqdm(dataset, desc="  train", leave=False, unit="batch")
+    for emb_batch, label_batch in pbar:
+        loss = _train_step_cached(
+            emb_batch, label_batch, model.head, optimizer, loss_fn, mixup_alpha
+        )
+        total_loss += float(loss)
+        n_batches += 1
+        pbar.set_postfix(loss=f"{total_loss / n_batches:.4f}")
+    return total_loss / max(n_batches, 1)
+
+
+def evaluate_cached(
+    model: PerchClassifier,
+    val_embs: np.ndarray,
+    val_labels: np.ndarray,
+    batch_size: int,
+) -> float:
+    """Head-only inference on pre-computed soundscape embeddings."""
+    preds = []
+    for start in range(0, len(val_embs), batch_size):
+        batch = tf.constant(val_embs[start : start + batch_size], dtype=tf.float32)
+        logits = model.head(batch, training=False)
         preds.append(tf.sigmoid(logits).numpy())
     return padded_cmap(val_labels, np.concatenate(preds, axis=0))
 
@@ -226,24 +283,7 @@ def main():
     num_classes = len(target_species)
     print(f"\nTarget species: {num_classes}")
 
-    # ── Validation data (soundscapes → matches test conditions) ───────────────
-    print("\nLoading validation soundscapes into memory …")
-    val_ds = SoundscapeDataset(
-        soundscapes_dir=config.data.train_soundscapes_dir,
-        labels_csv=config.data.soundscapes_labels_csv,
-        species_to_idx=species_to_idx,
-        num_classes=num_classes,
-        sample_rate=config.audio.sample_rate,
-        clip_duration=config.audio.clip_duration,
-    )
-    val_clips, val_labels = val_ds.get_all_samples()
-    print(f"Validation clips: {len(val_clips)}")
-
-    # ── Training data ─────────────────────────────────────────────────────────
-    print("\nBuilding training dataset …")
-    aug_config = dict(config.augmentation)
-
-    # Class-frequency weighting (BirdCLEF 2025 2nd place sqrt balancing)
+    # ── Class weights (needed regardless of cache) ────────────────────────────
     class_weight_mode = config.training.get("class_weight_mode", "none")
     class_weights = None
     if class_weight_mode != "none":
@@ -253,38 +293,104 @@ def main():
         )
         print(f"  Weight range: [{class_weights.min():.3f}, {class_weights.max():.3f}]")
 
-    noise_dir = config.data.get("noise_dir", None)
-
-    train_ds_obj = ClipDataset(
-        train_csv=config.data.train_csv,
-        audio_dir=config.data.train_audio_dir,
-        species_to_idx=species_to_idx,
-        num_classes=num_classes,
-        sample_rate=config.audio.sample_rate,
-        clip_duration=config.audio.clip_duration,
-        n_clips_per_file=config.audio.n_clips_per_file,
-        is_train=True,
-        use_secondary_labels=config.data.use_secondary_labels,
-        min_rating=config.data.min_rating,
-        max_files=config.data.get("max_files", None),
-        augment_config=aug_config,
-        noise_dir=noise_dir,
-        class_weights=class_weights,
+    # ── Detect pre-computed embedding cache ───────────────────────────────────
+    manifest_path = os.path.join(config.cache.cache_dir, "manifest.csv")
+    use_cache = (
+        config.cache.enabled
+        and config.model.mode == "embedding_head"
+        and os.path.isfile(manifest_path)
     )
 
-    clip_length = config.audio.clip_duration * config.audio.sample_rate
-    tf_train_ds = (
-        tf.data.Dataset.from_generator(
-            train_ds_obj.generate_samples,
-            output_signature=(
-                tf.TensorSpec(shape=(clip_length,), dtype=tf.float32),
-                tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
-            ),
+    if use_cache:
+        print(f"\nUsing cached embeddings: {manifest_path}")
+
+        train_cache_ds = CachedEmbeddingDataset(
+            manifest_csv=manifest_path,
+            species_to_idx=species_to_idx,
+            num_classes=num_classes,
+            split="train",
+            class_weights=class_weights,
         )
-        .shuffle(buffer_size=2000)
-        .batch(config.training.batch_size)
-        .prefetch(tf.data.AUTOTUNE)
-    )
+        emb_dim = train_cache_ds.embedding_dim
+        tf_train_ds = (
+            tf.data.Dataset.from_generator(
+                train_cache_ds.generate_samples,
+                output_signature=(
+                    tf.TensorSpec(shape=(emb_dim,), dtype=tf.float32),
+                    tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
+                ),
+            )
+            .shuffle(buffer_size=4000)
+            .batch(config.training.batch_size)
+            .prefetch(tf.data.AUTOTUNE)
+        )
+
+        print("Loading cached soundscape validation embeddings …")
+        val_cache_ds = CachedEmbeddingDataset(
+            manifest_csv=manifest_path,
+            species_to_idx=species_to_idx,
+            num_classes=num_classes,
+            split="soundscape",
+        )
+        val_clips, val_labels = val_cache_ds.get_all_samples()
+        print(f"Validation embeddings: {len(val_clips)}")
+
+    else:
+        if config.cache.enabled and config.model.mode == "embedding_head":
+            print(
+                f"\nTip: run 'python extract_embeddings.py' to pre-cache Perch embeddings "
+                f"and speed up training significantly."
+            )
+
+        # ── Validation data (soundscapes → matches test conditions) ───────────
+        print("\nLoading validation soundscapes into memory …")
+        val_ds = SoundscapeDataset(
+            soundscapes_dir=config.data.train_soundscapes_dir,
+            labels_csv=config.data.soundscapes_labels_csv,
+            species_to_idx=species_to_idx,
+            num_classes=num_classes,
+            sample_rate=config.audio.sample_rate,
+            clip_duration=config.audio.clip_duration,
+        )
+        val_clips, val_labels = val_ds.get_all_samples()
+        print(f"Validation clips: {len(val_clips)}")
+
+        # ── Training data ─────────────────────────────────────────────────────
+        print("\nBuilding training dataset …")
+        aug_config = dict(config.augmentation)
+        noise_dir = config.data.get("noise_dir", None)
+
+        train_ds_obj = ClipDataset(
+            train_csv=config.data.train_csv,
+            audio_dir=config.data.train_audio_dir,
+            species_to_idx=species_to_idx,
+            num_classes=num_classes,
+            sample_rate=config.audio.sample_rate,
+            clip_duration=config.audio.clip_duration,
+            n_clips_per_file=config.audio.n_clips_per_file,
+            is_train=True,
+            use_secondary_labels=config.data.use_secondary_labels,
+            min_rating=config.data.min_rating,
+            max_files=config.data.get("max_files", None),
+            augment_config=aug_config,
+            noise_dir=noise_dir,
+            class_weights=class_weights,
+        )
+
+        clip_length = config.audio.clip_duration * config.audio.sample_rate
+        tf_train_ds = (
+            tf.data.Dataset.from_generator(
+                train_ds_obj.generate_samples,
+                output_signature=(
+                    tf.TensorSpec(shape=(clip_length,), dtype=tf.float32),
+                    tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
+                ),
+            )
+            .shuffle(buffer_size=2000)
+            .batch(config.training.batch_size)
+            .prefetch(tf.data.AUTOTUNE)
+        )
+        emb_dim = None  # will load Perch to determine
 
     # ── Model ─────────────────────────────────────────────────────────────────
     print("\nBuilding model …")
@@ -294,6 +400,7 @@ def main():
         mode=config.model.mode,
         hidden_dim=config.model.hidden_dim,
         dropout=config.model.dropout,
+        embedding_dim=emb_dim,
     )
 
     # ── Optimizer & loss ──────────────────────────────────────────────────────
@@ -324,12 +431,13 @@ def main():
 
     print(f"\n{'='*60}")
     print(f"  Experiment : {run_name}")
-    print(f"  Mode       : {config.model.mode}")
+    print(f"  Mode       : {config.model.mode}  {'[CACHED]' if use_cache else '[raw audio]'}")
     print(f"  Epochs     : {config.training.epochs}")
     print(f"  Batch size : {config.training.batch_size}")
     print(f"{'='*60}\n")
 
-    for epoch in range(1, config.training.epochs + 1):
+    epoch_pbar = tqdm(range(1, config.training.epochs + 1), desc="Epochs", unit="epoch")
+    for epoch in epoch_pbar:
         t0 = time.time()
 
         # Update learning rate
@@ -342,16 +450,32 @@ def main():
         optimizer.learning_rate.assign(lr)
 
         # Train
-        train_loss = train_epoch(
-            model, tf_train_ds, optimizer, loss_fn,
-            mixup_alpha=config.training.mixup_alpha,
-        )
+        if use_cache:
+            train_loss = train_epoch_cached(
+                model, tf_train_ds, optimizer, loss_fn,
+                mixup_alpha=config.training.mixup_alpha,
+            )
+        else:
+            train_loss = train_epoch(
+                model, tf_train_ds, optimizer, loss_fn,
+                mixup_alpha=config.training.mixup_alpha,
+            )
 
         # Validate
-        val_cmap = evaluate(model, val_clips, val_labels, val_batch_size)
+        if use_cache:
+            val_cmap = evaluate_cached(model, val_clips, val_labels, val_batch_size)
+        else:
+            val_cmap = evaluate(model, val_clips, val_labels, val_batch_size)
 
         elapsed = time.time() - t0
-        print(
+        epoch_pbar.set_postfix(
+            loss=f"{train_loss:.4f}",
+            cmap=f"{val_cmap:.4f}",
+            best=f"{best_cmap:.4f}",
+            lr=f"{lr:.1e}",
+            t=f"{elapsed:.0f}s",
+        )
+        tqdm.write(
             f"Epoch {epoch:3d}/{config.training.epochs} | "
             f"loss={train_loss:.4f} | "
             f"val_cmap={val_cmap:.4f} | "
@@ -385,7 +509,7 @@ def main():
             best_epoch = epoch
             ckpt_path = os.path.join(ckpt_dir, "best_head")
             model.save_head(ckpt_path)
-            print(f"  ↑ New best cMAP={best_cmap:.4f}")
+            tqdm.write(f"  ↑ New best cMAP={best_cmap:.4f}")
             if wandb_run:
                 wandb_run.log({"val/best_padded_cmap": best_cmap, "epoch": epoch})
 
