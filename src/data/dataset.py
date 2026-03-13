@@ -5,8 +5,11 @@ Two data sources:
   - SoundscapeDataset : labeled 5-second segments from train_soundscapes/
 
 Both yield (audio_clip, multi_hot_label) pairs.
+
+BirdCLEF 2025 improvement: sqrt inverse-frequency sample weighting (2nd place).
 """
 
+import glob
 import os
 import numpy as np
 import pandas as pd
@@ -17,6 +20,47 @@ from src.data.augment import apply_augmentations
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+def compute_class_weights(
+    train_csv: str,
+    species_to_idx: Dict[str, int],
+    num_classes: int,
+    mode: str = "sqrt",
+) -> np.ndarray:
+    """
+    Compute per-class sample weights from training metadata.
+
+    BirdCLEF 2025 2nd place used sqrt inverse-frequency weighting so that
+    rare species recordings are sampled more frequently.
+
+    Args:
+        train_csv     : Path to train.csv.
+        species_to_idx: Species label → class index mapping.
+        num_classes   : Total number of classes.
+        mode          : "sqrt"   → weight ∝ 1/sqrt(freq)  [2nd place]
+                        "linear" → weight ∝ 1/freq
+                        "none"   → uniform weights (all 1.0)
+
+    Returns:
+        Float32 array of shape (num_classes,) with per-class weights.
+    """
+    df = pd.read_csv(train_csv)
+    counts = np.ones(num_classes, dtype=np.float32)  # Laplace smoothing
+    for label in df["primary_label"].astype(str):
+        if label in species_to_idx:
+            counts[species_to_idx[label]] += 1.0
+
+    if mode == "sqrt":
+        weights = 1.0 / np.sqrt(counts)
+    elif mode == "linear":
+        weights = 1.0 / counts
+    else:
+        return np.ones(num_classes, dtype=np.float32)
+
+    # Normalise so mean weight = 1 (preserves effective learning rate scale)
+    weights = weights / weights.mean()
+    return weights.astype(np.float32)
+
 
 def build_species_mapping(sample_submission_csv: str) -> Tuple[List[str], Dict[str, int]]:
     """
@@ -69,6 +113,8 @@ class ClipDataset:
         min_rating: float = 0.0,
         max_files: Optional[int] = None,
         augment_config: Optional[dict] = None,
+        noise_dir: Optional[str] = None,
+        class_weights: Optional[np.ndarray] = None,
     ):
         self.audio_dir = audio_dir
         self.species_to_idx = species_to_idx
@@ -79,6 +125,16 @@ class ClipDataset:
         self.is_train = is_train
         self.use_secondary_labels = use_secondary_labels
         self.augment_config = augment_config or {"enabled": False}
+        self.class_weights = class_weights  # (num_classes,) or None
+        # Background noise files (BirdCLEF 2025 multi-team technique)
+        self.noise_files: List[str] = []
+        if noise_dir and os.path.isdir(noise_dir):
+            self.noise_files = (
+                glob.glob(os.path.join(noise_dir, "**/*.ogg"), recursive=True)
+                + glob.glob(os.path.join(noise_dir, "**/*.wav"), recursive=True)
+                + glob.glob(os.path.join(noise_dir, "**/*.flac"), recursive=True)
+            )
+            print(f"[ClipDataset] Loaded {len(self.noise_files)} background noise files from {noise_dir}")
 
         df = pd.read_csv(train_csv)
         if min_rating > 0:
@@ -104,11 +160,38 @@ class ClipDataset:
                     label[self.species_to_idx[sp]] = 1.0
         return label
 
+    def _sample_weight(self, primary_label: str) -> float:
+        """Return the per-sample weight based on primary species frequency."""
+        if self.class_weights is None:
+            return 1.0
+        idx = self.species_to_idx.get(str(primary_label).strip())
+        if idx is None:
+            return 1.0
+        return float(self.class_weights[idx])
+
     def generate_samples(self) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
-        """Yield (clip, multi_hot_label) pairs; shuffles file order each epoch."""
+        """Yield (clip, multi_hot_label) pairs; shuffles file order each epoch.
+
+        When class_weights are provided the file order is shuffled with
+        probability proportional to the primary-species weight (sqrt inverse
+        frequency, BirdCLEF 2025 2nd place) so rare species appear more often.
+        """
         indices = np.arange(len(self.metadata))
         if self.is_train:
-            np.random.shuffle(indices)
+            if self.class_weights is not None:
+                # Weighted shuffle: sample indices with replacement proportional
+                # to each file's primary-species weight.
+                weights = np.array([
+                    self._sample_weight(self.metadata.iloc[i]["primary_label"])
+                    for i in range(len(self.metadata))
+                ], dtype=np.float32)
+                weights /= weights.sum()
+                indices = np.random.choice(
+                    len(self.metadata), size=len(self.metadata),
+                    replace=True, p=weights,
+                )
+            else:
+                np.random.shuffle(indices)
 
         for idx in indices:
             row = self.metadata.iloc[idx]
@@ -128,7 +211,7 @@ class ClipDataset:
                     else center_crop(audio, self.clip_length)
 
                 if self.is_train:
-                    clip = apply_augmentations(clip, self.augment_config)
+                    clip = apply_augmentations(clip, self.augment_config, self.noise_files)
 
                 yield clip, label
 

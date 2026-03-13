@@ -42,10 +42,22 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=None,
                         help="Override batch size for inference")
     parser.add_argument("--max_files", type=int, default=None)
+    parser.add_argument("--tta", action="store_true",
+                        help="Enable TTA with 2.5-second temporal shifts (BirdCLEF 2025 2nd place)")
     return parser.parse_args()
 
 
 # ── Per-soundscape inference ─────────────────────────────────────────────────
+
+def _batched_infer(model, clips: np.ndarray, batch_size: int) -> np.ndarray:
+    """Run batched inference and return sigmoid probabilities."""
+    all_preds = []
+    for start in range(0, len(clips), batch_size):
+        batch = tf.constant(clips[start: start + batch_size], dtype=tf.float32)
+        logits = model(batch, training=False)
+        all_preds.append(tf.sigmoid(logits).numpy())
+    return np.concatenate(all_preds, axis=0)
+
 
 def process_soundscape(
     filepath: str,
@@ -53,15 +65,19 @@ def process_soundscape(
     sample_rate: int,
     clip_duration: int,
     batch_size: int,
+    tta: bool = False,
 ) -> tuple:
     """
     Split a soundscape into consecutive 5-second clips and run inference.
 
+    Args:
+        tta: If True, also predict half-shifted clips and average (BirdCLEF 2025
+             2nd place technique: +0.012 AUC via 2.5-second temporal shifts).
+
     Returns:
-        row_ids   : List of strings like "BC2026_Train_0001_xxx_5", "_10", …
+        row_ids    : List of strings like "BC2026_Train_0001_xxx_5", "_10", …
         predictions: np.ndarray of shape (n_segments, n_classes)
     """
-    # Derive soundscape ID from filename (strip directory and extension)
     ss_id = re.sub(r"\.ogg$", "", os.path.basename(filepath), flags=re.IGNORECASE)
 
     audio = load_audio(filepath, sample_rate)
@@ -73,23 +89,29 @@ def process_soundscape(
     if n_segments == 0:
         return [], np.empty((0,))
 
-    # Build segment clips
     clips = np.stack([
-        audio[i * clip_length : (i + 1) * clip_length]
+        audio[i * clip_length: (i + 1) * clip_length]
         for i in range(n_segments)
     ])
-
-    # Row IDs: 5, 10, 15, … (end time of each segment in seconds)
     row_ids = [f"{ss_id}_{(i + 1) * clip_duration}" for i in range(n_segments)]
 
-    # Batched inference
-    all_preds = []
-    for start in range(0, n_segments, batch_size):
-        batch = tf.constant(clips[start : start + batch_size], dtype=tf.float32)
-        logits = model(batch, training=False)
-        all_preds.append(tf.sigmoid(logits).numpy())
+    preds = _batched_infer(model, clips, batch_size)
 
-    return row_ids, np.concatenate(all_preds, axis=0)
+    if tta:
+        # 2.5-second shifted clips (half-window TTA from BirdCLEF 2025 2nd place)
+        half = clip_length // 2
+        audio_shifted = audio[half:]
+        n_shifted = len(audio_shifted) // clip_length
+        if n_shifted > 0:
+            clips_shifted = np.stack([
+                audio_shifted[i * clip_length: (i + 1) * clip_length]
+                for i in range(n_shifted)
+            ])
+            preds_shifted = _batched_infer(model, clips_shifted, batch_size)
+            n_use = min(len(preds), len(preds_shifted))
+            preds[:n_use] = 0.5 * preds[:n_use] + 0.5 * preds_shifted[:n_use]
+
+    return row_ids, preds
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -148,6 +170,7 @@ def main():
             sample_rate=config.audio.sample_rate,
             clip_duration=config.audio.clip_duration,
             batch_size=infer_batch_size,
+            tta=args.tta,
         )
         if len(row_ids) > 0:
             all_row_ids.extend(row_ids)

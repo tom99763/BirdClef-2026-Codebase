@@ -1,0 +1,93 @@
+# BirdCLEF 2025 Top-10 Improvements Config
+#
+# Enables all techniques from BirdCLEF 2025 top solutions:
+#   - FocalLoss (2nd, 5th place)
+#   - Sqrt inverse-frequency class weighting (2nd place)
+#   - Time masking / SpecAugment (multiple teams)
+#   - Background noise injection (multiple teams)  ← set noise_dir to enable
+#   - Cosine + warmup LR schedule (universal)
+#   - AdamW + Mixup (baseline, already present)
+#
+# Pseudo-labeling (1st place, biggest gain) is a separate step:
+#   python pseudo_label.py generate --config configs/birdclef25_improvements.yaml \
+#       --checkpoint checkpoints/birdclef25-v1/best_head \
+#       --output pseudo_labels/round1_pseudo.csv --power 2.0
+#
+# TTA during inference:
+#   python inference.py --config configs/birdclef25_improvements.yaml \
+#       --checkpoint checkpoints/birdclef25-v1/best_head --tta
+#
+# Model Soup (after training multiple runs):
+#   python -m src.utils.model_soup \
+#       --checkpoints checkpoints/birdclef25-v1/best_head checkpoints/birdclef25-v2/best_head \
+#       --output checkpoints/soup/best_head
+
+experiment:
+  name: "birdclef25-improvements-v1"
+  seed: 42
+
+data:
+  train_audio_dir: "birdclef-2026/train_audio"
+  train_soundscapes_dir: "birdclef-2026/train_soundscapes"
+  train_csv: "birdclef-2026/train.csv"
+  taxonomy_csv: "birdclef-2026/taxonomy.csv"
+  soundscapes_labels_csv: "birdclef-2026/train_soundscapes_labels.csv"
+  sample_submission_csv: "birdclef-2026/sample_submission.csv"
+  min_rating: 3.0           # Filter low-quality recordings (quality threshold)
+  use_secondary_labels: true
+  max_files: null
+  noise_dir: null           # Set to a directory of background noise .ogg/.wav files
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5
+  n_clips_per_file: 3
+
+model:
+  perch_dir: "models/bird-vocalization-classifier-tensorflow2-perch_v2-v2"
+  mode: "embedding_head"
+  hidden_dim: 512
+  dropout: 0.3
+
+training:
+  epochs: 50
+  batch_size: 64
+  optimizer: "adamw"              # AdamW (weight decay) — more stable than Adam
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  warmup_epochs: 3
+  label_smoothing: 0.05
+  mixup_alpha: 0.3
+  use_soundscapes_in_train: false
+  # ── BirdCLEF 2025 improvements ──────────────────────────────────────────────
+  loss: "focal"                   # FocalLoss for class imbalance (2nd/5th place)
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+  class_weight_mode: "sqrt"       # Sqrt inverse-frequency weighting (2nd place)
+
+augmentation:
+  enabled: true
+  noise_level: 0.005
+  gain_range: [0.7, 1.3]
+  # ── BirdCLEF 2025 improvements ──────────────────────────────────────────────
+  time_masking: true              # SpecAugment-style waveform masking
+  time_mask_ratio: 0.1            # Max 10% of clip per mask window
+  time_mask_n: 2                  # 2 independent masks
+  background_noise: false         # Enable by also setting data.noise_dir
+  snr_db_range: [5.0, 30.0]
+
+cache:
+  enabled: true
+  cache_dir: "outputs/embeddings_cache"
+
+wandb:
+  enabled: true
+  project: "birdclef-2026"
+  entity: null
+  tags: ["birdclef25-techniques", "focal-loss", "class-weights", "time-masking"]
+  log_model: false
+
+output:
+  dir: "outputs"
+  checkpoint_dir: "checkpoints"

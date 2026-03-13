@@ -1,0 +1,87 @@
+# BirdClef 2026 — SED Model Default Config
+#
+# Sound Event Detection pipeline (PyTorch + EfficientNetV2 + attention pooling)
+# Inspired by BirdCLEF 2025 5th place (13 SED models) and 2nd place (EfficientNetV2-S in21k)
+#
+# Usage:
+#   python train_sed.py --config configs/sed_default.yaml
+#   python inference_sed.py --config configs/sed_default.yaml \
+#       --checkpoint checkpoints/sed-v1/best_sed --tta
+
+experiment:
+  name: "sed-v1"
+  seed: 42
+
+data:
+  train_audio_dir: "birdclef-2026/train_audio"
+  train_soundscapes_dir: "birdclef-2026/train_soundscapes"
+  train_csv: "birdclef-2026/train.csv"
+  taxonomy_csv: "birdclef-2026/taxonomy.csv"
+  soundscapes_labels_csv: "birdclef-2026/train_soundscapes_labels.csv"
+  sample_submission_csv: "birdclef-2026/sample_submission.csv"
+  min_rating: 3.0           # Filter low-quality recordings
+  use_secondary_labels: true
+  max_files: null
+  noise_dir: null           # Set to enable background noise injection
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5          # seconds
+  n_clips_per_file: 3
+
+# ── Mel spectrogram parameters ────────────────────────────────────────────────
+mel:
+  n_fft: 1024               # FFT window size
+  hop_length: 320           # 320 @ 32kHz → 100 frames/sec; 5s clip → 501 frames
+  n_mels: 128               # Mel filterbank bins
+  fmin: 20.0                # Minimum frequency (Hz)
+  fmax: 16000.0             # Maximum frequency (Hz) — Nyquist for 32kHz
+
+# ── Model ─────────────────────────────────────────────────────────────────────
+model:
+  # BirdCLEF 2025 backbone options (all via timm):
+  #   "tf_efficientnetv2_s_in21k"   — 2nd & 5th place default (best single model)
+  #   "tf_efficientnet_b3_ns"       — 5th place (noisy-student pretrained)
+  #   "tf_efficientnet_b0_ns"       — 5th place (lightweight, fast)
+  #   "eca_nfnet_l0"                — 2nd place
+  backbone: "tf_efficientnetv2_s_in21k"
+  pretrained: true          # Load ImageNet-21k weights
+  dropout: 0.3
+
+# ── Training ──────────────────────────────────────────────────────────────────
+training:
+  epochs: 50
+  batch_size: 32            # Smaller than Perch pipeline (mel computation overhead)
+  optimizer: "adamw"        # AdamW — standard for EfficientNet fine-tuning
+  learning_rate: 1.0e-4     # Lower than Perch pipeline (full model fine-tuning)
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  warmup_epochs: 3
+  label_smoothing: 0.05
+  mixup_alpha: 0.3
+  focal_gamma: 2.0          # FocalLoss focusing parameter (BirdCLEF25 2nd/5th place)
+  focal_alpha: 0.25         # FocalLoss class balance weight
+  class_weight_mode: "sqrt" # Sqrt inverse-frequency weighting (BirdCLEF25 2nd place)
+
+# ── Augmentation ──────────────────────────────────────────────────────────────
+augmentation:
+  enabled: true
+  noise_level: 0.005
+  gain_range: [0.7, 1.3]
+  time_masking: true
+  time_mask_ratio: 0.1
+  time_mask_n: 2
+  background_noise: false   # Enable by setting data.noise_dir
+  snr_db_range: [5.0, 30.0]
+
+# ── WandB ─────────────────────────────────────────────────────────────────────
+wandb:
+  enabled: true
+  project: "birdclef-2026"
+  entity: null
+  tags: ["SED", "efficientnetv2-s", "attention-pooling", "birdclef25"]
+  log_model: false
+
+output:
+  dir: "outputs"
+  checkpoint_dir: "checkpoints"
