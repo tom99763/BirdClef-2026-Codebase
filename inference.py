@@ -44,6 +44,8 @@ def parse_args():
     parser.add_argument("--max_files", type=int, default=None)
     parser.add_argument("--tta", action="store_true",
                         help="Enable TTA with 2.5-second temporal shifts (BirdCLEF 2025 2nd place)")
+    parser.add_argument("--gpu", default=None,
+                        help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
     return parser.parse_args()
 
 
@@ -118,6 +120,8 @@ def process_soundscape(
 
 def main():
     args = parse_args()
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = load_config(args.config)
 
     # ── Decide soundscapes directory ──────────────────────────────────────────

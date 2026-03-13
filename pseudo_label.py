@@ -217,12 +217,16 @@ def parse_args():
     gen.add_argument("--power", type=float, default=2.0,
                      help="PowerTransform exponent (1.0 = disabled, 2.0 = 1st place default)")
     gen.add_argument("--batch_size", type=int, default=None)
+    gen.add_argument("--gpu", default=None,
+                     help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
 
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     if args.cmd == "generate":
         cmd_generate(args)
     else:

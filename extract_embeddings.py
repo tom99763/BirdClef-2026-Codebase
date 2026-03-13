@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("--n_clips", type=int, default=None,
                         help="Clips per file (overrides config audio.n_clips_per_file)")
     parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--gpu", default=None,
+                        help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
     return parser.parse_args()
 
 
@@ -92,6 +94,8 @@ def flush(
 
 def main():
     args = parse_args()
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = load_config(args.config)
 
     sample_rate = config.audio.sample_rate

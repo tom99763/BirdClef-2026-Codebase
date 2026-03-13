@@ -55,6 +55,8 @@ def parse_args():
                         help="TTA with 2.5-second temporal shifts (BirdCLEF25 2nd place)")
     parser.add_argument("--ensemble_with", default=None,
                         help="Path to another submission CSV to average with (e.g. Perch)")
+    parser.add_argument("--gpu", default=None,
+                        help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
     return parser.parse_args()
 
 
@@ -141,6 +143,8 @@ def process_soundscape(
 
 def main():
     args = parse_args()
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = load_config(args.config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")

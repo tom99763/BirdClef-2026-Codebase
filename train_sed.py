@@ -54,6 +54,8 @@ def parse_args():
     parser.add_argument("--config", default="configs/sed_default.yaml")
     parser.add_argument("overrides", nargs="*",
                         help="Config overrides in key=value format")
+    parser.add_argument("--gpu", default=None,
+                        help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
     return parser.parse_args()
 
 
@@ -197,6 +199,8 @@ def _save_results(
 
 def main():
     args = parse_args()
+    if args.gpu is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     config = load_config(args.config, _parse_overrides(args.overrides))
 
     import random
