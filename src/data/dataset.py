@@ -13,7 +13,7 @@ import glob
 import os
 import numpy as np
 import pandas as pd
-from typing import Dict, Generator, List, Optional, Tuple
+from typing import Callable, Dict, Generator, List, Optional, Tuple
 
 from src.utils.audio import load_audio, random_crop, center_crop, parse_time_str
 from src.data.augment import apply_augmentations
@@ -60,6 +60,64 @@ def compute_class_weights(
     # Normalise so mean weight = 1 (preserves effective learning rate scale)
     weights = weights / weights.mean()
     return weights.astype(np.float32)
+
+
+def compute_taxon_weights(
+    train_csv: str,
+    taxonomy_csv: str,
+    species_to_idx: Dict[str, int],
+    num_classes: int,
+    nonbird_boost: float = 3.0,
+) -> np.ndarray:
+    """
+    Per-class weights that additionally boost non-bird taxa.
+
+    Applies sqrt inverse-frequency first, then multiplies non-Aves species
+    by nonbird_boost so that Amphibia/Reptilia/Insecta/Mammalia species
+    receive proportionally more gradient updates.
+
+    Args:
+        nonbird_boost: Multiplier applied to non-Aves species (default 3.0).
+    """
+    # Base sqrt weights
+    weights = compute_class_weights(train_csv, species_to_idx, num_classes, mode="sqrt")
+
+    # Load taxonomy
+    tax_df = pd.read_csv(taxonomy_csv)[["primary_label", "class_name"]]
+    tax_df["primary_label"] = tax_df["primary_label"].astype(str)
+    taxon_map = dict(zip(tax_df["primary_label"], tax_df["class_name"]))
+
+    # Apply boost to non-bird species
+    for sp, idx in species_to_idx.items():
+        class_name = taxon_map.get(str(sp), "Aves")
+        if class_name != "Aves":
+            weights[idx] *= nonbird_boost
+
+    # Re-normalise
+    weights = weights / weights.mean()
+    return weights.astype(np.float32)
+
+
+TAXON_CLASSES = ["Aves", "Amphibia", "Reptilia", "Insecta", "Mammalia"]
+TAXON_TO_IDX  = {t: i for i, t in enumerate(TAXON_CLASSES)}
+
+
+def build_taxon_label_fn(
+    taxonomy_csv: str,
+    species_to_idx: Dict[str, int],
+) -> "Callable[[str], int]":
+    """
+    Returns a function that maps species label → taxon class index.
+    Used for the multi-task taxonomy auxiliary loss.
+    """
+    tax_df = pd.read_csv(taxonomy_csv)[["primary_label", "class_name"]]
+    tax_df["primary_label"] = tax_df["primary_label"].astype(str)
+    taxon_map = dict(zip(tax_df["primary_label"], tax_df["class_name"]))
+
+    def label_fn(species: str) -> int:
+        return TAXON_TO_IDX.get(taxon_map.get(str(species), "Aves"), 0)
+
+    return label_fn
 
 
 def build_species_mapping(sample_submission_csv: str) -> Tuple[List[str], Dict[str, int]]:
@@ -302,12 +360,14 @@ class CachedEmbeddingDataset:
         num_classes: int,
         split: str = "train",
         class_weights: Optional[np.ndarray] = None,
+        taxon_label_fn=None,
     ):
         df = pd.read_csv(manifest_csv)
         self.df = df[df["split"] == split].reset_index(drop=True)
         self.species_to_idx = species_to_idx
         self.num_classes = num_classes
         self.class_weights = class_weights
+        self.taxon_label_fn = taxon_label_fn
         print(f"[CachedEmbeddingDataset] {len(self.df)} embeddings (split={split})")
 
     @property
@@ -336,7 +396,11 @@ class CachedEmbeddingDataset:
         for idx in indices:
             row = self.df.iloc[idx]
             emb = np.load(row["npy_path"]).astype(np.float32)
-            yield emb, self._make_label(row["label"])
+            if self.taxon_label_fn is not None:
+                taxon_idx = np.int32(self.taxon_label_fn(row["label"]))
+                yield emb, self._make_label(row["label"]), taxon_idx
+            else:
+                yield emb, self._make_label(row["label"])
 
     def get_all_samples(self) -> Tuple[np.ndarray, np.ndarray]:
         embs, labels = [], []

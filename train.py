@@ -20,8 +20,8 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from src.utils.config import load_config, save_config, DotDict
-from src.utils.metrics import padded_cmap
-from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, CachedEmbeddingDataset, compute_class_weights
+from src.utils.metrics import competition_roc_auc
+from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, CachedEmbeddingDataset, compute_class_weights, build_taxon_label_fn, TAXON_CLASSES
 from src.data.augment import apply_mixup_batch
 from src.model.classifier import PerchClassifier
 from src.model.losses import FocalBCELoss
@@ -129,13 +129,13 @@ def evaluate(
     val_labels: np.ndarray,
     batch_size: int,
 ) -> float:
-    """Run inference on all validation clips and return padded cMAP."""
+    """Run inference on all validation clips and return competition ROC-AUC."""
     preds = []
     for start in range(0, len(val_clips), batch_size):
         batch = tf.constant(val_clips[start : start + batch_size], dtype=tf.float32)
         logits = model(batch, training=False)
         preds.append(tf.sigmoid(logits).numpy())
-    return padded_cmap(val_labels, np.concatenate(preds, axis=0))
+    return competition_roc_auc(val_labels, np.concatenate(preds, axis=0))
 
 
 # ── Cached-embedding fast path (embedding_head + pre-extracted cache) ─────────
@@ -176,6 +176,57 @@ def train_epoch_cached(
     return total_loss / max(n_batches, 1)
 
 
+@tf.function
+def _train_step_cached_multitask(
+    emb_batch, species_label_batch, taxon_label_batch,
+    head, optimizer, loss_fn, mixup_alpha, taxon_aux_weight
+):
+    """Cached training step with taxonomy auxiliary loss."""
+    if mixup_alpha > 0.0:
+        batch_size = tf.shape(emb_batch)[0]
+        indices = tf.random.shuffle(tf.range(batch_size))
+        lam = tf.random.uniform([batch_size, 1], dtype=tf.float32)
+        emb_batch         = lam * emb_batch         + (1.0 - lam) * tf.gather(emb_batch, indices)
+        species_label_batch = lam * species_label_batch + (1.0 - lam) * tf.gather(species_label_batch, indices)
+        # Don't mix taxon labels — use hard label of primary sample
+    with tf.GradientTape() as tape:
+        species_logits, taxon_logits = head(emb_batch, training=True)
+        species_loss = loss_fn(species_label_batch, species_logits)
+        taxon_loss = tf.reduce_mean(
+            tf.nn.sparse_softmax_cross_entropy_with_logits(
+                labels=taxon_label_batch, logits=taxon_logits
+            )
+        )
+        total_loss = species_loss + taxon_aux_weight * taxon_loss
+    grads = tape.gradient(total_loss, head.trainable_variables)
+    optimizer.apply_gradients(zip(grads, head.trainable_variables))
+    return total_loss, species_loss, taxon_loss
+
+
+def train_epoch_cached_multitask(
+    model: PerchClassifier,
+    dataset: tf.data.Dataset,
+    optimizer: tf.keras.optimizers.Optimizer,
+    loss_fn,
+    mixup_alpha: float,
+    taxon_aux_weight: float,
+) -> float:
+    total_loss, n_batches = 0.0, 0
+    pbar = tqdm(dataset, desc="  train", leave=False, unit="batch")
+    for emb_batch, species_batch, taxon_batch in pbar:
+        loss, sp_loss, tx_loss = _train_step_cached_multitask(
+            emb_batch, species_batch, taxon_batch,
+            model.head, optimizer, loss_fn, mixup_alpha,
+            tf.constant(taxon_aux_weight, dtype=tf.float32)
+        )
+        total_loss += float(loss)
+        n_batches += 1
+        pbar.set_postfix(loss=f"{total_loss/n_batches:.4f}",
+                         sp=f"{float(sp_loss):.4f}",
+                         tx=f"{float(tx_loss):.4f}")
+    return total_loss / max(n_batches, 1)
+
+
 def evaluate_cached(
     model: PerchClassifier,
     val_embs: np.ndarray,
@@ -186,9 +237,11 @@ def evaluate_cached(
     preds = []
     for start in range(0, len(val_embs), batch_size):
         batch = tf.constant(val_embs[start : start + batch_size], dtype=tf.float32)
-        logits = model.head(batch, training=False)
+        out = model.head(batch, training=False)
+        # out may be (species_logits, taxon_logits) when taxon_head is active
+        logits = out[0] if isinstance(out, tuple) else out
         preds.append(tf.sigmoid(logits).numpy())
-    return padded_cmap(val_labels, np.concatenate(preds, axis=0))
+    return competition_roc_auc(val_labels, np.concatenate(preds, axis=0))
 
 
 # ── Result persistence ────────────────────────────────────────────────────────
@@ -198,7 +251,7 @@ def _save_results(
     run_name: str,
     config: DotDict,
     epoch_history: list,
-    best_cmap: float,
+    best_roc_auc: float,
     best_epoch: int,
     total_time_s: float = None,
     finished: bool = False,
@@ -212,7 +265,7 @@ def _save_results(
     result = {
         "run_name": run_name,
         "finished": finished,
-        "best_val_cmap": round(best_cmap, 6),
+        "best_val_roc_auc": round(best_roc_auc, 6),
         "best_epoch": best_epoch,
         "total_epochs_run": len(epoch_history),
         "total_time_s": round(total_time_s, 1) if total_time_s else None,
@@ -283,10 +336,22 @@ def main():
     num_classes = len(target_species)
     print(f"\nTarget species: {num_classes}")
 
+    # ── Taxon multitask flag ──────────────────────────────────────────────────
+    taxon_aux_weight = float(config.training.get("taxon_aux_weight", 0.0))
+
     # ── Class weights (needed regardless of cache) ────────────────────────────
     class_weight_mode = config.training.get("class_weight_mode", "none")
     class_weights = None
-    if class_weight_mode != "none":
+    if class_weight_mode == "taxon_upweight":
+        from src.data.dataset import compute_taxon_weights
+        nonbird_boost = float(config.training.get("taxon_nonbird_boost", 3.0))
+        print(f"Computing taxon-aware class weights (nonbird_boost={nonbird_boost}) …")
+        class_weights = compute_taxon_weights(
+            config.data.train_csv, config.data.taxonomy_csv,
+            species_to_idx, num_classes, nonbird_boost=nonbird_boost
+        )
+        print(f"  Weight range: [{class_weights.min():.3f}, {class_weights.max():.3f}]")
+    elif class_weight_mode != "none":
         print(f"Computing class weights (mode={class_weight_mode}) …")
         class_weights = compute_class_weights(
             config.data.train_csv, species_to_idx, num_classes, mode=class_weight_mode
@@ -301,8 +366,16 @@ def main():
         and os.path.isfile(manifest_path)
     )
 
+    use_soundscapes_in_train = config.training.get("use_soundscapes_in_train", False)
+    use_taxon_multitask = (taxon_aux_weight > 0.0 and use_cache)
+
     if use_cache:
         print(f"\nUsing cached embeddings: {manifest_path}")
+
+        # Build taxon_label_fn if needed
+        taxon_label_fn = None
+        if use_taxon_multitask:
+            taxon_label_fn = build_taxon_label_fn(config.data.taxonomy_csv, species_to_idx)
 
         train_cache_ds = CachedEmbeddingDataset(
             manifest_csv=manifest_path,
@@ -310,20 +383,53 @@ def main():
             num_classes=num_classes,
             split="train",
             class_weights=class_weights,
+            taxon_label_fn=taxon_label_fn,
         )
         emb_dim = train_cache_ds.embedding_dim
-        tf_train_ds = (
-            tf.data.Dataset.from_generator(
-                train_cache_ds.generate_samples,
-                output_signature=(
-                    tf.TensorSpec(shape=(emb_dim,), dtype=tf.float32),
-                    tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
-                ),
+
+        if use_soundscapes_in_train:
+            sc_train_ds = CachedEmbeddingDataset(
+                manifest_csv=manifest_path,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                split="soundscape",
+                taxon_label_fn=taxon_label_fn,
             )
-            .shuffle(buffer_size=4000)
-            .batch(config.training.batch_size)
-            .prefetch(tf.data.AUTOTUNE)
-        )
+            def _combined_gen():
+                yield from train_cache_ds.generate_samples()
+                yield from sc_train_ds.generate_samples()
+            train_gen = _combined_gen
+            print(f"  + soundscape segments added to training set")
+        else:
+            train_gen = train_cache_ds.generate_samples
+
+        if use_taxon_multitask:
+            tf_train_ds = (
+                tf.data.Dataset.from_generator(
+                    train_gen,
+                    output_signature=(
+                        tf.TensorSpec(shape=(emb_dim,), dtype=tf.float32),
+                        tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
+                        tf.TensorSpec(shape=(), dtype=tf.int32),
+                    ),
+                )
+                .shuffle(buffer_size=4000)
+                .batch(config.training.batch_size)
+                .prefetch(tf.data.AUTOTUNE)
+            )
+        else:
+            tf_train_ds = (
+                tf.data.Dataset.from_generator(
+                    train_gen,
+                    output_signature=(
+                        tf.TensorSpec(shape=(emb_dim,), dtype=tf.float32),
+                        tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
+                    ),
+                )
+                .shuffle(buffer_size=4000)
+                .batch(config.training.batch_size)
+                .prefetch(tf.data.AUTOTUNE)
+            )
 
         print("Loading cached soundscape validation embeddings …")
         val_cache_ds = CachedEmbeddingDataset(
@@ -378,9 +484,27 @@ def main():
         )
 
         clip_length = config.audio.clip_duration * config.audio.sample_rate
+
+        if use_soundscapes_in_train:
+            sc_ds_obj = SoundscapeDataset(
+                soundscapes_dir=config.data.train_soundscapes_dir,
+                labels_csv=config.data.soundscapes_labels_csv,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                sample_rate=config.audio.sample_rate,
+                clip_duration=config.audio.clip_duration,
+            )
+            def _combined_audio_gen():
+                yield from train_ds_obj.generate_samples()
+                yield from sc_ds_obj.generate_samples()
+            train_audio_gen = _combined_audio_gen
+            print("  + soundscape segments added to training set (raw audio path)")
+        else:
+            train_audio_gen = train_ds_obj.generate_samples
+
         tf_train_ds = (
             tf.data.Dataset.from_generator(
-                train_ds_obj.generate_samples,
+                train_audio_gen,
                 output_signature=(
                     tf.TensorSpec(shape=(clip_length,), dtype=tf.float32),
                     tf.TensorSpec(shape=(num_classes,), dtype=tf.float32),
@@ -401,6 +525,7 @@ def main():
         hidden_dim=config.model.hidden_dim,
         dropout=config.model.dropout,
         embedding_dim=emb_dim,
+        num_taxon_classes=len(TAXON_CLASSES) if use_taxon_multitask else 0,
     )
 
     # ── Optimizer & loss ──────────────────────────────────────────────────────
@@ -423,7 +548,7 @@ def main():
         print("Loss: BinaryCrossentropy")
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    best_cmap = 0.0
+    best_roc_auc = 0.0
     best_epoch = 0
     val_batch_size = config.training.batch_size * 2
     epoch_history = []   # list of dicts, one per epoch
@@ -450,7 +575,13 @@ def main():
         optimizer.learning_rate.assign(lr)
 
         # Train
-        if use_cache:
+        if use_taxon_multitask:
+            train_loss = train_epoch_cached_multitask(
+                model, tf_train_ds, optimizer, loss_fn,
+                mixup_alpha=config.training.mixup_alpha,
+                taxon_aux_weight=taxon_aux_weight,
+            )
+        elif use_cache:
             train_loss = train_epoch_cached(
                 model, tf_train_ds, optimizer, loss_fn,
                 mixup_alpha=config.training.mixup_alpha,
@@ -463,22 +594,22 @@ def main():
 
         # Validate
         if use_cache:
-            val_cmap = evaluate_cached(model, val_clips, val_labels, val_batch_size)
+            val_roc_auc = evaluate_cached(model, val_clips, val_labels, val_batch_size)
         else:
-            val_cmap = evaluate(model, val_clips, val_labels, val_batch_size)
+            val_roc_auc = evaluate(model, val_clips, val_labels, val_batch_size)
 
         elapsed = time.time() - t0
         epoch_pbar.set_postfix(
             loss=f"{train_loss:.4f}",
-            cmap=f"{val_cmap:.4f}",
-            best=f"{best_cmap:.4f}",
+            cmap=f"{val_roc_auc:.4f}",
+            best=f"{best_roc_auc:.4f}",
             lr=f"{lr:.1e}",
             t=f"{elapsed:.0f}s",
         )
         tqdm.write(
             f"Epoch {epoch:3d}/{config.training.epochs} | "
             f"loss={train_loss:.4f} | "
-            f"val_cmap={val_cmap:.4f} | "
+            f"val_roc_auc={val_roc_auc:.4f} | "
             f"lr={lr:.2e} | "
             f"{elapsed:.1f}s"
         )
@@ -487,37 +618,37 @@ def main():
         epoch_record = {
             "epoch": epoch,
             "train_loss": round(train_loss, 6),
-            "val_cmap": round(val_cmap, 6),
+            "val_roc_auc": round(val_roc_auc, 6),
             "lr": round(float(lr), 8),
             "epoch_time_s": round(elapsed, 1),
         }
         epoch_history.append(epoch_record)
-        _save_results(out_dir, run_name, config, epoch_history, best_cmap, best_epoch)
+        _save_results(out_dir, run_name, config, epoch_history, best_roc_auc, best_epoch)
 
         # WandB logging
         if wandb_run:
             wandb_run.log({
                 "epoch": epoch,
                 "train/loss": train_loss,
-                "val/padded_cmap": val_cmap,
+                "val/roc_auc": val_roc_auc,
                 "lr": lr,
             })
 
         # Checkpoint best model
-        if val_cmap > best_cmap:
-            best_cmap = val_cmap
+        if val_roc_auc > best_roc_auc:
+            best_roc_auc = val_roc_auc
             best_epoch = epoch
             ckpt_path = os.path.join(ckpt_dir, "best_head")
             model.save_head(ckpt_path)
-            tqdm.write(f"  ↑ New best cMAP={best_cmap:.4f}")
+            tqdm.write(f"  ↑ New best cMAP={best_roc_auc:.4f}")
             if wandb_run:
-                wandb_run.log({"val/best_padded_cmap": best_cmap, "epoch": epoch})
+                wandb_run.log({"val/best_roc_auc": best_roc_auc, "epoch": epoch})
 
     total_time = time.time() - t_start
-    _save_results(out_dir, run_name, config, epoch_history, best_cmap, best_epoch,
+    _save_results(out_dir, run_name, config, epoch_history, best_roc_auc, best_epoch,
                   total_time_s=total_time, finished=True)
 
-    print(f"\nTraining complete.  Best val cMAP: {best_cmap:.4f}  (epoch {best_epoch})")
+    print(f"\nTraining complete.  Best val cMAP: {best_roc_auc:.4f}  (epoch {best_epoch})")
     if wandb_run:
         wandb_run.finish()
 

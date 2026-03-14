@@ -16,21 +16,30 @@ import tensorflow as tf
 from typing import List, Tuple
 
 
-class ClassificationHead(tf.keras.layers.Layer):
+class ClassificationHead(tf.keras.Model):
     """Two-layer MLP that maps Perch embeddings to class logits."""
 
-    def __init__(self, num_classes: int, hidden_dim: int = 512, dropout: float = 0.3):
+    def __init__(self, num_classes: int, hidden_dim: int = 512, dropout: float = 0.3,
+                 num_taxon_classes: int = 0):
         super().__init__()
         self.fc1 = tf.keras.layers.Dense(hidden_dim)
         self.act = tf.keras.layers.Activation("relu")
         self.dropout = tf.keras.layers.Dropout(dropout)
         self.fc2 = tf.keras.layers.Dense(num_classes)
+        if num_taxon_classes > 0:
+            self.taxon_head = tf.keras.layers.Dense(num_taxon_classes)
+        else:
+            self.taxon_head = None
 
     def call(self, x, training: bool = False):
         x = self.fc1(x)
         x = self.act(x)
-        x = self.dropout(x, training=training)
-        return self.fc2(x)
+        feat = self.dropout(x, training=training)
+        species_logits = self.fc2(feat)
+        if self.taxon_head is not None:
+            taxon_logits = self.taxon_head(feat)
+            return species_logits, taxon_logits
+        return species_logits
 
 
 class PerchClassifier:
@@ -53,6 +62,7 @@ class PerchClassifier:
         hidden_dim: int = 512,
         dropout: float = 0.3,
         embedding_dim: int = None,
+        num_taxon_classes: int = 0,
     ):
         self.mode = mode
         self.num_classes = num_classes
@@ -69,13 +79,14 @@ class PerchClassifier:
             self._embedding_key, self.embedding_dim = self._probe_model()
             print(f"  Output key : '{self._embedding_key}'  dim={self.embedding_dim}")
 
-        self.head = ClassificationHead(num_classes, hidden_dim, dropout)
-        # Build head weights by running a dummy input
+        self.head = ClassificationHead(num_classes, hidden_dim, dropout, num_taxon_classes)
         dummy_emb = tf.zeros((1, self.embedding_dim))
-        self.head(dummy_emb, training=False)
-
+        out = self.head(dummy_emb, training=False)
+        # out may be tuple now; count params after
         n_params = sum(int(np.prod(v.shape)) for v in self.head.trainable_variables)
         print(f"  Head params: {n_params:,}")
+        if num_taxon_classes > 0:
+            print(f"  Taxonomy aux head: {num_taxon_classes} classes")
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -122,9 +133,13 @@ class PerchClassifier:
     # ── Checkpointing ────────────────────────────────────────────────────────
 
     def save_head(self, path: str) -> None:
+        if not path.endswith(".weights.h5"):
+            path = path + ".weights.h5"
         self.head.save_weights(path)
         print(f"  Checkpoint saved → {path}")
 
     def load_head(self, path: str) -> None:
+        if not path.endswith(".weights.h5"):
+            path = path + ".weights.h5"
         self.head.load_weights(path)
         print(f"  Checkpoint loaded ← {path}")

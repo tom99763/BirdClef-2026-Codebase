@@ -112,7 +112,14 @@ def main():
         inputs=tf.zeros((1, clip_length), tf.float32))[key].shape[-1])
     print(f"Embedding key='{key}'  dim={emb_dim}")
 
-    manifest_rows: list = []
+    # Load existing manifest so parallel / split runs accumulate correctly
+    manifest_path = os.path.join(cache_dir, "manifest.csv")
+    if os.path.isfile(manifest_path):
+        existing = pd.read_csv(manifest_path)
+        manifest_rows: list = existing.to_dict("records")
+        print(f"Loaded existing manifest: {len(manifest_rows)} entries")
+    else:
+        manifest_rows: list = []
     audio_buf: list = []
     meta_buf: list = []
     bs = args.batch_size
@@ -167,9 +174,9 @@ def main():
 
         flush(perch, key, audio_buf, meta_buf, cache_dir, manifest_rows)
 
-    # ── Save manifest ─────────────────────────────────────────────────────────
-    manifest_path = os.path.join(cache_dir, "manifest.csv")
-    pd.DataFrame(manifest_rows).to_csv(manifest_path, index=False)
+    # ── Save manifest (deduplicate by npy_path) ───────────────────────────────
+    df_manifest = pd.DataFrame(manifest_rows).drop_duplicates(subset="npy_path")
+    df_manifest.to_csv(manifest_path, index=False)
     print(f"\nDone. {len(manifest_rows)} embeddings saved.")
     print(f"Manifest → {manifest_path}")
 

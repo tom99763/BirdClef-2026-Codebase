@@ -51,7 +51,7 @@ model:
 
 training:
   epochs: 50
-  batch_size: 64
+  batch_size: 256
   optimizer: "adamw"              # AdamW (weight decay) — more stable than Adam
   learning_rate: 1.0e-3
   weight_decay: 1.0e-4
