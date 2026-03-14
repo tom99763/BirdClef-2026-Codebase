@@ -12,6 +12,8 @@ Outputs:
 Usage:
     python extract_embeddings.py --config configs/default.yaml
     python extract_embeddings.py --config configs/default.yaml --split train --n_clips 5
+    python extract_embeddings.py --config configs/default.yaml --filter_human_voice
+        → saves to outputs/embeddings_cache_nohuman/ (separate cache)
 """
 
 import argparse
@@ -39,6 +41,11 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--gpu", default=None,
                         help="CUDA_VISIBLE_DEVICES (e.g. 0, 1, 0,1)")
+    parser.add_argument("--filter_human_voice", action="store_true",
+                        help="Remove human speech via Silero VAD before extraction. "
+                             "Saves to a separate cache dir (embeddings_cache_nohuman).")
+    parser.add_argument("--vad_threshold", type=float, default=0.4,
+                        help="Silero VAD speech confidence threshold (default 0.4).")
     return parser.parse_args()
 
 
@@ -101,7 +108,19 @@ def main():
     sample_rate = config.audio.sample_rate
     clip_length = config.audio.clip_duration * sample_rate
     n_clips = args.n_clips or config.audio.n_clips_per_file
-    cache_dir = config.cache.cache_dir
+
+    # Human-voice filter produces a separate cache dir so the original is untouched
+    if args.filter_human_voice:
+        base_cache = config.cache.cache_dir
+        cache_dir = base_cache.rstrip("/").rstrip("\\") + "_nohuman"
+        print(f"[human-filter] Silero VAD threshold={args.vad_threshold}")
+        print(f"[human-filter] Filtered cache → {cache_dir}")
+        from src.audio.human_filter import SpeechFilter
+        voice_filter = SpeechFilter(threshold=args.vad_threshold)
+    else:
+        cache_dir = config.cache.cache_dir
+        voice_filter = None
+
     os.makedirs(cache_dir, exist_ok=True)
 
     # Load Perch
@@ -124,6 +143,17 @@ def main():
     meta_buf: list = []
     bs = args.batch_size
 
+    # Track speech statistics when filtering
+    speech_fractions: list = []
+
+    def maybe_filter(audio: np.ndarray) -> np.ndarray:
+        if voice_filter is None:
+            return audio
+        start, end = voice_filter.find_clean_window(audio, sr=sample_rate)
+        frac = 1.0 - (end - start) / max(len(audio), 1)  # fraction removed
+        speech_fractions.append(frac)
+        return audio[start:end]
+
     # ── train_audio ───────────────────────────────────────────────────────────
     if args.split in ("train", "all"):
         print("\nExtracting train_audio embeddings …")
@@ -134,6 +164,7 @@ def main():
             audio = load_audio(filepath, sample_rate)
             if audio is None:
                 continue
+            audio = maybe_filter(audio)
             for clip_idx in range(n_clips):
                 clip = random_crop(audio, clip_length)
                 audio_buf.append(clip)
@@ -155,7 +186,8 @@ def main():
             if filename != current_file:
                 current_file = filename
                 filepath = os.path.join(config.data.train_soundscapes_dir, filename)
-                current_audio = load_audio(filepath, sample_rate)
+                raw = load_audio(filepath, sample_rate)
+                current_audio = maybe_filter(raw) if raw is not None else None
 
             if current_audio is None:
                 continue
@@ -179,6 +211,12 @@ def main():
     df_manifest.to_csv(manifest_path, index=False)
     print(f"\nDone. {len(manifest_rows)} embeddings saved.")
     print(f"Manifest → {manifest_path}")
+
+    if speech_fractions:
+        arr = np.array(speech_fractions)
+        print(f"\n[human-filter] Speech stats over {len(arr)} files:")
+        print(f"  mean={arr.mean():.3f}  median={np.median(arr):.3f}  "
+              f"max={arr.max():.3f}  >10%: {(arr > 0.1).mean()*100:.1f}%")
 
 
 if __name__ == "__main__":

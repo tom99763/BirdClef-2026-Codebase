@@ -369,6 +369,15 @@ def main():
     use_soundscapes_in_train = config.training.get("use_soundscapes_in_train", False)
     use_taxon_multitask = (taxon_aux_weight > 0.0 and use_cache)
 
+    # Fixed soundscape train/val split (prevents data leakage when soundscapes
+    # are used in training).  Falls back to all-soundscapes if file not found.
+    sc_split_csv = config.data.get("soundscapes_split_csv",
+                                   "birdclef-2026/soundscapes_split.csv")
+    if not os.path.isfile(sc_split_csv):
+        sc_split_csv = None
+    _sc_train_split = "train" if (use_soundscapes_in_train and sc_split_csv) else None
+    _sc_val_split   = "val"   if sc_split_csv else None
+
     if use_cache:
         print(f"\nUsing cached embeddings: {manifest_path}")
 
@@ -388,18 +397,22 @@ def main():
         emb_dim = train_cache_ds.embedding_dim
 
         if use_soundscapes_in_train:
+            sc_oversample = int(config.training.get("soundscape_oversample", 1))
             sc_train_ds = CachedEmbeddingDataset(
                 manifest_csv=manifest_path,
                 species_to_idx=species_to_idx,
                 num_classes=num_classes,
                 split="soundscape",
                 taxon_label_fn=taxon_label_fn,
+                soundscape_split_csv=sc_split_csv,
+                soundscape_split=_sc_train_split,
             )
             def _combined_gen():
                 yield from train_cache_ds.generate_samples()
-                yield from sc_train_ds.generate_samples()
+                for _ in range(sc_oversample):
+                    yield from sc_train_ds.generate_samples()
             train_gen = _combined_gen
-            print(f"  + soundscape segments added to training set")
+            print(f"  + soundscape segments added to training set (oversample={sc_oversample}x)")
         else:
             train_gen = train_cache_ds.generate_samples
 
@@ -437,6 +450,8 @@ def main():
             species_to_idx=species_to_idx,
             num_classes=num_classes,
             split="soundscape",
+            soundscape_split_csv=sc_split_csv,
+            soundscape_split=_sc_val_split,
         )
         val_clips, val_labels = val_cache_ds.get_all_samples()
         print(f"Validation embeddings: {len(val_clips)}")
@@ -455,6 +470,8 @@ def main():
             labels_csv=config.data.soundscapes_labels_csv,
             species_to_idx=species_to_idx,
             num_classes=num_classes,
+            split_csv=sc_split_csv,
+            split=_sc_val_split,
             sample_rate=config.audio.sample_rate,
             clip_duration=config.audio.clip_duration,
         )
@@ -486,6 +503,7 @@ def main():
         clip_length = config.audio.clip_duration * config.audio.sample_rate
 
         if use_soundscapes_in_train:
+            sc_oversample = int(config.training.get("soundscape_oversample", 1))
             sc_ds_obj = SoundscapeDataset(
                 soundscapes_dir=config.data.train_soundscapes_dir,
                 labels_csv=config.data.soundscapes_labels_csv,
@@ -493,12 +511,15 @@ def main():
                 num_classes=num_classes,
                 sample_rate=config.audio.sample_rate,
                 clip_duration=config.audio.clip_duration,
+                split_csv=sc_split_csv,
+                split=_sc_train_split,
             )
             def _combined_audio_gen():
                 yield from train_ds_obj.generate_samples()
-                yield from sc_ds_obj.generate_samples()
+                for _ in range(sc_oversample):
+                    yield from sc_ds_obj.generate_samples()
             train_audio_gen = _combined_audio_gen
-            print("  + soundscape segments added to training set (raw audio path)")
+            print(f"  + soundscape segments added to training set (raw audio, oversample={sc_oversample}x)")
         else:
             train_audio_gen = train_ds_obj.generate_samples
 

@@ -283,7 +283,9 @@ class SoundscapeDataset:
     Each row in train_soundscapes_labels.csv describes a 5-second segment;
     primary_label is a semicolon-separated list of species present.
 
-    Used primarily as validation data to match test-time conditions.
+    Pass `split_csv` (birdclef-2026/soundscapes_split.csv) and `split`
+    ("train" or "val") to use the held-out validation set correctly.
+    Without split_csv all segments are returned (legacy behaviour).
     """
 
     def __init__(
@@ -294,6 +296,8 @@ class SoundscapeDataset:
         num_classes: int,
         sample_rate: int = 32000,
         clip_duration: int = 5,
+        split_csv: Optional[str] = None,
+        split: Optional[str] = None,       # "train" | "val" | None (all)
     ):
         self.soundscapes_dir = soundscapes_dir
         self.species_to_idx = species_to_idx
@@ -301,8 +305,17 @@ class SoundscapeDataset:
         self.sample_rate = sample_rate
         self.clip_length = clip_duration * sample_rate
 
-        self.labels_df = pd.read_csv(labels_csv)
-        print(f"[SoundscapeDataset] {len(self.labels_df)} labeled segments")
+        df = pd.read_csv(labels_csv)
+
+        if split_csv and split:
+            sc_split = pd.read_csv(split_csv)
+            split_files = set(sc_split[sc_split["split"] == split]["filename"].tolist())
+            df = df[df["filename"].isin(split_files)].reset_index(drop=True)
+            print(f"[SoundscapeDataset] {len(df)} segments (split={split}, {len(split_files)} files)")
+        else:
+            print(f"[SoundscapeDataset] {len(df)} labeled segments (no split)")
+
+        self.labels_df = df
 
     def _make_label(self, labels_str: str) -> np.ndarray:
         label = np.zeros(self.num_classes, dtype=np.float32)
@@ -361,14 +374,28 @@ class CachedEmbeddingDataset:
         split: str = "train",
         class_weights: Optional[np.ndarray] = None,
         taxon_label_fn=None,
+        soundscape_split_csv: Optional[str] = None,
+        soundscape_split: Optional[str] = None,   # "train" | "val" | None (all)
     ):
         df = pd.read_csv(manifest_csv)
-        self.df = df[df["split"] == split].reset_index(drop=True)
+        rows = df[df["split"] == split].reset_index(drop=True)
+
+        # For soundscape embeddings, optionally filter to train or val files
+        if split == "soundscape" and soundscape_split_csv and soundscape_split:
+            sc_split = pd.read_csv(soundscape_split_csv)
+            split_files = set(sc_split[sc_split["split"] == soundscape_split]["filename"].tolist())
+            # source_file column contains the original ogg filename
+            rows = rows[rows["source_file"].isin(split_files)].reset_index(drop=True)
+            print(f"[CachedEmbeddingDataset] {len(rows)} embeddings "
+                  f"(split=soundscape/{soundscape_split}, {len(split_files)} files)")
+        else:
+            print(f"[CachedEmbeddingDataset] {len(rows)} embeddings (split={split})")
+
+        self.df = rows
         self.species_to_idx = species_to_idx
         self.num_classes = num_classes
         self.class_weights = class_weights
         self.taxon_label_fn = taxon_label_fn
-        print(f"[CachedEmbeddingDataset] {len(self.df)} embeddings (split={split})")
 
     @property
     def embedding_dim(self) -> int:
