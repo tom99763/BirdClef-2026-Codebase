@@ -5,15 +5,50 @@ Architecture:
   - Head     : Small MLP trained for the 234 BirdClef 2026 species
 
 Modes:
-  embedding_head : Perch is a frozen feature extractor; only the head is trained.
-                   tf.stop_gradient is applied so no gradient flows through Perch.
-  full_finetune  : Gradients flow through the whole model (experimental; may be
-                   slow and memory-intensive with a TF SavedModel).
+  embedding_head : Perch is a frozen feature extractor; only the head is trained
+                   on its 1536-dim embedding output.
+  label_head     : Uses Perch's `label` output (species logits) mapped to the
+                   234 target species as input features. Preserves Perch's
+                   pre-trained species knowledge. ~0.825 zero-shot LB.
+  full_finetune  : Gradients flow through the whole model (experimental).
 """
 
+import os
 import numpy as np
+import pandas as pd
 import tensorflow as tf
-from typing import List, Tuple
+from typing import List, Optional, Tuple
+
+
+def _load_label_indices(
+    perch_dir: str,
+    taxonomy_csv: str,
+    sample_submission_csv: str,
+) -> Tuple[List[int], int]:
+    """Map target species → Perch label indices via scientific names.
+
+    Returns (label_indices, n_perch_classes) where label_indices[i] is the
+    index in Perch's label output for target_species[i], or n_perch_classes
+    for unmapped species (will be zero after tf.pad).
+    """
+    labels_csv = os.path.join(perch_dir, "assets", "labels.csv")
+    bc_labels = pd.read_csv(labels_csv)
+    bc_labels = (bc_labels.reset_index()
+                 .rename({"inat2024_fsd50k": "scientific_name", "index": "bc_index"}, axis=1)
+                 .set_index("scientific_name"))
+    n_perch = len(bc_labels)
+
+    taxonomy = pd.read_csv(taxonomy_csv)
+    mapping = taxonomy.join(bc_labels, on="scientific_name", how="left")
+    mapping["bc_index"] = mapping["bc_index"].fillna(n_perch).astype(int)
+    mapping = mapping[["primary_label", "bc_index"]].set_index("primary_label")
+
+    target_species = pd.read_csv(sample_submission_csv).columns[1:].tolist()
+    indices = [int(mapping.loc[pl][0]) if pl in mapping.index else n_perch
+               for pl in target_species]
+    covered = sum(1 for i in indices if i < n_perch)
+    print(f"  Label-head: {covered}/{len(target_species)} species covered by Perch taxonomy")
+    return indices, n_perch
 
 
 class ClassificationHead(tf.keras.Model):
@@ -63,16 +98,32 @@ class PerchClassifier:
         dropout: float = 0.3,
         embedding_dim: int = None,
         num_taxon_classes: int = 0,
+        taxonomy_csv: Optional[str] = None,
+        sample_submission_csv: Optional[str] = None,
     ):
         self.mode = mode
         self.num_classes = num_classes
+        self._label_indices = None
+        self._n_perch_classes = None
 
-        if embedding_dim is not None and mode == "embedding_head":
-            # Cache mode: skip loading the heavy Perch backbone entirely.
+        if embedding_dim is not None:
+            # Cache mode: pre-computed features, skip loading Perch backbone.
             self._perch = None
             self._embedding_key = None
             self.embedding_dim = embedding_dim
             print(f"  Cache mode: Perch backbone skipped, embedding_dim={embedding_dim}")
+        elif mode == "label_head":
+            # Label-head mode: use Perch's species logits as features (not embedding).
+            # Requires taxonomy mapping files to identify which Perch outputs to use.
+            if taxonomy_csv is None or sample_submission_csv is None:
+                raise ValueError("label_head mode requires taxonomy_csv and sample_submission_csv")
+            print(f"Loading Perch model from: {perch_dir}")
+            self._perch = tf.saved_model.load(perch_dir)
+            self._embedding_key = "label"
+            self._label_indices, self._n_perch_classes = _load_label_indices(
+                perch_dir, taxonomy_csv, sample_submission_csv
+            )
+            self.embedding_dim = num_classes   # 234-dim feature space
         else:
             print(f"Loading Perch model from: {perch_dir}")
             self._perch = tf.saved_model.load(perch_dir)
@@ -108,14 +159,21 @@ class PerchClassifier:
     # ── Public API ───────────────────────────────────────────────────────────
 
     def extract_embeddings(self, audio: tf.Tensor) -> tf.Tensor:
-        """
-        Run the Perch backbone and return embeddings.
+        """Run Perch and return features for the head.
 
-        In 'embedding_head' mode gradients are stopped here so only the
-        classification head is updated during training.
+        embedding_head : returns 1536-dim Perch embedding (stop_gradient applied)
+        label_head     : returns 234-dim mapped Perch species logits (stop_gradient)
         """
         sig = self._perch.signatures["serving_default"]
-        embeddings = sig(inputs=audio)[self._embedding_key]
+        out = sig(inputs=audio)
+
+        if self.mode == "label_head":
+            # Pad label output so OOV index → 0, then gather target species
+            label = tf.pad(out["label"], [[0, 0], [0, 1]])
+            features = tf.gather(label, self._label_indices, axis=1)
+            return tf.stop_gradient(features)   # (N, 234)
+
+        embeddings = out[self._embedding_key]
         if self.mode == "embedding_head":
             embeddings = tf.stop_gradient(embeddings)
         return embeddings
@@ -141,5 +199,14 @@ class PerchClassifier:
     def load_head(self, path: str) -> None:
         if not path.endswith(".weights.h5"):
             path = path + ".weights.h5"
-        self.head.load_weights(path)
+        # Use h5py direct assignment to avoid Keras legacy-format mismatch.
+        import h5py
+        with h5py.File(path, "r") as wf:
+            self.head.fc1.kernel.assign(wf["fc1"]["vars"]["0"][:])
+            self.head.fc1.bias.assign(  wf["fc1"]["vars"]["1"][:])
+            self.head.fc2.kernel.assign(wf["fc2"]["vars"]["0"][:])
+            self.head.fc2.bias.assign(  wf["fc2"]["vars"]["1"][:])
+            if self.head.taxon_head is not None and "taxon_head" in wf:
+                self.head.taxon_head.kernel.assign(wf["taxon_head"]["vars"]["0"][:])
+                self.head.taxon_head.bias.assign(  wf["taxon_head"]["vars"]["1"][:])
         print(f"  Checkpoint loaded ← {path}")

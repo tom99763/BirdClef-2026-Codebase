@@ -196,13 +196,20 @@ def main():
             continue
 
         print(f"[{run_name}] Loading model …")
+        # Use run-specific config if available (handles varying hidden_dim etc.)
+        run_config_path = os.path.join(args.outputs_dir, run_name, "config.yaml")
+        run_config = load_config(run_config_path) if os.path.isfile(run_config_path) else config
+
         from src.model.classifier import PerchClassifier
         model = PerchClassifier(
             perch_dir=config.model.perch_dir,
             num_classes=num_classes,
-            mode=config.model.mode,
-            hidden_dim=config.model.hidden_dim,
-            dropout=config.model.dropout,
+            mode=run_config.model.mode,
+            hidden_dim=run_config.model.hidden_dim,
+            dropout=run_config.model.dropout,
+            # label_head mode needs taxonomy mapping to extract Perch species features
+            taxonomy_csv=config.data.get("taxonomy_csv", None),
+            sample_submission_csv=config.data.get("sample_submission_csv", None),
         )
         model.load_head(ckpt_path)
 
