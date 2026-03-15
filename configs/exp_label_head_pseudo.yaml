@@ -1,0 +1,64 @@
+experiment:
+  name: "label-head-pseudo"
+  seed: 42
+
+data:
+  train_audio_dir: "birdclef-2026/train_audio"
+  train_soundscapes_dir: "birdclef-2026/train_soundscapes"
+  train_csv: "birdclef-2026/train.csv"
+  taxonomy_csv: "birdclef-2026/taxonomy.csv"
+  soundscapes_labels_csv: "birdclef-2026/train_soundscapes_labels.csv"
+  sample_submission_csv: "birdclef-2026/sample_submission.csv"
+  min_rating: 3.0
+  use_secondary_labels: true
+  max_files: null
+  noise_dir: null
+  pseudo_labels_csv: "pseudo_labels/round1_pseudo.csv"
+  pseudo_manifest_csv: "outputs/embeddings_cache_perch_label/manifest.csv"
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5
+  n_clips_per_file: 3
+
+model:
+  perch_dir: "models/bird-vocalization-classifier-tensorflow2-perch_v2-v2"
+  mode: "label_head"
+  hidden_dim: 256
+  dropout: 0.3
+
+training:
+  epochs: 80
+  batch_size: 256
+  optimizer: "adam"
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  warmup_epochs: 5
+  label_smoothing: 0.05
+  mixup_alpha: 0.3
+  use_soundscapes_in_train: true
+  soundscape_oversample: 3
+  loss: "bce"
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+  class_weight_mode: "none"
+  use_pseudo_labels: true
+
+augmentation:
+  enabled: false    # augmentation on Perch label space is less meaningful
+
+cache:
+  enabled: true
+  cache_dir: "outputs/embeddings_cache_perch_label"
+
+wandb:
+  enabled: true
+  project: "birdclef-2026"
+  entity: null
+  tags: ["label-head-pseudo", "label-features", "pseudo-labels"]
+  log_model: false
+
+output:
+  dir: "outputs"
+  checkpoint_dir: "checkpoints"

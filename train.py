@@ -21,7 +21,7 @@ from tqdm import tqdm
 
 from src.utils.config import load_config, save_config, DotDict
 from src.utils.metrics import competition_roc_auc
-from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, CachedEmbeddingDataset, compute_class_weights, build_taxon_label_fn, TAXON_CLASSES
+from src.data.dataset import build_species_mapping, ClipDataset, SoundscapeDataset, CachedEmbeddingDataset, PseudoSoundscapeDataset, compute_class_weights, build_taxon_label_fn, TAXON_CLASSES
 from src.data.augment import apply_mixup_batch
 from src.model.classifier import PerchClassifier
 from src.model.losses import FocalBCELoss
@@ -285,7 +285,7 @@ def _save_results(
             "min_rating": config.data.min_rating,
             "use_secondary_labels": config.data.use_secondary_labels,
             "augmentation_enabled": config.augmentation.enabled,
-            "noise_level": config.augmentation.noise_level,
+            "noise_level": config.augmentation.get("noise_level", None),
         },
         "epoch_history": epoch_history,
     }
@@ -362,7 +362,7 @@ def main():
     manifest_path = os.path.join(config.cache.cache_dir, "manifest.csv")
     use_cache = (
         config.cache.enabled
-        and config.model.mode == "embedding_head"
+        and config.model.mode in ("embedding_head", "label_head")
         and os.path.isfile(manifest_path)
     )
 
@@ -415,6 +415,25 @@ def main():
             print(f"  + soundscape segments added to training set (oversample={sc_oversample}x)")
         else:
             train_gen = train_cache_ds.generate_samples
+
+        # ── Pseudo-label augmentation (cached embeddings path) ─────────────────
+        use_pseudo = config.training.get("use_pseudo_labels", False)
+        pseudo_csv = config.data.get("pseudo_labels_csv", None)
+        pseudo_manifest = config.data.get("pseudo_manifest_csv", None)
+        if use_pseudo and pseudo_manifest and os.path.isfile(pseudo_manifest):
+            # Fast path: pre-extracted embeddings for pseudo-labeled segments
+            pseudo_cache_ds = CachedEmbeddingDataset(
+                manifest_csv=pseudo_manifest,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                split="pseudo",
+            )
+            _prev_gen = train_gen
+            def _with_pseudo_gen():
+                yield from _prev_gen()
+                yield from pseudo_cache_ds.generate_samples()
+            train_gen = _with_pseudo_gen
+            print(f"  + pseudo-labeled embeddings added ({pseudo_manifest})")
 
         if use_taxon_multitask:
             tf_train_ds = (
@@ -522,6 +541,29 @@ def main():
             print(f"  + soundscape segments added to training set (raw audio, oversample={sc_oversample}x)")
         else:
             train_audio_gen = train_ds_obj.generate_samples
+
+        # ── Pseudo-label augmentation ──────────────────────────────────────────
+        use_pseudo = config.training.get("use_pseudo_labels", False)
+        pseudo_csv = config.data.get("pseudo_labels_csv", None)
+        if use_pseudo and pseudo_csv and os.path.isfile(pseudo_csv):
+            pseudo_ds_obj = PseudoSoundscapeDataset(
+                pseudo_csv=pseudo_csv,
+                soundscapes_dir=config.data.train_soundscapes_dir,
+                species_to_idx=species_to_idx,
+                target_species=target_species,
+                num_classes=num_classes,
+                sample_rate=config.audio.sample_rate,
+                clip_duration=config.audio.clip_duration,
+                use_soft_labels=True,
+            )
+            _prev_gen = train_audio_gen
+            def _with_pseudo_gen():
+                yield from _prev_gen()
+                yield from pseudo_ds_obj.generate_samples()
+            train_audio_gen = _with_pseudo_gen
+            print(f"  + pseudo-labeled soundscape segments added to training set")
+        elif use_pseudo and pseudo_csv:
+            print(f"  [WARNING] pseudo_labels_csv not found: {pseudo_csv}")
 
         tf_train_ds = (
             tf.data.Dataset.from_generator(

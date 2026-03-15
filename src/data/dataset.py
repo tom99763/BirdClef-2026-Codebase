@@ -437,3 +437,111 @@ class CachedEmbeddingDataset:
         if not embs:
             raise RuntimeError("CachedEmbeddingDataset: no embeddings found.")
         return np.stack(embs), np.stack(labels)
+
+
+# ── PseudoSoundscapeDataset ───────────────────────────────────────────────────
+
+class PseudoSoundscapeDataset:
+    """
+    Dataset built from pseudo-labeled soundscape segments.
+
+    Reads pseudo_labels.csv (output of pseudo_label.py generate), parses each
+    row_id to recover (filename, start_sec), loads audio, and yields
+    (clip, soft_label) pairs.
+
+    row_id format: <soundscape_basename_without_ext>_<end_seconds>
+    e.g.  BC2026_Train_0001_5   → BC2026_Train_0001.ogg, start=0s
+          BC2026_Train_0001_10  → BC2026_Train_0001.ogg, start=5s
+    """
+
+    def __init__(
+        self,
+        pseudo_csv: str,
+        soundscapes_dir: str,
+        species_to_idx: Dict[str, int],
+        target_species: List[str],
+        num_classes: int,
+        sample_rate: int = 32000,
+        clip_duration: int = 5,
+        use_soft_labels: bool = True,
+    ):
+        self.soundscapes_dir = soundscapes_dir
+        self.species_to_idx = species_to_idx
+        self.target_species = target_species
+        self.num_classes = num_classes
+        self.sample_rate = sample_rate
+        self.clip_length = clip_duration * sample_rate
+        self.clip_duration = clip_duration
+        self.use_soft_labels = use_soft_labels
+
+        df = pd.read_csv(pseudo_csv)
+        self.df = df.reset_index(drop=True)
+
+        # Detect soft-label columns (species codes among column names)
+        species_set = set(target_species)
+        self.soft_cols = [c for c in df.columns if c in species_set]
+        self.has_soft = len(self.soft_cols) == num_classes and use_soft_labels
+
+        print(f"[PseudoSoundscapeDataset] {len(self.df)} pseudo-labeled segments "
+              f"({'soft' if self.has_soft else 'hard'} labels)")
+
+    def _parse_row_id(self, row_id: str):
+        """Return (filename_with_ext, start_sec)."""
+        parts = row_id.rsplit("_", 1)
+        if len(parts) != 2:
+            return None, None
+        basename, end_str = parts
+        try:
+            end_sec = int(end_str)
+        except ValueError:
+            return None, None
+        start_sec = max(0, end_sec - self.clip_duration)
+        filename = basename + ".ogg"
+        return filename, start_sec
+
+    def _make_hard_label(self, primary_label: str, secondary_str: str = "") -> np.ndarray:
+        label = np.zeros(self.num_classes, dtype=np.float32)
+        primary = str(primary_label).strip()
+        if primary in self.species_to_idx:
+            label[self.species_to_idx[primary]] = 1.0
+        for sp in _parse_secondary_labels(str(secondary_str)):
+            if sp in self.species_to_idx:
+                label[self.species_to_idx[sp]] = 1.0
+        return label
+
+    def generate_samples(self) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:
+        """Yield (clip, label) pairs. Audio is loaded on demand."""
+        # Group by filename to avoid re-loading the same ogg file
+        current_file, current_audio = None, None
+
+        indices = np.arange(len(self.df))
+        np.random.shuffle(indices)
+
+        for idx in indices:
+            row = self.df.iloc[idx]
+            filename, start_sec = self._parse_row_id(str(row["row_id"]))
+            if filename is None:
+                continue
+
+            if filename != current_file:
+                current_file = filename
+                filepath = os.path.join(self.soundscapes_dir, filename)
+                current_audio = load_audio(filepath, self.sample_rate)
+
+            if current_audio is None:
+                continue
+
+            start_sample = int(start_sec * self.sample_rate)
+            clip = current_audio[start_sample: start_sample + self.clip_length]
+            if len(clip) < self.clip_length:
+                clip = np.pad(clip, (0, self.clip_length - len(clip)))
+
+            if self.has_soft:
+                label = np.array(row[self.soft_cols].values, dtype=np.float32)
+            else:
+                label = self._make_hard_label(
+                    row.get("primary_label", ""),
+                    row.get("secondary_labels", ""),
+                )
+
+            yield clip, label
