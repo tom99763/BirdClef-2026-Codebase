@@ -403,9 +403,10 @@ class CachedEmbeddingDataset:
 
     def _make_label(self, label_str: str) -> np.ndarray:
         label = np.zeros(self.num_classes, dtype=np.float32)
-        primary = str(label_str).strip()
-        if primary in self.species_to_idx:
-            label[self.species_to_idx[primary]] = 1.0
+        for sp in str(label_str).split(";"):
+            sp = sp.strip()
+            if sp in self.species_to_idx:
+                label[self.species_to_idx[sp]] = 1.0
         return label
 
     def generate_samples(self) -> Generator[Tuple[np.ndarray, np.ndarray], None, None]:

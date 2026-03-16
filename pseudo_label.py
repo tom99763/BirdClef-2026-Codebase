@@ -123,6 +123,8 @@ def cmd_generate(args):
         mode=config.model.mode,
         hidden_dim=config.model.hidden_dim,
         dropout=config.model.dropout,
+        taxonomy_csv=getattr(config.data, 'taxonomy_csv', None),
+        sample_submission_csv=getattr(config.data, 'sample_submission_csv', None),
     )
     model.load_head(args.checkpoint)
 

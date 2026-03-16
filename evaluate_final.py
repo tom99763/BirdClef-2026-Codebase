@@ -235,14 +235,18 @@ def main():
         sub_path = os.path.join(sub_dir, "submission_train_soundscapes.csv")
         submission.to_csv(sub_path, index=False)
 
-        # Score — align rows before passing to scorer (scorer does del in-place)
-        sol_aligned = solution.copy()
-        sub_aligned = submission.copy()
-        common = sol_aligned["row_id"].isin(sub_aligned["row_id"])
-        sol_aligned = sol_aligned[common].reset_index(drop=True)
-        sub_aligned = sub_aligned[
-            sub_aligned["row_id"].isin(sol_aligned["row_id"])
-        ].reset_index(drop=True)
+        # Score — align rows by row_id so solution/submission rows match exactly
+        common_ids = set(solution["row_id"]) & set(submission["row_id"])
+        sol_aligned = (
+            solution[solution["row_id"].isin(common_ids)]
+            .sort_values("row_id")
+            .reset_index(drop=True)
+        )
+        sub_aligned = (
+            submission[submission["row_id"].isin(common_ids)]
+            .sort_values("row_id")
+            .reset_index(drop=True)
+        )
 
         try:
             roc_auc = kaggle_score(sol_aligned, sub_aligned, row_id_column_name="row_id")

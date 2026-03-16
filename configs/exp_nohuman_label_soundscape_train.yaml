@@ -1,0 +1,82 @@
+# BirdClef 2026 — nohuman-label-soundscape-train
+#
+# Builds on nohuman-label-pseudo (LB=0.849) with one key change:
+#   train_soundscapes ground-truth labels are added to training.
+#
+# Motivation:
+#   - Test data is soundscapes (Pantanal) → soundscape domain match helps
+#   - Expert multi-label annotations are more reliable than pseudo labels
+#   - All 66 soundscape files go to training (739 clips after nohuman filter)
+#   - Validation switched to train_audio holdout (7,037 files, 206 species)
+#     — properly clean, more species coverage than soundscape val (75 species)
+#
+# Changes vs nohuman-label-pseudo:
+#   1. val_mode: holdout  (was: soundscape)
+#   2. use_soundscapes_in_train: true  (was: true, but now val is holdout → no leak)
+#   3. soundscape_oversample: 5  (739 clips vs 85536 train clips → ~87x undersample)
+
+experiment:
+  name: "nohuman-label-soundscape-train"
+  seed: 42
+
+data:
+  train_audio_dir: "birdclef-2026/train_audio"
+  train_soundscapes_dir: "birdclef-2026/train_soundscapes"
+  train_csv: "birdclef-2026/train.csv"
+  taxonomy_csv: "birdclef-2026/taxonomy.csv"
+  soundscapes_labels_csv: "birdclef-2026/train_soundscapes_labels.csv"
+  sample_submission_csv: "birdclef-2026/sample_submission.csv"
+  min_rating: 3.0
+  use_secondary_labels: true
+  max_files: null
+  noise_dir: null
+  pseudo_labels_csv: "pseudo_labels/round1_pseudo.csv"
+  pseudo_manifest_csv: "outputs/embeddings_cache_nohuman_label/manifest.csv"
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5
+  n_clips_per_file: 3
+
+model:
+  perch_dir: "models/bird-vocalization-classifier-tensorflow2-perch_v2-v2"
+  mode: "label_head"
+  hidden_dim: 256
+  dropout: 0.3
+
+training:
+  epochs: 80
+  batch_size: 256
+  optimizer: "adam"
+  learning_rate: 1.0e-3
+  weight_decay: 1.0e-4
+  scheduler: "cosine"
+  warmup_epochs: 5
+  label_smoothing: 0.05
+  mixup_alpha: 0.3
+  use_soundscapes_in_train: true
+  soundscape_oversample: 5      # 739 soundscape clips × 5 ≈ 3,695 per epoch
+  val_mode: "holdout"           # use train_audio holdout (7,037 files) as val
+  loss: "bce"
+  focal_gamma: 2.0
+  focal_alpha: 0.25
+  class_weight_mode: "none"
+  use_pseudo_labels: true
+
+augmentation:
+  enabled: false
+
+cache:
+  enabled: true
+  cache_dir: "outputs/embeddings_cache_nohuman_label"
+
+wandb:
+  enabled: true
+  project: "birdclef-2026"
+  entity: null
+  tags: ["nohuman", "label-head", "soundscape-train", "holdout-val", "pseudo-labels"]
+  log_model: false
+
+output:
+  dir: "outputs"
+  checkpoint_dir: "checkpoints"
