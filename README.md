@@ -1,21 +1,63 @@
-# BirdClef 2026 — Perch Fine-tuning Codebase
+# BirdCLEF 2026 — Codebase
 
-A clean, experiment-friendly codebase for the [BirdClef 2026](https://www.kaggle.com/competitions/birdclef-2026) Kaggle competition.
-Uses Google's **Perch v2** bird vocalization model as a frozen backbone, with BirdCLEF 2025 top-10 techniques integrated for maximum performance.
+Kaggle competition: multi-label bird/amphibian/insect species classification from 5-second audio segments.
+**Metric**: Macro-averaged ROC-AUC over 234 species. **Test data**: Soundscape recordings (Pantanal, Brazil).
 
 ---
 
-## Competition Overview
+## Current Best Results (2026-03-16)
 
-| | |
-|---|---|
-| **Task** | Multi-label species classification from 5-second audio segments |
-| **Test data** | Continuous soundscape recordings (Pantanal, Brazil) |
-| **Target classes** | **234 species** — birds, amphibians, reptiles, insects (matches `sample_submission.csv`) |
-| **Metric** | **Macro-averaged ROC-AUC** (species with no positive labels are excluded) |
-| **Audio format** | OGG Vorbis, 32 kHz mono |
+| Model / Ensemble | Holdout AUC | LB | Notes |
+|-----------------|-------------|-----|-------|
+| **ensemble(label×2 + emb)** | **0.9780** ⭐ | TBD | 3-model Perch ensemble, today's best |
+| ensemble(label×2) | 0.9595 | — | label-pseudo + label-soundscape |
+| nohuman-label-soundscape-train | 0.9550 | **0.839** | Latest submitted |
+| nohuman-embedding-soundscape | 0.9537 | — | 1536-dim Perch embedding head |
+| nohuman-label-pseudo | 0.9453 | 0.849+PP | Pseudo labels, best individual |
+| *Competitor SED (reference)* | *0.9883* | *0.862* | *EfficientNet-B0, target to beat* |
+| sed-b0-v5 | TBD | — | 🔄 Training (ep3/20) |
 
-> **Note:** `train.csv` contains 206 species with recordings; all 234 taxonomy species appear as model output columns.
+> **Holdout set**: 7,037 individual recordings, 206/234 species, NO data leak.
+> Holdout AUC is ~0.04 higher than soundscape val AUC due to domain difference.
+
+---
+
+## Architecture Overview
+
+### 1. Perch Label-Head (3 variants, ensemble = 0.9780 holdout)
+
+```
+Audio (5s) → Silero VAD (human removal) → Perch v2 TFLite →
+  ├── 14795-dim label logits → gather 234 → FC(256)→ReLU→FC(234) → sigmoid  [label_head]
+  └── 1536-dim embedding               → FC(1024)→ReLU→FC(234) → sigmoid  [embedding_head]
+```
+
+**Key insight**: Single Perch forward pass extracts both label logits AND embedding simultaneously — no redundant computation for 3-model ensemble.
+
+Trained models:
+- `nohuman-label-pseudo`: label_head, trained with round-1 pseudo labels
+- `nohuman-label-soundscape-train`: label_head, + 53 soundscape files for domain adaptation
+- `nohuman-embedding-soundscape`: embedding_head (1536-dim), richer features, best SS val (0.9810)
+
+### 2. SED EfficientNet-B0 (sed-b0-v5, training)
+
+```
+Audio (5s) → peak-norm → MelSpec(224-mel, n_fft=2048, hop=512, norm=slaney, htk) →
+  EfficientNet-B0 → GEMFreqPool(p=3.0) → AttentionSEDHead → clip_prob (234,)
+                                        → frame_logit (T, 234)
+```
+
+Loss: dual clip+frame BCE (`clip_loss_weight=0.5, frame_loss_weight=0.5`)
+Training: plain BCE on sigmoid outputs, soundscape 80/20 file-level split, mixup=0.5
+
+---
+
+## Confirmed LB History
+
+| Date | Model | LB | Notes |
+|------|-------|----|-------|
+| 2026-03-15 | nohuman-label-pseudo + PP | **0.849** | Previous best |
+| 2026-03-16 | nohuman-label-soundscape-train (TFLite) | 0.839 | No PP |
 
 ---
 
@@ -25,543 +67,137 @@ Uses Google's **Perch v2** bird vocalization model as a frozen backbone, with Bi
 BirdClef-2026-Codebase/
 │
 ├── configs/
-│   ├── default.yaml                      # Baseline: Adam, BCE, no filtering
-│   ├── debug.yaml                        # Quick sanity-check (tiny data)
-│   ├── birdclef25_improvements.yaml      # All BirdCLEF 2025 techniques combined
-│   │
-│   │  ── Phase 2a: isolated ablations ──────────────────────────────────────
-│   ├── exp_focal_isolated.yaml           # FocalLoss(γ=2) only
-│   ├── exp_adamw_classweights.yaml       # AdamW + sqrt class weights only
-│   │
-│   │  ── Phase 2b: domain adaptation ablations ──────────────────────────────
-│   ├── exp_soundscape_train.yaml         # Soundscapes in training
-│   ├── exp_birdclef25_soundscape.yaml    # min_rating=3.0 + soundscapes
-│   │
-│   │  ── Phase 4: analysis-driven experiments ────────────────────────────
-│   ├── exp_soundscape_heavy.yaml         # Soundscapes oversample=3x
-│   ├── exp_soundscape_focal.yaml         # Soundscapes + FocalLoss
-│   ├── exp_soundscape_adamw.yaml         # Soundscapes + AdamW + sqrt weights
-│   ├── exp_soundscape_taxon_multitask.yaml  # Soundscapes + taxon aux loss
-│   ├── exp_taxon_balanced.yaml           # Taxon-balanced class weighting
-│   ├── exp_taxon_multitask.yaml          # Multi-task taxon auxiliary loss
-│   ├── exp_no_human_voice.yaml           # Human-voice-filtered embeddings
-│   ├── pseudo_label_round1.yaml          # Pseudo-label retraining config
-│   │
-│   │  ── Auto-generated by orchestrator ─────────────────────────────────
-│   └── best_derived_v1.yaml              # Best combined config after Phase 2
+│   ├── default.yaml                             # Base Perch config
+│   ├── exp_nohuman_label_pseudo.yaml            # label-head + pseudo labels
+│   ├── exp_nohuman_label_soundscape_train.yaml  # label-head + soundscape train
+│   ├── nohuman-embedding-soundscape.yaml        # embedding-head (1536-dim)
+│   ├── sed_b0_v5.yaml                           # SED EfficientNet-B0 v5 (current)
+│   ├── sed_b0_v4.yaml                           # SED v4 (killed — val data leak)
+│   ├── sed_b0_v3.yaml                           # SED v3 (reference)
+│   └── holdout_val_files.csv                    # 7,037 holdout files (never in training)
+│
+├── submissions/
+│   └── ensemble_tflite.ipynb                    # ⭐ Production: 4-model ensemble notebook
+│                                                #   Perch×3 TFLite + SED PyTorch CPU
+│
+├── submissions/weights/                         # Kaggle dataset: birdclef2026-ensemble-weights
+│   ├── perch_v2_cpu.tflite                      # Perch backbone (391 MB)
+│   ├── label_head_pseudo.tflite                 # label-head, pseudo labels
+│   ├── label_head_soundscape_train.tflite       # label-head, soundscape domain
+│   ├── embedding_head_nohuman_embedding_soundscape.tflite  # embedding-head (1536-dim)
+│   └── best_sed_b0_v5.pt                        # [pending] SED PyTorch weights
 │
 ├── src/
-│   ├── audio/
-│   │   ├── __init__.py
-│   │   └── human_filter.py   # Silero VAD human-voice removal (2025 2nd-place method)
+│   ├── audio/human_filter.py                    # Silero VAD human-voice removal
 │   ├── data/
-│   │   ├── dataset.py        # ClipDataset + SoundscapeDataset (with split support)
-│   │   │                     # + CachedEmbeddingDataset + class weights + taxon utils
-│   │   ├── augment.py        # Noise, gain, Mixup, time masking, background noise
-│   │   └── mel_dataset.py    # MelClipDataset + MelSoundscapeDataset  [SED]
+│   │   ├── dataset.py                           # CachedEmbeddingDataset, SoundscapeDataset
+│   │   ├── augment.py                           # Mixup, time masking, gain
+│   │   └── mel_dataset.py                       # MelClipDataset, MelSoundscapeDataset [SED]
 │   ├── model/
-│   │   ├── classifier.py     # Perch backbone + MLP classification head
-│   │   ├── losses.py         # FocalBCELoss (TF) + power_transform  [BirdCLEF25]
-│   │   └── sed_model.py      # SEDModel (PyTorch) + FocalBCELossTorch  [SED]
-│   ├── metrics/
-│   │   └── kaggle_metric.py  # Official BirdCLEF 2026 scorer (macro ROC-AUC)
-│   └── utils/
-│       ├── audio.py          # Audio loading, cropping utilities
-│       ├── metrics.py        # competition_roc_auc() + padded_cmap() (reference)
-│       ├── config.py         # YAML loader with dot-notation access
-│       └── model_soup.py     # Checkpoint weight averaging  [BirdCLEF25]
+│   │   ├── classifier.py                        # PerchClassifier (label_head / embedding_head)
+│   │   ├── losses.py                            # FocalBCELoss [TF]
+│   │   └── sed_model.py                         # SEDModel, GEMFreqPool, AttentionSEDHead
+│   ├── metrics/kaggle_metric.py                 # Macro ROC-AUC scorer
+│   └── utils/config.py                          # YAML config loader
 │
-├── birdclef-2026/
-│   ├── soundscapes_split.csv  # Fixed 80/20 file-level soundscape split (seed=42)
-│   │                          # 53 train files / 1206 segments | 13 val files / 272 segments
-│   ├── train_audio/
-│   ├── train_soundscapes/
-│   ├── train.csv
-│   ├── taxonomy.csv
-│   ├── train_soundscapes_labels.csv
-│   └── sample_submission.csv
+├── train.py                                     # Perch head training (cached embeddings)
+├── train_sed.py                                 # SED end-to-end training (raw audio → mel)
+├── extract_embeddings.py                        # Cache Perch embeddings (label + embedding)
+├── pseudo_label.py                              # Generate pseudo labels from trained model
+├── inference.py                                 # Perch inference on test soundscapes
+├── inference_sed.py                             # SED inference on test soundscapes
 │
-├── train.py              # Perch pipeline training (validates with ROC-AUC)
-├── extract_embeddings.py # One-time offline Perch embedding extraction
-│                         # supports --filter_human_voice (Silero VAD)
-├── orchestrate.py        # Full auto-pipeline: Phase 1 → 2a → 2b → 3 → 4 → 5
-├── analyze_and_plan.py   # Deep per-class analysis → Phase 4 experiment plan
-├── generate_report.py    # HTML technical report from result.json files
-├── evaluate_final.py     # Official ROC-AUC evaluation on all checkpoints
-├── pseudo_label.py       # Pseudo-label generation  [BirdCLEF25]
-├── inference.py          # Perch inference + TTA → submission.csv
-├── inference_sed.py      # SED inference + TTA + ensemble  [SED]
-├── train_sed.py          # SED pipeline training  [SED]
-├── submission_notebook.ipynb  # Self-contained Kaggle submission notebook
-└── requirements.txt
+├── evaluate_holdout.py                          # Single-model holdout AUC eval
+├── evaluate_ensemble_v2_holdout.py              # 3-model Perch ensemble eval
+├── evaluate_ensemble_v3_holdout.py              # 4-model Perch+SED ensemble eval
+├── evaluate_soundscape_val.py                   # Soundscape val AUC (SS domain)
+├── evaluate_competitor_sed.py                   # Competitor model (best_fold0.pt) eval
+├── convert_embedding_head_tflite.py             # Convert TF head → TFLite
+│
+├── scripts/
+│   ├── after_embedding_head.sh                  # Watcher: TFLite + eval after emb-head done
+│   └── after_sed_v5.sh                          # Watcher: copy .pt + 4-model eval after SED
+│
+└── pseudo_labels/
+    ├── round1_pseudo.csv                        # Round 1 pseudo labels (used in training)
+    └── combined_pseudo_r1.csv                   # Combined pseudo labels
 ```
 
 ---
 
-## Setup
+## Key Technical Findings
 
-### 1. Install dependencies
+### What Works
+
+| Technique | Effect | Evidence |
+|-----------|--------|----------|
+| Human voice removal (Silero VAD) | +0.039 LB | Ablation confirmed |
+| Pseudo labels (round 1) | +0.003 LB | Small but consistent |
+| Soundscape domain adaptation | +0.010 holdout | label-soundscape vs label-pseudo |
+| 1536-dim embedding head | +0.0185 ensemble | Complementary to label-head features |
+| 3-model Perch ensemble | +0.0327 holdout | 0.9453 → 0.9780 over baseline |
+| File-level soundscape split | Prevents data leak | Clip-level split → val=0.9999 (sed-b0-v4 bug) |
+| Dual clip+frame SED loss | Matches competitor | clip_w=0.5, frame_w=0.5 |
+| Post-processing threshold=0.02 | +0.012 LB | Only effective on soundscape domain |
+
+### What Didn't Work
+
+| Technique | Result |
+|-----------|--------|
+| Embedding-head alone vs label-head | −0.07 LB (worse solo, but valuable in ensemble) |
+| FocalBCE loss on SED sigmoid outputs | Trivial minimum — loss expects logits, not probs |
+| soundscape_val_frac=1.0 + soundscape training | Data leak: val=0.9999 (sed-b0-v4, killed) |
+| Post-processing on individual recording holdout | No benefit (0.9780 raw vs 0.9778 +PP) |
+
+### Architecture Notes
+
+- **SED val metric is unreliable** when val files come from stations not in training soundscapes.
+  52% of val species absent from training soundscapes → use holdout AUC as primary metric.
+- **Perch ensemble ceiling** is ~0.978–0.982. SED is the primary path to exceed competitor (0.9883).
+- **Single Perch forward pass** extracts both 14795-dim label logits and 1536-dim embedding
+  simultaneously, enabling efficient 3-head inference with no redundant computation.
+
+---
+
+## Embeddings Cache
+
+| Cache | Dim | Splits | Purpose |
+|-------|-----|--------|---------|
+| `embeddings_cache_nohuman` | 1536 | train=85536, holdout=21111, soundscape=739 | embedding_head |
+| `embeddings_cache_nohuman_label` | 234 | train=85536, holdout=21111, soundscape=739, pseudo=2421 | label_head |
+
+---
+
+## Running Experiments
 
 ```bash
-pip install -r requirements.txt
-```
+# Train Perch label-head (cached embeddings, fast)
+python train.py --config configs/exp_nohuman_label_soundscape_train.yaml --gpu 0
 
-> **Perch pipeline** requires TensorFlow ≥ 2.20.
-> **SED pipeline** requires PyTorch ≥ 2.0 and timm ≥ 0.9.
+# Train SED end-to-end
+python train_sed.py --config configs/sed_b0_v5.yaml --gpu 1
 
-### 2. Data layout
+# Evaluate single model holdout AUC
+python evaluate_holdout.py --runs nohuman-embedding-soundscape
 
-```
-BirdClef-2026-Codebase/
-├── birdclef-2026/
-│   ├── train_audio/                  # 35,549 individual recordings (.ogg)
-│   ├── train_soundscapes/            # 66 long soundscape recordings (.ogg)
-│   ├── train.csv
-│   ├── taxonomy.csv
-│   ├── train_soundscapes_labels.csv
-│   ├── sample_submission.csv
-│   └── soundscapes_split.csv         # fixed 80/20 split (generated, see below)
-└── models/
-    └── bird-vocalization-classifier-tensorflow2-perch_v2-v2/
-        ├── saved_model.pb
-        ├── assets/
-        │   ├── labels.csv
-        │   └── perch_v2_ebird_classes.csv
-        └── variables/
-```
+# 3-model Perch ensemble holdout eval
+python evaluate_ensemble_v2_holdout.py
 
-All paths are configurable in `configs/default.yaml`.
+# 4-model Perch+SED ensemble holdout eval
+python evaluate_ensemble_v3_holdout.py
 
----
+# Soundscape val AUC table (SS domain comparison)
+python evaluate_soundscape_val.py
 
-## Quick Start
-
-### Step 0 — Generate soundscape split (one-time)
-
-Before any training, create the fixed validation split to prevent data leakage:
-
-```bash
-python -c "
-import pandas as pd, numpy as np
-df = pd.read_csv('birdclef-2026/train_soundscapes_labels.csv')
-files = sorted(df['filename'].unique())
-np.random.seed(42)
-np.random.shuffle(files)
-n_val = max(1, int(len(files) * 0.2))
-val_files = set(files[:n_val])
-split_df = pd.DataFrame({'filename': files, 'split': ['val' if f in val_files else 'train' for f in files]})
-split_df.to_csv('birdclef-2026/soundscapes_split.csv', index=False)
-print(f'Split saved: {(split_df.split==\"train\").sum()} train / {(split_df.split==\"val\").sum()} val files')
-"
-```
-
-This produces `soundscapes_split.csv` (66 rows): 53 train files / 13 val files.
-All experiments automatically use this file for consistent, leak-free validation.
-
-### Step 1 — Pre-extract embeddings (one-time, ~20 min, strongly recommended)
-
-Running Perch on every batch is the main training bottleneck. Pre-extracting once gives **~100× speedup** per epoch.
-
-```bash
-# Standard embeddings (train + soundscapes in parallel)
-CUDA_VISIBLE_DEVICES=0 python extract_embeddings.py \
-    --config configs/default.yaml --split train --batch_size 64 &
-
-CUDA_VISIBLE_DEVICES=1 python extract_embeddings.py \
-    --config configs/default.yaml --split soundscapes --batch_size 64 &
-wait
-```
-
-Embeddings are saved to `outputs/embeddings_cache/` (~855 MB). All training runs detect the cache automatically.
-
-#### Optional: human-voice-filtered embeddings
-
-For the `no-human-voice` experiment (BirdCLEF 2025 2nd-place technique):
-
-```bash
-python extract_embeddings.py \
-    --config configs/default.yaml \
-    --filter_human_voice \
-    --vad_threshold 0.4
-```
-
-Saves to `outputs/embeddings_cache_nohuman/` (separate cache).
-
-### Step 2 — Run the full auto-pipeline
-
-Launch Phase 1 experiments plus the orchestrator. The orchestrator auto-progresses through all phases:
-
-```bash
-# Phase 1: two experiments in parallel
-CUDA_VISIBLE_DEVICES=0 python train.py \
-    --config configs/default.yaml experiment.name=baseline > outputs/baseline.log 2>&1 &
-
-CUDA_VISIBLE_DEVICES=1 python train.py \
-    --config configs/birdclef25_improvements.yaml experiment.name=birdclef25-base > outputs/birdclef25-base.log 2>&1 &
-
-# Orchestrator auto-runs all remaining phases
-python orchestrate.py > outputs/orchestrate.log 2>&1 &
-```
-
-### Step 3 — Monitor
-
-```bash
-tail -f outputs/orchestrate.log     # pipeline progress
-tail -f outputs/baseline.log        # GPU 0
-tail -f outputs/birdclef25-base.log # GPU 1
+# Convert Perch head to TFLite for submission
+python convert_embedding_head_tflite.py --run nohuman-embedding-soundscape
 ```
 
 ---
 
-## Auto-Pipeline Schedule
-
-```
-Phase 1  : baseline (GPU 0) + birdclef25-base (GPU 1)              [parallel, launched manually]
-              ↓ both finish
-Phase 2a : focal-isolated (GPU 0) + adamw-classweights (GPU 1)     [parallel ablations]
-              ↓ both finish
-Phase 2b : soundscape-in-train (GPU 0) + birdclef25-soundscape (GPU 1)  [parallel ablations]
-              ↓ all 6 ablations done
-derive_best_config() → reads all 6 scores, builds configs/best_derived_v1.yaml
-              ↓
-Phase 3  : best-derived-v1 (GPU 0)
-              ↓
-generate_report.py → reports/experiment_report.html
-              ↓
-analyze_and_plan.py → per-class analysis → outputs/phase4_plan.json
-              ↓
-Phase 4a : ablation pairs (2 per GPU batch, from plan)
-Phase 4b : pseudo-r1 (GPU 0) + longer-training (GPU 1)             [parallel]
-              ↓
-derive_best_config_v2() → builds configs/best_derived_v2.yaml
-              ↓
-Phase 5a : best-derived-v2 (GPU 0) + no-human-voice (GPU 1)        [parallel]
-Phase 5b : second analysis → more experiments
-              ↓
-Final report → reports/experiment_report.html
-```
-
-Both GPUs stay busy at all times. The orchestrator skips already-finished experiments automatically.
-
----
-
-## Ablation Experiment Design
-
-| Experiment | Config | Change vs Baseline |
-|---|---|---|
-| `baseline` | `configs/default.yaml` | — reference |
-| `birdclef25-base` | `configs/birdclef25_improvements.yaml` | All BirdCLEF25 techniques |
-| `focal-isolated` | `configs/exp_focal_isolated.yaml` | FocalLoss(γ=2) only |
-| `adamw-classweights` | `configs/exp_adamw_classweights.yaml` | AdamW + sqrt class weights only |
-| `soundscape-in-train` | `configs/exp_soundscape_train.yaml` | Soundscapes in training |
-| `birdclef25-soundscape` | `configs/exp_birdclef25_soundscape.yaml` | min_rating=3 + soundscapes |
-| `best-derived-v1` | auto-generated | Best combination of above |
-| `soundscape-heavy` | `configs/exp_soundscape_heavy.yaml` | Soundscapes oversample=3× |
-| `soundscape-focal` | `configs/exp_soundscape_focal.yaml` | Soundscapes + FocalLoss |
-| `soundscape-adamw` | `configs/exp_soundscape_adamw.yaml` | Soundscapes + AdamW + sqrt CW |
-| `soundscape-taxon-multitask` | `configs/exp_soundscape_taxon_multitask.yaml` | Soundscapes + taxon aux loss |
-| `no-human-voice` | `configs/exp_no_human_voice.yaml` | Human-voice-filtered embeddings |
-| `pseudo-r1` | `configs/pseudo_label_round1.yaml` | Pseudo-label round 1 |
-| `best-derived-v2` | auto-generated | Best combination after Phase 4 |
-
-`derive_best_config()` in `orchestrate.py` reads all ablation scores and builds the combined config, enabling only techniques that improve ROC-AUC by >0.002.
-
----
-
-## Validation Set (Leak-free)
-
-All experiments use the **same fixed validation set** to enable fair comparison:
-
-| | |
-|---|---|
-| **Val source** | Soundscape recordings (matches test conditions) |
-| **Split file** | `birdclef-2026/soundscapes_split.csv` (seed=42) |
-| **Val files** | 13 soundscape files |
-| **Val segments** | **272 segments** |
-| **Train files** | 53 soundscape files / 1206 segments |
-
-The split is file-level (not segment-level) to prevent leakage when soundscapes are used in training.
-`SoundscapeDataset` and `CachedEmbeddingDataset` both accept `split_csv` and `split` parameters to enforce this automatically.
-
----
-
-## BirdCLEF 2025 Top-10 Techniques
-
-| Technique | Source | Where | Notes |
-|---|---|---|---|
-| **FocalLoss** | 2nd & 5th place | `src/model/losses.py` | Better rare-class learning |
-| **Sqrt class weighting** | 2nd place | `src/data/dataset.py` | Rare species upsampling |
-| **Time masking** | Universal | `src/data/augment.py` | Regularisation, domain robustness |
-| **Soundscapes in training** | Domain adaptation | `train.py` | Closes train/test domain gap |
-| **Background noise inject** | Multiple teams | `src/data/augment.py` | Soundscape robustness |
-| **Pseudo-labeling + PowerTransform** | 1st place | `pseudo_label.py` | Expected +5–8% ROC-AUC |
-| **TTA temporal shifts** | 2nd place | `inference.py --tta` | +1.2% AUC at inference |
-| **Model Soup** | 3rd place | `src/utils/model_soup.py` | +0.3–1% ROC-AUC |
-| **Human voice removal** | 2nd place (VSydorskyy) | `src/audio/human_filter.py` | Removes speech before truncation point |
-| **Taxon auxiliary loss** | Custom | `train.py` | Multi-task: bird/non-bird class |
-
-### Human Voice Removal (BirdCLEF 2025 2nd place — VSydorskyy)
-
-Two-stage pipeline matching VSydorskyy's exact method:
-
-1. **Power scan** — finds the vocalization window via dB thresholding (chunk=0.1s, threshold=−50 dB)
-2. **Silero VAD** — runs at 16 kHz with configurable threshold (default 0.4) on the detected window
-3. **Truncation** — if speech ≥ 2 s is found starting after 8 s, the clip is truncated before the speech onset
-
-Key parameters: `speech_min_duration=2.0s`, `speech_start_th=8.0s`, `speech_merge_th=0.3s`.
-**Truncation, not zero-filling** — preserves the full useful signal before the human voice.
-
-```bash
-# Extract with human-voice filtering
-python extract_embeddings.py \
-    --config configs/default.yaml \
-    --filter_human_voice \
-    --vad_threshold 0.4
-```
-
-### Soundscape Oversample
-
-Repeat soundscape training segments N× per epoch to increase domain adaptation signal:
-
-```yaml
-training:
-  use_soundscapes_in_train: true
-  soundscape_oversample: 3   # default 1 (no repeat)
-```
-
-### Taxon Multi-task Loss
-
-Auxiliary classification head that predicts the broad taxonomic class (Aves / Amphibia / Reptilia / Insecta) alongside the primary species loss. Helps with the severe taxon imbalance (34,799 bird recordings vs 1 reptile):
-
-```yaml
-training:
-  use_taxon_multitask: true
-  taxon_aux_weight: 0.1
-  class_weight_mode: "taxon_upweight"
-  taxon_nonbird_boost: 3.0
-```
-
-### FocalLoss
-
-```
-FL(p_t) = -α_t · (1 - p_t)^γ · log(p_t)
-  γ = 0  → standard BCE
-  γ = 2  → BirdCLEF 2025 2nd-place default
-```
-
-```yaml
-training:
-  loss: "focal"
-  focal_gamma: 2.0
-  focal_alpha: 0.25
-```
-
-### Pseudo-labeling + PowerTransform (1st place — biggest gain)
-
-```
-p_sharp = p ^ power
-  power = 2.0 → BirdCLEF 2025 1st-place default
-```
-
-```bash
-python pseudo_label.py generate \
-    --checkpoint checkpoints/best-derived-v1/best_head \
-    --output pseudo_labels/round1_pseudo.csv \
-    --power 2.0 --threshold 0.5
-```
-
-### TTA Temporal Shifts (2nd place)
-
-At inference: also predict clips starting 2.5 seconds later and average probabilities.
-
-```bash
-python inference.py --checkpoint checkpoints/best-derived-v1/best_head --tta
-```
-
----
-
-## Model Architecture
-
-```
-Raw audio (batch × 160,000 samples @ 32 kHz)
-        │
-        ▼
-┌──────────────────────────────┐
-│  Google Perch v2 (frozen)    │  TF SavedModel — 14,795 species pre-trained
-│  bird-vocalization-classifier│  Input: 5-second mono waveform
-└──────────────────────────────┘
-        │  embedding (1,536-dim)   ← tf.stop_gradient in embedding_head mode
-        ▼
-┌──────────────────────────────┐
-│  Classification Head         │  Only this is trained
-│  Dense(512) → ReLU           │
-│  → Dropout(0.3)              │
-│  → Dense(234)                │  234 = all species in sample_submission.csv
-└──────────────────────────────┘
-        │  logits (234 classes)
-        ▼
-   FocalBCELoss / BinaryCrossEntropy + label smoothing
-```
-
-**Two modes** (`model.mode` in config):
-
-| Mode | What trains | Speed | Use when |
-|---|---|---|---|
-| `embedding_head` | Head only (Perch frozen) | Fast (~40s/epoch) | Default |
-| `full_finetune` | Entire model | Slow (~20min/epoch) | After finding good head hparams |
-
----
-
-## Competition Metric
-
-The official metric is **macro-averaged ROC-AUC** over species with ≥1 positive label:
-
-```python
-# Official scorer (src/metrics/kaggle_metric.py)
-scored_columns = [col for col in solution if solution[col].sum() > 0]
-score = sklearn.metrics.roc_auc_score(
-    solution[scored_columns], submission[scored_columns], average="macro"
-)
-```
-
-Training validation in `train.py` uses the same `competition_roc_auc()` function so checkpoint selection aligns with the leaderboard.
-
----
-
-## Embedding Cache
-
-Pre-extracting Perch embeddings gives a ~100× training speedup:
-
-| Mode | Batch/s | Epoch time | 50-epoch total |
-|---|---|---|---|
-| Raw audio (no cache) | ~1.4 | ~20 min | ~16 hours |
-| Cached embeddings + `@tf.function` | ~11 | ~40 sec | **~35 min** |
-
-```
-outputs/embeddings_cache/
-├── manifest.csv          # index: npy_path, source_file, clip_idx, label, split
-├── train/                # one .npy per clip from train_audio/ (~106,647 files, ~640 MB)
-└── soundscape/           # one .npy per soundscape segment (~1478 files, ~5 MB)
-
-outputs/embeddings_cache_nohuman/   # human-voice-filtered variant (optional)
-├── manifest.csv
-├── train/
-└── soundscape/
-```
-
-`train.py` detects the cache via `manifest.csv` at startup — no config change needed.
-
----
-
-## Kaggle Submission Notebook
-
-`submission_notebook.ipynb` is a self-contained notebook for Kaggle inference:
-
-- Installs TensorFlow 2.20 + loads Perch SavedModel inline
-- Loads classification head weights from Kaggle dataset (`best_head.weights.h5`)
-- TTA with 2.5-second temporal shift (2025 2nd place)
-- Fills missing rows from `sample_submission.csv`
-- Optional validation cell (`VALIDATE=False` by default)
-
----
-
-## Configuration Reference
-
-```yaml
-experiment:
-  name: "my-run"         # WandB run name and output/checkpoint directory
-  seed: 42
-
-data:
-  min_rating: 3.0        # Filter low-quality recordings (0 = keep all, 3.0 = recommended)
-  use_secondary_labels: true
-  soundscapes_split_csv: "birdclef-2026/soundscapes_split.csv"  # leak-free split
-
-audio:
-  n_clips_per_file: 3    # Random crops per recording per epoch
-
-training:
-  epochs: 50
-  batch_size: 256
-  optimizer: "adamw"     # "adam" or "adamw"
-  learning_rate: 1.0e-3
-  weight_decay: 1.0e-4
-  scheduler: "cosine"
-  warmup_epochs: 3
-  mixup_alpha: 0.3
-  label_smoothing: 0.05
-  use_soundscapes_in_train: true
-  soundscape_oversample: 1     # repeat soundscape data N× per epoch
-  loss: "focal"                # "bce" or "focal"
-  focal_gamma: 2.0
-  focal_alpha: 0.25
-  class_weight_mode: "sqrt"    # "none" | "sqrt" | "linear" | "taxon_upweight"
-  use_taxon_multitask: false   # multi-task taxon auxiliary loss
-  taxon_aux_weight: 0.1
-  taxon_nonbird_boost: 3.0
-
-model:
-  mode: "embedding_head"
-  hidden_dim: 512
-  dropout: 0.3
-
-augmentation:
-  enabled: true
-  noise_level: 0.005
-  gain_range: [0.7, 1.3]
-  time_masking: false
-  time_mask_ratio: 0.1
-  time_mask_n: 2
-  background_noise: false
-  snr_db_range: [5.0, 30.0]
-
-cache:
-  enabled: true
-  cache_dir: "outputs/embeddings_cache"   # or "outputs/embeddings_cache_nohuman"
-```
-
----
-
-## Key Files Reference
-
-| File | Purpose |
-|---|---|
-| `train.py` | Training loop; validates with `competition_roc_auc`; saves `result.json` |
-| `extract_embeddings.py` | One-time embedding extraction; `--filter_human_voice` for speech removal |
-| `orchestrate.py` | Auto-pipeline Phase 1→2a→2b→3→4→5; keeps both GPUs busy |
-| `analyze_and_plan.py` | Per-class analysis after Phase 3; outputs `phase4_plan.json` |
-| `generate_report.py` | Bootstrap+Chart.js HTML report from all `result.json` files |
-| `evaluate_final.py` | Official ROC-AUC eval on all checkpoints |
-| `pseudo_label.py` | Pseudo-label generation with PowerTransform |
-| `inference.py` | Soundscape inference + TTA → `submission.csv` |
-| `submission_notebook.ipynb` | Self-contained Kaggle submission notebook |
-| `src/audio/human_filter.py` | Silero VAD speech detection + audio truncation |
-| `src/model/classifier.py` | `PerchClassifier` — Perch backbone + MLP head |
-| `src/model/losses.py` | `FocalBCELoss` (TF) + `power_transform` |
-| `src/data/dataset.py` | `ClipDataset`, `SoundscapeDataset`, `CachedEmbeddingDataset`, class weights, taxon utils |
-| `src/metrics/kaggle_metric.py` | Official BirdCLEF 2026 scorer |
-| `src/utils/model_soup.py` | Checkpoint weight averaging |
-| `birdclef-2026/soundscapes_split.csv` | Fixed 80/20 soundscape split (seed=42) |
-
----
-
-## Training Data
-
-| Source | Files | Usage |
-|---|---|---|
-| `train_audio/` | 35,549 individual recordings (206 species) | **Training** — random 5-second clips |
-| `train_soundscapes/` + labels | 66 soundscape recordings, 1478 segments | **Validation** (13 val files) + optionally training (53 train files) |
-
-Validation always uses soundscapes (not individual recordings) because the test set consists of continuous soundscape recordings. The fixed 80/20 file-level split ensures no data leakage when soundscapes are also used in training.
-
----
-
-## Notes
-
-- **Class count**: Model outputs 234 classes, matching `sample_submission.csv` — consistent with the official Perch starter notebook.
-- **Perch coverage**: Perch v2 covers ~203 of 234 target species by scientific name. The remaining ~31 receive near-zero predictions unless inferred from co-occurring species.
-- **Data leakage**: When `use_soundscapes_in_train: true`, train and val soundscape files are kept strictly separate via `soundscapes_split.csv`. Without this split, validation AUC is inflated by ~4 points.
-- **Domain gap**: `train_audio` recordings are clean close-mic captures; test soundscapes are ambient. Setting `use_soundscapes_in_train: true` and using soundscapes for validation gives a more honest ROC-AUC estimate.
-- **Label quality**: `data.min_rating: 3.0` filters low-quality recordings. Recommended for all experiments except the baseline.
-- **Pseudo-label rounds**: PowerTransform (`power=2.0`) is critical — flat probabilities without it degrade pseudo-label quality across rounds.
-- **WandB**: Set `wandb.enabled: true` and `wandb.entity: your-username` in any config. Each run logs `train/loss`, `val/roc_auc`, `val/best_roc_auc`, and `lr` per epoch.
+## Next Steps
+
+1. **sed-b0-v5** (ep3/20, GPU1): Complete → holdout eval → 4-model ensemble
+2. **SED improvement**: Larger backbone (EfficientNet-B2/B4, EfficientNetV2-S), SpecAugment, more epochs
+3. **Submit v2**: 3-model Perch TFLite ensemble (weights ready, `submissions/ensemble_tflite.ipynb`)
+4. **Submit v3**: 4-model Perch+SED after `best_sed_b0_v5.pt` generated by SED watcher

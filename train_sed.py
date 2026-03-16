@@ -1,6 +1,6 @@
 """BirdClef 2026 — SED Model Training Script
 
-Trains a Sound Event Detection model (EfficientNetV2 + attention pooling)
+Trains a Sound Event Detection model (EfficientNetV2 + GEMFreqPool + attention)
 using PyTorch, inspired by BirdCLEF 2025 top solutions (1st and 5th place).
 
 Usage:
@@ -23,12 +23,15 @@ import os
 import time
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import IterableDataset, DataLoader
 
+import torchaudio.transforms as AT
+
 from src.utils.config import load_config, save_config, DotDict
-from src.utils.metrics import padded_cmap
+from src.utils.metrics import competition_roc_auc, padded_cmap
 from src.data.dataset import build_species_mapping, compute_class_weights
 from src.data.mel_dataset import MelClipDataset, MelSoundscapeDataset
 from src.model.sed_model import SEDModel, FocalBCELossTorch
@@ -43,8 +46,53 @@ class _IterableWrapper(IterableDataset):
         self.ds = mel_dataset
 
     def __iter__(self):
-        for mel, label in self.ds.generate_samples():
-            yield torch.from_numpy(mel), torch.from_numpy(label)
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is not None:
+            # Each worker re-seeds with a unique seed so random crops differ
+            np.random.seed(worker_info.seed % (2**32))
+        for x, label in self.ds.generate_samples():
+            yield torch.from_numpy(x.copy()), torch.from_numpy(label)
+
+
+# ── GPU Mel Transform ──────────────────────────────────────────────────────────
+
+def build_gpu_mel_transform(config, device: torch.device) -> nn.Module:
+    """Build a torchaudio MelSpectrogram + AmplitudeToDB on the given device."""
+    transform = nn.Sequential(
+        AT.MelSpectrogram(
+            sample_rate=config.audio.sample_rate,
+            n_fft=config.mel.n_fft,
+            hop_length=config.mel.hop_length,
+            n_mels=config.mel.n_mels,
+            f_min=config.mel.fmin,
+            f_max=config.mel.fmax,
+            power=2.0,
+            norm="slaney",
+            mel_scale="htk",
+        ),
+        AT.AmplitudeToDB(stype="power", top_db=80.0),
+    ).to(device)
+    return transform
+
+
+@torch.no_grad()
+def apply_gpu_mel(waveforms: torch.Tensor, mel_tf: nn.Module) -> torch.Tensor:
+    """
+    waveforms: (B, clip_samples) float32 on GPU
+    Returns:   (B, 1, n_mels, T) min-max normalized mel on GPU
+
+    Peak-normalizes each waveform before mel conversion (matches reference LB=0.862).
+    """
+    # Per-sample peak normalization: audio / max(|audio|)
+    peak = waveforms.abs().amax(dim=1, keepdim=True).clamp(min=1e-7)
+    waveforms = waveforms / peak
+
+    mel = mel_tf(waveforms)                # (B, n_mels, T)
+    flat = mel.reshape(mel.shape[0], -1)
+    mel_min = flat.min(1, keepdim=True)[0].unsqueeze(-1)
+    mel_max = flat.max(1, keepdim=True)[0].unsqueeze(-1)
+    mel = (mel - mel_min) / (mel_max - mel_min + 1e-7)
+    return mel.unsqueeze(1)                # (B, 1, n_mels, T)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -80,6 +128,56 @@ def _parse_overrides(override_list: list) -> dict:
     return result
 
 
+# ── Per-class positive weights for BCE loss ───────────────────────────────────
+
+def compute_pos_weights(
+    train_csv: str,
+    species_to_idx: dict,
+    num_classes: int,
+    max_weight: float = 20.0,
+) -> np.ndarray:
+    """
+    Compute per-class positive weight = sqrt(n_neg / n_pos), clipped to [1, max_weight].
+
+    Used with BCEPosWeightLoss to balance rare species.
+    Replaces the problematic FocalBCE alpha=0.25 which causes trivial-minimum collapse.
+    """
+    df = pd.read_csv(train_csv)
+    n_pos = np.ones(num_classes, dtype=np.float32)   # Laplace smoothing avoids /0
+    for _, row in df.iterrows():
+        sp = str(row["primary_label"]).strip()
+        if sp in species_to_idx:
+            n_pos[species_to_idx[sp]] += 1.0
+    n_total = float(len(df)) + num_classes
+    n_neg = n_total - n_pos
+    pos_w = np.sqrt(n_neg / n_pos).clip(1.0, max_weight)
+    return pos_w.astype(np.float32)
+
+
+class BCEPosWeightLoss(nn.Module):
+    """
+    Binary cross-entropy with per-class positive weights.
+
+    Accepts sigmoid *probabilities* (not raw logits) because SEDModel's
+    AttentionSEDHead already applies torch.sigmoid.
+
+    This replaces FocalBCELossTorch(alpha=0.25) whose trivial minimum at
+    all-zero predictions causes train_loss to freeze at ~0.127 from epoch 2.
+    """
+
+    def __init__(self, pos_weight: torch.Tensor):
+        super().__init__()
+        self.register_buffer("pos_weight", pos_weight)
+
+    def forward(self, preds: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        preds = preds.clamp(1e-7, 1.0 - 1e-7)
+        bce = -(
+            self.pos_weight * targets * preds.log()
+            + (1.0 - targets) * (1.0 - preds).log()
+        )
+        return bce.mean()
+
+
 # ── LR schedule ──────────────────────────────────────────────────────────────
 
 def cosine_lr_with_warmup(
@@ -96,6 +194,21 @@ def cosine_lr_with_warmup(
 
 # ── Training step ─────────────────────────────────────────────────────────────
 
+def _compute_loss(loss_fn, clip_pred, frame_logit, labels, clip_w=1.0, frame_w=0.0):
+    """Compute loss supporting plain BCE (loss_fn=None) or custom loss."""
+    import torch.nn.functional as F
+    if loss_fn is None:
+        # Plain BCE: clip uses sigmoid probs, frame uses raw logits
+        clip_loss = F.binary_cross_entropy(clip_pred, labels)
+        if frame_w > 0 and frame_logit is not None:
+            frame_labels = labels.unsqueeze(1).expand_as(frame_logit)
+            frame_loss = F.binary_cross_entropy_with_logits(frame_logit, frame_labels)
+            return clip_w * clip_loss + frame_w * frame_loss
+        return clip_loss
+    else:
+        return loss_fn(clip_pred, labels)
+
+
 def train_epoch(
     model: SEDModel,
     loader: DataLoader,
@@ -103,13 +216,33 @@ def train_epoch(
     loss_fn: nn.Module,
     device: torch.device,
     mixup_alpha: float,
+    gpu_mel_tf: nn.Module = None,
+    ss_data: np.ndarray = None,
+    ss_labels: np.ndarray = None,
+    ss_batch_size: int = 64,
+    ss_oversample: int = 3,
+    clip_loss_w: float = 1.0,
+    frame_loss_w: float = 0.0,
 ) -> float:
+    """
+    Train one epoch on clip data, then on soundscape data (if provided).
+
+    ss_data   : (N, clip_len) raw waveforms or (N, 1, n_mels, T) mel specs
+    ss_labels : (N, num_classes) binary labels
+    ss_oversample: repeat soundscape data this many times per epoch
+    """
     model.train()
     total_loss, n_batches = 0.0, 0
 
-    for mel_batch, label_batch in loader:
-        mel_batch = mel_batch.to(device)
+    for raw_batch, label_batch in loader:
+        raw_batch   = raw_batch.to(device)
         label_batch = label_batch.to(device)
+
+        # Convert raw waveform → mel on GPU (60× faster than CPU librosa)
+        if gpu_mel_tf is not None:
+            mel_batch = apply_gpu_mel(raw_batch, gpu_mel_tf)
+        else:
+            mel_batch = raw_batch   # already mel if yield_raw_audio=False
 
         # Mixup augmentation (BirdCLEF 2025 1st place)
         if mixup_alpha > 0:
@@ -124,13 +257,40 @@ def train_epoch(
             label_batch = lam * label_batch + (1.0 - lam) * label_batch[perm]
 
         optimizer.zero_grad()
-        clip_pred, _ = model(mel_batch)
-        loss = loss_fn(clip_pred, label_batch)
+        clip_pred, frame_logit = model(mel_batch)
+        loss = _compute_loss(loss_fn, clip_pred, frame_logit, label_batch, clip_loss_w, frame_loss_w)
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item()
         n_batches += 1
+
+    # ── Soundscape domain-adaptation pass ────────────────────────────────────
+    # Train on soundscape segments (oversampled) to bridge train_audio → test domain.
+    if ss_data is not None and ss_labels is not None and len(ss_data) > 0:
+        for _ in range(ss_oversample):
+            idx = np.random.permutation(len(ss_data))
+            for start in range(0, len(ss_data), ss_batch_size):
+                batch_idx = idx[start: start + ss_batch_size]
+                if len(batch_idx) == 0:
+                    continue
+                batch = torch.tensor(
+                    ss_data[batch_idx], dtype=torch.float32, device=device
+                )
+                label = torch.tensor(
+                    ss_labels[batch_idx], dtype=torch.float32, device=device
+                )
+                if gpu_mel_tf is not None:
+                    batch = apply_gpu_mel(batch, gpu_mel_tf)
+
+                optimizer.zero_grad()
+                clip_pred, frame_logit = model(batch)
+                loss = _compute_loss(loss_fn, clip_pred, frame_logit, label, clip_loss_w, frame_loss_w)
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+                n_batches += 1
 
     return total_loss / max(n_batches, 1)
 
@@ -139,21 +299,28 @@ def train_epoch(
 
 def evaluate(
     model: SEDModel,
-    val_mels: np.ndarray,
+    val_data: np.ndarray,
     val_labels: np.ndarray,
     batch_size: int,
     device: torch.device,
-) -> float:
+    gpu_mel_tf: nn.Module = None,
+) -> tuple:
+    """Returns (roc_auc, padded_cmap) both on soundscape validation set."""
     model.eval()
     preds = []
     with torch.no_grad():
-        for start in range(0, len(val_mels), batch_size):
+        for start in range(0, len(val_data), batch_size):
             batch = torch.tensor(
-                val_mels[start: start + batch_size], dtype=torch.float32, device=device
+                val_data[start: start + batch_size], dtype=torch.float32, device=device
             )
+            if gpu_mel_tf is not None:
+                batch = apply_gpu_mel(batch, gpu_mel_tf)
             clip_pred, _ = model(batch)
             preds.append(clip_pred.cpu().numpy())
-    return padded_cmap(val_labels, np.concatenate(preds, axis=0))
+    all_preds = np.concatenate(preds, axis=0)
+    roc = competition_roc_auc(val_labels, all_preds)
+    cmap = padded_cmap(val_labels, all_preds)
+    return roc, cmap
 
 
 # ── Result persistence ────────────────────────────────────────────────────────
@@ -163,7 +330,7 @@ def _save_results(
     run_name: str,
     config: DotDict,
     epoch_history: list,
-    best_cmap: float,
+    best_roc: float,
     best_epoch: int,
     total_time_s: float = None,
     finished: bool = False,
@@ -171,13 +338,17 @@ def _save_results(
     result = {
         "run_name": run_name,
         "finished": finished,
-        "best_val_cmap": round(best_cmap, 6),
+        "best_val_roc_auc": round(best_roc, 6),
         "best_epoch": best_epoch,
         "total_epochs_run": len(epoch_history),
         "total_time_s": round(total_time_s, 1) if total_time_s else None,
         "model_type": "SED",
         "hparams": {
             "backbone": config.model.backbone,
+            "use_gem": config.model.get("use_gem", True),
+            "in_chans": config.model.get("in_chans", 1),
+            "n_mels": config.mel.n_mels,
+            "hop_length": config.mel.hop_length,
             "learning_rate": config.training.learning_rate,
             "mixup_alpha": config.training.mixup_alpha,
             "label_smoothing": config.training.label_smoothing,
@@ -185,8 +356,6 @@ def _save_results(
             "epochs": config.training.epochs,
             "focal_gamma": config.training.get("focal_gamma", 2.0),
             "class_weight_mode": config.training.get("class_weight_mode", "none"),
-            "n_mels": config.mel.n_mels,
-            "hop_length": config.mel.hop_length,
         },
         "epoch_history": epoch_history,
     }
@@ -239,23 +408,74 @@ def main():
     num_classes = len(target_species)
     print(f"\nTarget species: {num_classes}")
 
-    # ── Validation data ───────────────────────────────────────────────────────
-    print("\nLoading validation soundscapes as mel spectrograms …")
-    val_ds = MelSoundscapeDataset(
-        soundscapes_dir=config.data.train_soundscapes_dir,
-        labels_csv=config.data.soundscapes_labels_csv,
-        species_to_idx=species_to_idx,
-        num_classes=num_classes,
-        sample_rate=config.audio.sample_rate,
-        clip_duration=config.audio.clip_duration,
+    # ── Mel params ────────────────────────────────────────────────────────────
+    mel_kw = dict(
         n_fft=config.mel.n_fft,
         hop_length=config.mel.hop_length,
         n_mels=config.mel.n_mels,
         fmin=config.mel.fmin,
         fmax=config.mel.fmax,
     )
-    val_mels, val_labels = val_ds.get_all_samples()
-    print(f"Validation clips: {len(val_mels)}  mel shape: {val_mels[0].shape}")
+
+    # ── Soundscape file-level train/val split (prevents data leak) ───────────
+    use_gpu_mel = config.model.get("use_gpu_mel", True)
+    ss_val_frac = config.training.get("soundscape_val_frac", 1.0)
+    # Load full soundscape labels and split by file
+    _ss_df_full = pd.read_csv(config.data.soundscapes_labels_csv)
+    _ss_files   = sorted(_ss_df_full["filename"].unique())
+    _n_val      = max(1, int(len(_ss_files) * ss_val_frac))
+    _val_files  = set(_ss_files[-_n_val:])
+    _trn_files  = set(_ss_files[:-_n_val]) if ss_val_frac < 1.0 else set()
+    _ss_val_df  = _ss_df_full[_ss_df_full["filename"].isin(_val_files)]
+    _ss_trn_df  = _ss_df_full[_ss_df_full["filename"].isin(_trn_files)]
+
+    import tempfile, os as _os
+    _tmp_val_csv = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w")
+    _ss_val_df.to_csv(_tmp_val_csv.name, index=False); _tmp_val_csv.close()
+
+    print(f"\nSoundscape split: val={len(_val_files)} files ({len(_ss_val_df)} clips)  "
+          f"train={len(_trn_files)} files ({len(_ss_trn_df)} clips)  val_frac={ss_val_frac}")
+    print(f"Loading validation soundscapes {'as raw audio' if use_gpu_mel else 'as mel spectrograms'} …")
+    val_ds = MelSoundscapeDataset(
+        soundscapes_dir=config.data.train_soundscapes_dir,
+        labels_csv=_tmp_val_csv.name,
+        species_to_idx=species_to_idx,
+        num_classes=num_classes,
+        sample_rate=config.audio.sample_rate,
+        clip_duration=config.audio.clip_duration,
+        yield_raw_audio=use_gpu_mel,
+        **mel_kw,
+    )
+    val_data, val_labels = val_ds.get_all_samples()
+    _os.unlink(_tmp_val_csv.name)
+    print(f"Validation clips: {len(val_data)}  shape: {val_data[0].shape}")
+
+    # ── Soundscape training data (domain adaptation) ──────────────────────────
+    ss_train_data, ss_train_labels = None, None
+    if config.training.get("use_soundscapes_in_train", False):
+        print("\nLoading soundscape training data (domain adaptation) …")
+        if len(_trn_files) > 0:
+            _tmp_trn_csv = tempfile.NamedTemporaryFile(suffix=".csv", delete=False, mode="w")
+            _ss_trn_df.to_csv(_tmp_trn_csv.name, index=False); _tmp_trn_csv.close()
+            _ss_trn_ds = MelSoundscapeDataset(
+                soundscapes_dir=config.data.train_soundscapes_dir,
+                labels_csv=_tmp_trn_csv.name,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                sample_rate=config.audio.sample_rate,
+                clip_duration=config.audio.clip_duration,
+                yield_raw_audio=use_gpu_mel,
+                **mel_kw,
+            )
+            ss_train_data, ss_train_labels = _ss_trn_ds.get_all_samples()
+            _os.unlink(_tmp_trn_csv.name)
+        else:
+            # soundscape_val_frac=1.0 means ALL soundscapes for val only — no train domain adaptation
+            ss_train_data, ss_train_labels = None, None
+            print("  soundscape_val_frac=1.0: all soundscapes used for validation, none for training.")
+        ss_oversample = config.training.get("soundscape_oversample", 3)
+        if ss_train_data is not None:
+            print(f"  Soundscape train clips: {len(ss_train_data)}  oversample={ss_oversample}×")
 
     # ── Class weights ─────────────────────────────────────────────────────────
     class_weight_mode = config.training.get("class_weight_mode", "none")
@@ -268,8 +488,7 @@ def main():
 
     # ── Training data ─────────────────────────────────────────────────────────
     print("\nBuilding training dataset …")
-    aug_config = dict(config.augmentation)
-    noise_dir = config.data.get("noise_dir", None)
+    use_gpu_mel = config.model.get("use_gpu_mel", True)  # default: GPU mel for speed
 
     train_ds_obj = MelClipDataset(
         train_csv=config.data.train_csv,
@@ -283,31 +502,46 @@ def main():
         use_secondary_labels=config.data.use_secondary_labels,
         min_rating=config.data.min_rating,
         max_files=config.data.get("max_files", None),
-        augment_config=aug_config,
+        augment_config=dict(config.augmentation),
         class_weights=class_weights,
-        noise_dir=noise_dir,
-        n_fft=config.mel.n_fft,
-        hop_length=config.mel.hop_length,
-        n_mels=config.mel.n_mels,
-        fmin=config.mel.fmin,
-        fmax=config.mel.fmax,
+        noise_dir=config.data.get("noise_dir", None),
+        yield_raw_audio=use_gpu_mel,
+        **mel_kw,
     )
 
+    n_workers = 4 if use_gpu_mel else 0
     train_loader = DataLoader(
         _IterableWrapper(train_ds_obj),
         batch_size=config.training.batch_size,
-        num_workers=0,        # IterableDataset: set >0 only with worker_init_fn
+        num_workers=n_workers,
         pin_memory=(device.type == "cuda"),
+        persistent_workers=(n_workers > 0),
     )
+    print(f"DataLoader: num_workers={n_workers}, gpu_mel={use_gpu_mel}")
+
+    # GPU mel transform (only when use_gpu_mel=True)
+    gpu_mel_tf = build_gpu_mel_transform(config, device) if use_gpu_mel else None
 
     # ── Model ─────────────────────────────────────────────────────────────────
-    print("\nBuilding SED model …")
+    in_chans = config.model.get("in_chans", 1)
+    use_gem  = config.model.get("use_gem", True)
+    gem_p    = config.model.get("gem_p_init", 3.0)
+    # n_frames = clip_samples / hop_length + 1
+    clip_samples = config.audio.clip_duration * config.audio.sample_rate
+    n_frames = clip_samples // config.mel.hop_length + 1
+
+    print(f"\nBuilding SED model (backbone={config.model.backbone}, "
+          f"in_chans={in_chans}, use_gem={use_gem}, n_frames={n_frames}) …")
     model = SEDModel(
         backbone=config.model.backbone,
         num_classes=num_classes,
-        in_chans=1,
+        in_chans=in_chans,
         pretrained=config.model.pretrained,
         drop_rate=config.model.dropout,
+        use_gem=use_gem,
+        gem_p_init=gem_p,
+        n_mels=config.mel.n_mels,
+        n_frames=n_frames,
     ).to(device)
 
     # ── Optimizer & loss ──────────────────────────────────────────────────────
@@ -322,16 +556,31 @@ def main():
             model.parameters(), lr=config.training.learning_rate
         )
 
-    loss_fn = FocalBCELossTorch(
-        gamma=config.training.get("focal_gamma", 2.0),
-        alpha=config.training.get("focal_alpha", 0.25),
-        label_smoothing=config.training.label_smoothing,
-    )
-    print(f"Loss: FocalBCE (gamma={config.training.get('focal_gamma',2.0)}, "
-          f"alpha={config.training.get('focal_alpha',0.25)})")
+    loss_mode = config.training.get("loss", "focal_bce")
+    clip_loss_w  = config.training.get("clip_loss_weight",  1.0)
+    frame_loss_w = config.training.get("frame_loss_weight", 0.0)
+    if loss_mode == "bce":
+        loss_fn = None   # plain BCE computed inline
+        print(f"Loss: BCE  clip_w={clip_loss_w}  frame_w={frame_loss_w}")
+    elif loss_mode == "bce_pos_weight":
+        print("Computing per-class positive weights …")
+        pos_w = compute_pos_weights(config.data.train_csv, species_to_idx, num_classes)
+        loss_fn = BCEPosWeightLoss(
+            pos_weight=torch.tensor(pos_w, dtype=torch.float32, device=device)
+        )
+        print(f"Loss: BCEPosWeight  avg={pos_w.mean():.2f}  max={pos_w.max():.2f}  "
+              f"min={pos_w.min():.2f}")
+    else:
+        loss_fn = FocalBCELossTorch(
+            gamma=config.training.get("focal_gamma", 2.0),
+            alpha=config.training.get("focal_alpha", 0.25),
+            label_smoothing=config.training.label_smoothing,
+        )
+        print(f"Loss: FocalBCE (gamma={config.training.get('focal_gamma',2.0)}, "
+              f"alpha={config.training.get('focal_alpha',0.25)})")
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    best_cmap = 0.0
+    best_roc = 0.0
     best_epoch = 0
     val_batch_size = config.training.batch_size * 2
     epoch_history = []
@@ -340,6 +589,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"  Experiment : {run_name}")
     print(f"  Backbone   : {config.model.backbone}")
+    print(f"  GEMFreqPool: {use_gem}")
     print(f"  Epochs     : {config.training.epochs}")
     print(f"  Batch size : {config.training.batch_size}")
     print(f"{'='*60}\n")
@@ -347,7 +597,6 @@ def main():
     for epoch in range(1, config.training.epochs + 1):
         t0 = time.time()
 
-        # LR update
         lr = (
             cosine_lr_with_warmup(
                 epoch,
@@ -361,58 +610,64 @@ def main():
         for pg in optimizer.param_groups:
             pg["lr"] = lr
 
-        # Train
         train_loss = train_epoch(
             model, train_loader, optimizer, loss_fn, device,
             mixup_alpha=config.training.mixup_alpha,
+            gpu_mel_tf=gpu_mel_tf,
+            ss_data=ss_train_data,
+            ss_labels=ss_train_labels,
+            ss_batch_size=config.training.batch_size,
+            ss_oversample=config.training.get("soundscape_oversample", 3),
+            clip_loss_w=clip_loss_w,
+            frame_loss_w=frame_loss_w,
         )
 
-        # Validate
-        val_cmap = evaluate(model, val_mels, val_labels, val_batch_size, device)
+        val_roc, val_cmap = evaluate(model, val_data, val_labels, val_batch_size, device, gpu_mel_tf)
 
         elapsed = time.time() - t0
         print(
             f"Epoch {epoch:3d}/{config.training.epochs} | "
             f"loss={train_loss:.4f} | "
-            f"val_cmap={val_cmap:.4f} | "
-            f"lr={lr:.2e} | "
-            f"{elapsed:.1f}s"
+            f"val_roc_auc={val_roc:.4f} | val_cmap={val_cmap:.4f} | "
+            f"lr={lr:.2e} | {elapsed:.1f}s"
         )
 
         epoch_record = {
             "epoch": epoch,
             "train_loss": round(train_loss, 6),
+            "val_roc_auc": round(val_roc, 6),
             "val_cmap": round(val_cmap, 6),
             "lr": round(float(lr), 8),
             "epoch_time_s": round(elapsed, 1),
         }
         epoch_history.append(epoch_record)
-        _save_results(out_dir, run_name, config, epoch_history, best_cmap, best_epoch)
+        _save_results(out_dir, run_name, config, epoch_history, best_roc, best_epoch)
 
         if wandb_run:
             wandb_run.log({
                 "epoch": epoch,
                 "train/loss": train_loss,
+                "val/roc_auc": val_roc,
                 "val/padded_cmap": val_cmap,
                 "lr": lr,
             })
 
-        if val_cmap > best_cmap:
-            best_cmap = val_cmap
+        if val_roc > best_roc:
+            best_roc = val_roc
             best_epoch = epoch
             ckpt_path = os.path.join(ckpt_dir, "best_sed")
-            model.save(ckpt_path)
-            print(f"  ↑ New best cMAP={best_cmap:.4f}")
+            model.save(ckpt_path, epoch=epoch, metrics={"macro_auc": val_roc})
+            print(f"  ↑ New best ROC-AUC={best_roc:.4f} (epoch {epoch})")
             if wandb_run:
-                wandb_run.log({"val/best_padded_cmap": best_cmap, "epoch": epoch})
+                wandb_run.log({"val/best_roc_auc": best_roc, "epoch": epoch})
 
     total_time = time.time() - t_start
     _save_results(
-        out_dir, run_name, config, epoch_history, best_cmap, best_epoch,
+        out_dir, run_name, config, epoch_history, best_roc, best_epoch,
         total_time_s=total_time, finished=True,
     )
 
-    print(f"\nSED training complete.  Best val cMAP: {best_cmap:.4f}  (epoch {best_epoch})")
+    print(f"\nSED training complete.  Best val ROC-AUC: {best_roc:.4f}  (epoch {best_epoch})")
     if wandb_run:
         wandb_run.finish()
 

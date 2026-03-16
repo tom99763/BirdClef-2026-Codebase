@@ -3,7 +3,10 @@
 Provides mel-spectrogram versions of ClipDataset and SoundscapeDataset
 for use with the PyTorch-based SEDModel pipeline.
 
-Audio → Mel spectrogram (n_mels × T) → normalized → (1, n_mels, T) tensor
+Two modes:
+  yield_raw_audio=False (default): Audio → mel (CPU, librosa) → (1, n_mels, T)
+  yield_raw_audio=True  (fast):    Audio → raw waveform (float32, clip_samples)
+       → GPU mel transform applied in training loop (60× faster via torchaudio)
 """
 
 import glob
@@ -106,6 +109,8 @@ class MelClipDataset:
         n_mels: int = 128,
         fmin: float = 20.0,
         fmax: float = 16000.0,
+        # Fast mode: yield raw waveform instead of mel (GPU mel in training loop)
+        yield_raw_audio: bool = False,
     ):
         self.audio_dir = audio_dir
         self.species_to_idx = species_to_idx
@@ -122,6 +127,7 @@ class MelClipDataset:
             n_fft=n_fft, hop_length=hop_length,
             n_mels=n_mels, fmin=fmin, fmax=fmax,
         )
+        self.yield_raw_audio = yield_raw_audio
 
         # Background noise files
         self.noise_files: List[str] = []
@@ -201,9 +207,12 @@ class MelClipDataset:
                 if self.is_train:
                     clip = apply_augmentations(clip, self.augment_config, self.noise_files)
 
-                mel = compute_mel(clip, **self.mel_kwargs)   # (n_mels, T)
-                mel = normalize_mel(mel)
-                yield mel[np.newaxis], label                 # (1, n_mels, T), (num_classes,)
+                if self.yield_raw_audio:
+                    yield clip, label                        # (clip_samples,), (num_classes,)
+                else:
+                    mel = compute_mel(clip, **self.mel_kwargs)   # (n_mels, T)
+                    mel = normalize_mel(mel)
+                    yield mel[np.newaxis], label             # (1, n_mels, T), (num_classes,)
 
 
 # ── MelSoundscapeDataset ──────────────────────────────────────────────────────
@@ -228,8 +237,10 @@ class MelSoundscapeDataset:
         n_mels: int = 128,
         fmin: float = 20.0,
         fmax: float = 16000.0,
+        yield_raw_audio: bool = False,
     ):
         self.soundscapes_dir = soundscapes_dir
+        self.yield_raw_audio = yield_raw_audio
         self.species_to_idx = species_to_idx
         self.num_classes = num_classes
         self.sample_rate = sample_rate
@@ -268,9 +279,12 @@ class MelSoundscapeDataset:
                 if len(clip) < self.clip_length:
                     clip = np.pad(clip, (0, self.clip_length - len(clip)))
 
-                mel = compute_mel(clip, **self.mel_kwargs)
-                mel = normalize_mel(mel)
-                mels.append(mel[np.newaxis])              # (1, n_mels, T)
+                if self.yield_raw_audio:
+                    mels.append(clip)                     # (clip_length,)
+                else:
+                    mel = compute_mel(clip, **self.mel_kwargs)
+                    mel = normalize_mel(mel)
+                    mels.append(mel[np.newaxis])          # (1, n_mels, T)
                 labels.append(self._make_label(str(row["primary_label"])))
 
         if not mels:

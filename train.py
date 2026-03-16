@@ -281,7 +281,7 @@ def _save_results(
             "model_mode": config.model.mode,
             "hidden_dim": config.model.hidden_dim,
             "dropout": config.model.dropout,
-            "n_clips_per_file": config.audio.n_clips_per_file,
+            "n_clips_per_file": config.audio.n_clips_per_file if hasattr(config, "audio") else None,
             "min_rating": config.data.min_rating,
             "use_secondary_labels": config.data.use_secondary_labels,
             "augmentation_enabled": config.augmentation.enabled,
@@ -463,17 +463,27 @@ def main():
                 .prefetch(tf.data.AUTOTUNE)
             )
 
-        print("Loading cached soundscape validation embeddings …")
-        val_cache_ds = CachedEmbeddingDataset(
-            manifest_csv=manifest_path,
-            species_to_idx=species_to_idx,
-            num_classes=num_classes,
-            split="soundscape",
-            soundscape_split_csv=sc_split_csv,
-            soundscape_split=_sc_val_split,
-        )
+        val_mode = config.training.get("val_mode", "soundscape")
+        if val_mode == "holdout":
+            print("Loading cached holdout validation embeddings …")
+            val_cache_ds = CachedEmbeddingDataset(
+                manifest_csv=manifest_path,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                split="holdout",
+            )
+        else:
+            print("Loading cached soundscape validation embeddings …")
+            val_cache_ds = CachedEmbeddingDataset(
+                manifest_csv=manifest_path,
+                species_to_idx=species_to_idx,
+                num_classes=num_classes,
+                split="soundscape",
+                soundscape_split_csv=sc_split_csv,
+                soundscape_split=_sc_val_split,
+            )
         val_clips, val_labels = val_cache_ds.get_all_samples()
-        print(f"Validation embeddings: {len(val_clips)}")
+        print(f"Validation embeddings [{val_mode}]: {len(val_clips)}")
 
     else:
         if config.cache.enabled and config.model.mode == "embedding_head":

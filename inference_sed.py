@@ -177,7 +177,7 @@ def main():
     model = SEDModel(
         backbone=config.model.backbone,
         num_classes=num_classes,
-        in_chans=1,
+        in_chans=getattr(config.model, 'in_chans', 1),
         pretrained=False,          # weights loaded from checkpoint
         drop_rate=config.model.dropout,
     ).to(device)
