@@ -98,6 +98,7 @@ class MelClipDataset:
         n_clips_per_file: int = 3,
         is_train: bool = True,
         use_secondary_labels: bool = True,
+        secondary_label_weight: float = 1.0,
         min_rating: float = 0.0,
         max_files: Optional[int] = None,
         augment_config: Optional[dict] = None,
@@ -120,6 +121,7 @@ class MelClipDataset:
         self.n_clips_per_file = n_clips_per_file
         self.is_train = is_train
         self.use_secondary_labels = use_secondary_labels
+        self.secondary_label_weight = secondary_label_weight
         self.augment_config = augment_config or {"enabled": False}
         self.class_weights = class_weights
         self.mel_kwargs = dict(
@@ -141,7 +143,7 @@ class MelClipDataset:
         df = pd.read_csv(train_csv)
         if min_rating > 0:
             df = df[df["rating"] >= min_rating]
-        if max_files:
+        if max_files is not None:
             df = df.head(max_files)
         self.metadata = df.reset_index(drop=True)
 
@@ -160,7 +162,10 @@ class MelClipDataset:
         if self.use_secondary_labels:
             for sp in _parse_secondary_labels(str(secondary_labels_str)):
                 if sp in self.species_to_idx:
-                    label[self.species_to_idx[sp]] = 1.0
+                    # Use soft weight for secondary labels (BirdCLEF 2025 top teams: 0.3-0.5)
+                    label[self.species_to_idx[sp]] = max(
+                        label[self.species_to_idx[sp]], self.secondary_label_weight
+                    )
         return label
 
     def _sample_weight(self, primary_label: str) -> float:
@@ -291,3 +296,92 @@ class MelSoundscapeDataset:
             raise RuntimeError("MelSoundscapeDataset: no valid samples found.")
 
         return np.stack(mels), np.stack(labels)
+
+
+# ── SoftPseudoSoundscapeDataset ───────────────────────────────────────────────
+
+class SoftPseudoSoundscapeDataset:
+    """
+    Knowledge Distillation dataset using Perch soft probability vectors.
+
+    Loads 5-sec clips from train_soundscapes/ based on row_id format:
+        {soundscape_stem}_{end_sec}   e.g. BC2026_Train_0009_S09_..._45
+
+    Labels are Perch's full 234-dim soft probability vectors (float32 in [0,1]).
+    These are valid BCE targets — carries species co-occurrence and uncertainty
+    information lost when converting to hard labels.
+
+    Compare vs extra_soundscape_csv (hard labels): v23 uses hard, v24 uses soft.
+    """
+
+    def __init__(
+        self,
+        soundscapes_dir: str,
+        soft_pseudo_csv: str,
+        species_list: List[str],
+        num_classes: int,
+        sample_rate: int = 32000,
+        clip_duration: int = 5,
+        yield_raw_audio: bool = False,
+        val_stems: Optional[List[str]] = None,
+        **mel_kw,
+    ):
+        self.soundscapes_dir = soundscapes_dir
+        self.yield_raw_audio = yield_raw_audio
+        self.sample_rate = sample_rate
+        self.clip_length = clip_duration * sample_rate
+        self.mel_kwargs = mel_kw
+
+        df = pd.read_csv(soft_pseudo_csv)
+        split = df["row_id"].str.rsplit("_", n=1)
+        df = df.copy()
+        df["_stem"]    = split.str[0]
+        df["_end_sec"] = split.str[1].astype(int)
+
+        n_total = len(df)
+        if val_stems:
+            df = df[~df["_stem"].isin(val_stems)].reset_index(drop=True)
+
+        # Soft prob matrix — columns must be in species_list order
+        self.soft_labels = df[species_list].values.astype(np.float32)
+        self.stems    = df["_stem"].tolist()
+        self.end_secs = df["_end_sec"].tolist()
+
+        n_excluded = n_total - len(df)
+        print(f"[SoftPseudoSoundscapeDataset] {len(df)} clips "
+              f"from {df['_stem'].nunique()} files "
+              f"(excluded {n_excluded} val clips)")
+
+    def get_all_samples(self) -> Tuple[np.ndarray, np.ndarray]:
+        """Load all clips into memory. Returns (mels_or_audio, soft_labels)."""
+        data, labels = [], []
+
+        cached_stem: Optional[str] = None
+        cached_audio: Optional[np.ndarray] = None
+
+        for stem, end_sec, soft_label in zip(self.stems, self.end_secs, self.soft_labels):
+            if stem != cached_stem:
+                filepath = os.path.join(self.soundscapes_dir, f"{stem}.ogg")
+                cached_audio = load_audio(filepath, self.sample_rate)
+                cached_stem = stem
+
+            if cached_audio is None:
+                continue
+
+            start_sample = max(0, (end_sec - (self.clip_length // self.sample_rate)) * self.sample_rate)
+            clip = cached_audio[start_sample: start_sample + self.clip_length]
+            if len(clip) < self.clip_length:
+                clip = np.pad(clip, (0, self.clip_length - len(clip)))
+
+            if self.yield_raw_audio:
+                data.append(clip)
+            else:
+                mel = compute_mel(clip, **self.mel_kwargs)
+                mel = normalize_mel(mel)
+                data.append(mel[np.newaxis])
+            labels.append(soft_label)
+
+        if not data:
+            raise RuntimeError("SoftPseudoSoundscapeDataset: no valid samples found.")
+
+        return np.stack(data), np.stack(labels)
