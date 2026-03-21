@@ -181,12 +181,23 @@ class SEDModel(nn.Module):
         """
         if hasattr(self, '_in_chans') and self._in_chans == 3 and x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)     # replicate mono mel to 3-channel
-        feat = self.backbone(x)           # (B, C, H', W')
-        if self.use_gem:
-            feat = self.freq_pool(feat)   # GEM pool freq → (B, C, T')
+        # Skip autograd tracking for frozen backbone (saves memory + speeds up forward)
+        backbone_frozen = not any(p.requires_grad for p in self.backbone.parameters())
+        if backbone_frozen:
+            with torch.no_grad():
+                feat = self.backbone(x)       # (B, C, H', W')
+                if self.use_gem:
+                    feat = self.freq_pool(feat)
+                else:
+                    feat = feat.mean(dim=2)
+                    feat = feat.permute(0, 2, 1)
         else:
-            feat = feat.mean(dim=2)       # mean pool freq → (B, C, T')
-            feat = feat.permute(0, 2, 1)  # → (B, T', C)
+            feat = self.backbone(x)           # (B, C, H', W')
+            if self.use_gem:
+                feat = self.freq_pool(feat)   # GEM pool freq → (B, C, T')
+            else:
+                feat = feat.mean(dim=2)       # mean pool freq → (B, C, T')
+                feat = feat.permute(0, 2, 1)  # → (B, T', C)
         return self.head(feat)
 
     # ── Checkpointing ─────────────────────────────────────────────────────────

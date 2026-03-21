@@ -5,59 +5,73 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ---
 
-## Current Best Results (2026-03-16)
+## Current Best Results (2026-03-21)
 
 | Model / Ensemble | Holdout AUC | LB | Notes |
 |-----------------|-------------|-----|-------|
-| **ensemble(label×2 + emb)** | **0.9780** ⭐ | TBD | 3-model Perch ensemble, today's best |
-| ensemble(label×2) | 0.9595 | — | label-pseudo + label-soundscape |
-| nohuman-label-soundscape-train | 0.9550 | **0.839** | Latest submitted |
-| nohuman-embedding-soundscape | 0.9537 | — | 1536-dim Perch embedding head |
-| nohuman-label-pseudo | 0.9453 | 0.849+PP | Pseudo labels, best individual |
-| *Competitor SED (reference)* | *0.9883* | *0.862* | *EfficientNet-B0, target to beat* |
-| sed-b0-v5 | TBD | — | 🔄 Training (ep3/20) |
+| **v9-asl-soup ensemble** | — | **0.892** ⭐ | Best LB, Perch + SED VLOM blend |
+| Perch 3-model ensemble | 0.9780 | — | label×2 + embedding |
+| nohuman-label-soundscape-train | 0.9550 | 0.839 | Perch label-head, soundscape domain |
+| *Competitor SED (reference)* | *0.9918* | *0.862* | *soundscape val AUC target* |
+| **sed-ss-fold0~3** | — | — | 🔄 Training (GPU1, pair-parallel) |
 
-> **Holdout set**: 7,037 individual recordings, 206/234 species, NO data leak.
-> Holdout AUC is ~0.04 higher than soundscape val AUC due to domain difference.
+> **Soundscape val gap**: Our best SED = 0.8153 vs competitor = 0.9918 (0.18 gap, root cause analysed).
+> Only nohuman models are evaluated from 2026-03-15 onwards.
 
 ---
 
 ## Architecture Overview
 
-### 1. Perch Label-Head (3 variants, ensemble = 0.9780 holdout)
+### 1. Perch Embedding Probe (submissions_v3, best LB 0.892)
 
 ```
-Audio (5s) → Silero VAD (human removal) → Perch v2 TFLite →
-  ├── 14795-dim label logits → gather 234 → FC(256)→ReLU→FC(234) → sigmoid  [label_head]
-  └── 1536-dim embedding               → FC(1024)→ReLU→FC(234) → sigmoid  [embedding_head]
+Audio (60s) → 12×5s clips → Perch v2 TFLite →
+  ├── 14795-dim logits → gather 234 → Bayesian prior fusion → texture/event smooth
+  └── 1536-dim embedding → PCA(64) → LGBM probe (74-dim features)
+  → final = (1-α)×base + α×probe → Gaussian logit smooth → sigmoid(/T) → submission
 ```
 
-**Key insight**: Single Perch forward pass extracts both label logits AND embedding simultaneously — no redundant computation for 3-model ensemble.
+Key techniques (LB 0.892 → 0.910 reference):
+- **Bayesian prior fusion**: site/hour joint priors fused into logits
+- **Texture smooth** (avg-neighbor, α=0.35): for Amphibia/Insecta classes
+- **Event smooth** (local-max, α=0.15): for Aves classes — preserves transient peaks (ref: 0-908)
+- **LGBM probe**: 74-dim features (PCA32 + raw/prior/base + seq + 3 interactions)
+- **Gaussian logit smooth**: `convolve1d([0.1,0.2,0.4,0.2,0.1])` on logits before sigmoid (ref: 0-910)
+- **Temperature scaling**: T=1.15 on logits before sigmoid (ref: 0-908)
 
-Trained models:
-- `nohuman-label-pseudo`: label_head, trained with round-1 pseudo labels
-- `nohuman-label-soundscape-train`: label_head, + 53 soundscape files for domain adaptation
-- `nohuman-embedding-soundscape`: embedding_head (1536-dim), richer features, best SS val (0.9810)
-
-### 2. SED EfficientNet-B0 (sed-b0-v5, training)
+### 2. SED EfficientNet-B0 (current: sed-ss-fold0~3)
 
 ```
-Audio (5s) → peak-norm → MelSpec(224-mel, n_fft=2048, hop=512, norm=slaney, htk) →
-  EfficientNet-B0 → GEMFreqPool(p=3.0) → AttentionSEDHead → clip_prob (234,)
-                                        → frame_logit (T, 234)
+Audio (5s) → MelSpec(224-mel, n_fft=2048, hop=512, fmin=0, fmax=16k) →
+  EfficientNet-B0 (tf_efficientnet_b0.ns_jft_in1k) → GEMFreqPool(p=3.0) → FC(234) → sigmoid
 ```
 
-Loss: dual clip+frame BCE (`clip_loss_weight=0.5, frame_loss_weight=0.5`)
-Training: plain BCE on sigmoid outputs, soundscape 80/20 file-level split, mixup=0.5
+**Training data** (soundscape-domain focus):
+- `train_audio`: 35,549 focal recordings (3 clips/file)
+- `train_soundscapes`: 1,194 labeled clips × 20× oversample
+- **Validation**: soundscape k-fold (4 folds, 16~18 files/fold)
+
+**Root cause of SED gap (0.82 vs 0.99)**:
+1. Dual frame loss (`frame_loss=0.5`) → synthetic label gradient conflict
+2. ASL + `secondary_weight=1.0` → noisy XC secondary label amplification
+3. CAWR scheduler → AUC collapse at restart epochs
+4. No soundscape-domain training signal in earlier experiments
+
+**Current fixes** (sed-ss-fold configs):
+- CE loss + `label_smoothing=0.1`, `frame_loss_weight=0.0`
+- Soundscape oversample 20× + explicit k-fold validation
+- Cosine scheduler + `warmup_epochs=5`, `early_stopping_patience=15`
+- Mixup α=0.5
 
 ---
 
-## Confirmed LB History
+## LB Score History
 
-| Date | Model | LB | Notes |
-|------|-------|----|-------|
-| 2026-03-15 | nohuman-label-pseudo + PP | **0.849** | Previous best |
-| 2026-03-16 | nohuman-label-soundscape-train (TFLite) | 0.839 | No PP |
+| Date | Submission | LB | Notes |
+|------|-----------|-----|-------|
+| 2026-03-17 | v9-asl-soup ensemble | **0.892** | Best — Perch+SED VLOM blend |
+| 2026-03-16 | nohuman-label-soundscape-train | 0.839 | Perch only, no SED |
+| 2026-03-15 | nohuman-label-pseudo + PP | 0.849 | Perch + pseudo labels |
 
 ---
 
@@ -67,60 +81,54 @@ Training: plain BCE on sigmoid outputs, soundscape 80/20 file-level split, mixup
 BirdClef-2026-Codebase/
 │
 ├── configs/
-│   ├── default.yaml                             # Base Perch config
-│   ├── exp_nohuman_label_pseudo.yaml            # label-head + pseudo labels
-│   ├── exp_nohuman_label_soundscape_train.yaml  # label-head + soundscape train
-│   ├── nohuman-embedding-soundscape.yaml        # embedding-head (1536-dim)
-│   ├── sed_b0_v5.yaml                           # SED EfficientNet-B0 v5 (current)
-│   ├── sed_b0_v4.yaml                           # SED v4 (killed — val data leak)
-│   ├── sed_b0_v3.yaml                           # SED v3 (reference)
-│   └── holdout_val_files.csv                    # 7,037 holdout files (never in training)
+│   ├── default.yaml                          # Base Perch config
+│   ├── sed_default.yaml                      # Base SED config
+│   ├── sed_ss_fold0~3.yaml                   # Current: soundscape 4-fold SED
+│   ├── ss_folds/ss_fold{0-3}_val.txt         # Soundscape k-fold val file lists
+│   ├── perch_probe_*.yaml                    # Perch embedding probe experiments
+│   └── embed_distill_*.yaml                  # Embedding distillation experiments
 │
-├── submissions/
-│   └── ensemble_tflite.ipynb                    # ⭐ Production: 4-model ensemble notebook
-│                                                #   Perch×3 TFLite + SED PyTorch CPU
-│
-├── submissions/weights/                         # Kaggle dataset: birdclef2026-ensemble-weights
-│   ├── perch_v2_cpu.tflite                      # Perch backbone (391 MB)
-│   ├── label_head_pseudo.tflite                 # label-head, pseudo labels
-│   ├── label_head_soundscape_train.tflite       # label-head, soundscape domain
-│   ├── embedding_head_nohuman_embedding_soundscape.tflite  # embedding-head (1536-dim)
-│   └── best_sed_b0_v5.pt                        # [pending] SED PyTorch weights
+├── submissions_v3/                           # Current submission notebooks
+│   ├── birdclef-2026-v3-lgbm-infer.ipynb         # LGBM probe + SED VLOM blend
+│   ├── birdclef-2026-v3-lgbm-event-smooth.ipynb  # + Event smooth (0-908) + Gaussian logit (0-910)
+│   ├── birdclef-2026-v3-lgbm-4fold.ipynb         # 4-fold LGBM probe ensemble
+│   └── weights/                                  # Model weights for Kaggle upload
 │
 ├── src/
-│   ├── audio/human_filter.py                    # Silero VAD human-voice removal
 │   ├── data/
-│   │   ├── dataset.py                           # CachedEmbeddingDataset, SoundscapeDataset
-│   │   ├── augment.py                           # Mixup, time masking, gain
-│   │   └── mel_dataset.py                       # MelClipDataset, MelSoundscapeDataset [SED]
+│   │   ├── dataset.py                       # CachedEmbeddingDataset, SoundscapeDataset
+│   │   ├── augment.py                       # Mixup, time masking, gain
+│   │   └── mel_dataset.py                   # MelClipDataset, MelSoundscapeDataset
+│   │                                        # SoftPseudoSoundscapeDataset
+│   │                                        # Bug fix: max_files=0 now correctly filters
 │   ├── model/
-│   │   ├── classifier.py                        # PerchClassifier (label_head / embedding_head)
-│   │   ├── losses.py                            # FocalBCELoss [TF]
-│   │   └── sed_model.py                         # SEDModel, GEMFreqPool, AttentionSEDHead
-│   ├── metrics/kaggle_metric.py                 # Macro ROC-AUC scorer
-│   └── utils/config.py                          # YAML config loader
+│   │   ├── classifier.py                    # PerchClassifier (label/embedding head)
+│   │   ├── sed_model.py                     # SEDModel, GEMFreqPool, AttentionSEDHead
+│   │   ├── pcen.py                          # PCEN learnable frontend
+│   │   └── losses.py                        # FocalBCELoss, ASLoss
+│   └── utils/config.py                      # YAML config loader
 │
-├── train.py                                     # Perch head training (cached embeddings)
-├── train_sed.py                                 # SED end-to-end training (raw audio → mel)
-├── extract_embeddings.py                        # Cache Perch embeddings (label + embedding)
-├── pseudo_label.py                              # Generate pseudo labels from trained model
-├── inference.py                                 # Perch inference on test soundscapes
-├── inference_sed.py                             # SED inference on test soundscapes
-│
-├── evaluate_holdout.py                          # Single-model holdout AUC eval
-├── evaluate_ensemble_v2_holdout.py              # 3-model Perch ensemble eval
-├── evaluate_ensemble_v3_holdout.py              # 4-model Perch+SED ensemble eval
-├── evaluate_soundscape_val.py                   # Soundscape val AUC (SS domain)
-├── evaluate_competitor_sed.py                   # Competitor model (best_fold0.pt) eval
-├── convert_embedding_head_tflite.py             # Convert TF head → TFLite
+├── train_sed.py                             # SED end-to-end training (raw audio → mel)
+│                                            # Supports: k-fold val via soundscape_val_files_txt,
+│                                            # soundscape oversample, CE/ASL loss, GPU mel,
+│                                            # soft pseudo labels, soundscape_only mode
+├── train_distill.py                         # Perch→SED knowledge distillation
+├── train_embed_distill.py                   # Embedding distillation training
+├── train_sedp.py                            # SED_P (PCEN+MaskedBCE+LLRD+AMP)
 │
 ├── scripts/
-│   ├── after_embedding_head.sh                  # Watcher: TFLite + eval after emb-head done
-│   └── after_sed_v5.sh                          # Watcher: copy .pt + 4-model eval after SED
+│   ├── run_ss_4folds.sh                     # Soundscape 4-fold launcher (2 folds parallel)
+│   ├── log_ss_folds_to_excel.py             # Auto-log fold status → reports/exp_results.xlsx
+│   ├── eval_sed_holdout.py                  # SED holdout AUC eval
+│   ├── eval_sed_holdout_tta.py              # Holdout eval with TTA
+│   └── pseudo_label_sed.py                  # Generate pseudo labels from SED
+│
+├── reports/
+│   └── exp_results.xlsx                     # Experiment log (SS-Folds sheet auto-updated)
 │
 └── pseudo_labels/
-    ├── round1_pseudo.csv                        # Round 1 pseudo labels (used in training)
-    └── combined_pseudo_r1.csv                   # Combined pseudo labels
+    ├── round2_pseudo.csv ~ round5_pseudo.csv
+    └── combined_pseudo_r1.csv
 ```
 
 ---
@@ -132,72 +140,46 @@ BirdClef-2026-Codebase/
 | Technique | Effect | Evidence |
 |-----------|--------|----------|
 | Human voice removal (Silero VAD) | +0.039 LB | Ablation confirmed |
-| Pseudo labels (round 1) | +0.003 LB | Small but consistent |
+| Pseudo labels | +0.003 LB | Small but consistent |
 | Soundscape domain adaptation | +0.010 holdout | label-soundscape vs label-pseudo |
-| 1536-dim embedding head | +0.0185 ensemble | Complementary to label-head features |
-| 3-model Perch ensemble | +0.0327 holdout | 0.9453 → 0.9780 over baseline |
-| File-level soundscape split | Prevents data leak | Clip-level split → val=0.9999 (sed-b0-v4 bug) |
-| Dual clip+frame SED loss | Matches competitor | clip_w=0.5, frame_w=0.5 |
-| Post-processing threshold=0.02 | +0.012 LB | Only effective on soundscape domain |
+| 3-model Perch ensemble | +0.0327 holdout | 0.9453 → 0.9780 |
+| VLOM blend (Perch+SED) | Best LB 0.892 | Geometric-RMS blend beats linear |
+| Bayesian prior fusion | ~+0.02 LB | Site/hour priors on Perch logits |
+| LGBM probe (74-dim) | Best probe | Better than LogReg; 3 interaction features |
+| Gaussian logit smooth | 0-910: 0.910 LB | Applied to logits (not probs) before sigmoid |
+| Event smooth (local-max) | 0-908: 0.908 LB | Aves classes — preserves transient peaks |
+| Temperature scaling T=1.15 | 0-908: 0.908 LB | Softens overconfident logits |
+| CE loss + frame_loss=0 | Root-cause fix | Eliminates synthetic label gradient conflict |
+| Soundscape oversample 20× | SED training | Amplifies domain-relevant training signal |
 
 ### What Didn't Work
 
 | Technique | Result |
 |-----------|--------|
-| Embedding-head alone vs label-head | −0.07 LB (worse solo, but valuable in ensemble) |
-| FocalBCE loss on SED sigmoid outputs | Trivial minimum — loss expects logits, not probs |
-| soundscape_val_frac=1.0 + soundscape training | Data leak: val=0.9999 (sed-b0-v4, killed) |
-| Post-processing on individual recording holdout | No benefit (0.9780 raw vs 0.9778 +PP) |
-
-### Architecture Notes
-
-- **SED val metric is unreliable** when val files come from stations not in training soundscapes.
-  52% of val species absent from training soundscapes → use holdout AUC as primary metric.
-- **Perch ensemble ceiling** is ~0.978–0.982. SED is the primary path to exceed competitor (0.9883).
-- **Single Perch forward pass** extracts both 14795-dim label logits and 1536-dim embedding
-  simultaneously, enabling efficient 3-head inference with no redundant computation.
-
----
-
-## Embeddings Cache
-
-| Cache | Dim | Splits | Purpose |
-|-------|-----|--------|---------|
-| `embeddings_cache_nohuman` | 1536 | train=85536, holdout=21111, soundscape=739 | embedding_head |
-| `embeddings_cache_nohuman_label` | 234 | train=85536, holdout=21111, soundscape=739, pseudo=2421 | label_head |
+| Dual clip+frame loss (frame_loss=0.5) | Gradient conflict → SED gap vs competitor |
+| ASL + secondary_weight=1.0 | Amplifies noisy XC secondary labels |
+| CAWR scheduler | AUC collapse at restart epochs |
+| Gaussian smooth on probs (post-sigmoid) | Weaker than logit-space smoothing |
 
 ---
 
 ## Running Experiments
 
 ```bash
-# Train Perch label-head (cached embeddings, fast)
-python train.py --config configs/exp_nohuman_label_soundscape_train.yaml --gpu 0
+# Soundscape 4-fold SED (2 folds parallel on GPU1)
+CUDA_VISIBLE_DEVICES=1 nohup bash scripts/run_ss_4folds.sh > outputs/ss_4fold_chain.log 2>&1 &
 
-# Train SED end-to-end
-python train_sed.py --config configs/sed_b0_v5.yaml --gpu 1
+# Monitor + log to Excel
+python3 scripts/log_ss_folds_to_excel.py
 
-# Evaluate single model holdout AUC
-python evaluate_holdout.py --runs nohuman-embedding-soundscape
-
-# 3-model Perch ensemble holdout eval
-python evaluate_ensemble_v2_holdout.py
-
-# 4-model Perch+SED ensemble holdout eval
-python evaluate_ensemble_v3_holdout.py
-
-# Soundscape val AUC table (SS domain comparison)
-python evaluate_soundscape_val.py
-
-# Convert Perch head to TFLite for submission
-python convert_embedding_head_tflite.py --run nohuman-embedding-soundscape
+# SED holdout eval
+CUDA_VISIBLE_DEVICES=1 python scripts/eval_sed_holdout.py --checkpoint outputs/sed-ss-fold0/best.pt
 ```
 
 ---
 
-## Next Steps
+## Submission Rules
 
-1. **sed-b0-v5** (ep3/20, GPU1): Complete → holdout eval → 4-model ensemble
-2. **SED improvement**: Larger backbone (EfficientNet-B2/B4, EfficientNetV2-S), SpecAugment, more epochs
-3. **Submit v2**: 3-model Perch TFLite ensemble (weights ready, `submissions/ensemble_tflite.ipynb`)
-4. **Submit v3**: 4-model Perch+SED after `best_sed_b0_v5.pt` generated by SED watcher
+- Only submit when **individual SED soundscape val AUC > 0.9193** (v5 benchmark)
+- Only evaluate/submit **nohuman models** (non-nohuman results discarded from 2026-03-15)
+- All training must run on **GPU1** (`CUDA_VISIBLE_DEVICES=1`)
