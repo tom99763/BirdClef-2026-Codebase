@@ -14,9 +14,8 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 | v3-ensemble (Perch 70/30 + SED VLOM) | — | **0.921** | Bayesian probe PCA64+LogReg α=0.40 + SED 50/50 |
 | v9-asl-soup ensemble | — | 0.892 | First VLOM blend submission |
 | *Competitor SED (reference)* | *~0.90 soundscape* | — | *Our SED soundscape val AUC target* |
-| **sed-b0-v33 (WarmRestart)** | 0.7625 ep3 | — | 🔄 Training (GPU1), v33→v36 chain |
 
-> **Soundscape val gap**: Our best SED ~0.80 vs competitor ~0.90. v33-v36 experiments target this gap.
+> **Key gap**: Replacing competitor SED with our own → -0.013 LB (0.921→0.908). SED is the top priority.
 > Only nohuman models evaluated from 2026-03-15 onwards.
 
 ---
@@ -32,9 +31,6 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 | 2026-03-20 | v3-ensemble | 0.921 | Perch 70% Bayes + SED 50/50 VLOM + 3 tricks |
 | 2026-03-17 | v9-asl-soup ensemble | 0.892 | First competitive submission |
 
-**Key insight**: Replacing competitor SED with our own SED in ensemble → -0.013 LB drop (0.921→0.908).
-Our SED soundscape val AUC ~0.80 vs competitor ~0.90. Improving SED is top priority.
-
 ---
 
 ## Architecture Overview
@@ -49,58 +45,118 @@ Audio (60s) → 12×5s clips → Perch v2 TFLite →
   → lmax_pre_aves(α=0.1) → SoftRich(α=0.40) → cSEBBs → submission
 ```
 
-**LGBM probe**: `alpha=0.40` is the blend weight `final = (1-0.40)*perch_base + 0.40*lgbm_pred`.
-It is NOT a LogReg regularization param. The probe itself is LightGBM, not LogReg.
-
 Key techniques:
 - **Bayesian prior fusion**: site/hour joint priors fused into logits
 - **Texture smooth** (avg-neighbor, α=0.35): for Amphibia/Insecta classes
 - **Event smooth** (local-max, α=0.15): for Aves classes — preserves transient peaks
-- **Gaussian logit smooth**: `convolve1d([0.1,0.2,0.4,0.2,0.1])` on logits before sigmoid
-- **Temperature scaling**: T=1.15 on logits before sigmoid
 - **LGBM probe**: 74-dim features (PCA32 + raw/prior/base + seq + 3 interactions)
 
 ### 2. Post-Processing Pipeline (R51, OOF AUC 0.8164)
 
-Applied to SED branch in VLOM blend. Best pipeline found by `scripts/eval_smooth_experiments.py`:
-
 ```
-SED logits → lmax_pre_aves(α=0.1, radius=1, Aves-only idx 72-233)
-           → SoftRich(alpha=0.40)  [cross-file richness normalization]
+SED logits → lmax_pre_aves(α=0.1, Aves-only idx 72-233)
+           → SoftRich(alpha=0.40)
            → cSEBBs(cp_blend=0.60, cp_thr=0.05)
            → OOF AUC = 0.8164
 ```
 
-History of post-processing OOF AUC:
-- R46.08: `SoftRich+cp_blend0.60+cp_thr0.05+cSEBBs` = 0.8140 → **LB 0.926**
-- R50: `lmax_pre_aves(α=0.1)→SoftRich(α=0.38)→cSEBBs` = 0.8163
-- R51: `lmax_pre_aves(α=0.1)→SoftRich(α=0.40)→cSEBBs` = **0.8164** (current best OOF)
+### 3. SED — EfficientNet-B0 (v1, 5th-place inspired, running 2026-03-22)
 
-**R52 (running)**: bidirectional lmax, logit-scale sweep (lscale=0.9 → 0.8165), power scaling, adaptive nSEBBs.
-**R53 (queued)**: P_max soundscape lifting (BirdCLEF 2024 3rd place +0.01-0.02), per-class PCR nSEBBs, onset peak-finding.
-
-### 3. SED EfficientNet-B0 (current: v33-v36 improvement chain)
+**Complete rewrite** from scratch based on 5th place BirdCLEF 2025 solution.
+Old approach was fundamentally wrong (wrong data, wrong mel, missing key augmentations).
 
 ```
-Audio (5s) → MelSpec(224-mel, n_fft=2048, hop=512, fmin=0, fmax=16k) →
-  EfficientNet-B0 (tf_efficientnet_b0.ns_jft_in1k) → GEMFreqPool(p=3.0) → FC(234) → sigmoid
+train_audio/ (35k recordings) → AudioClipDataset (torchaudio, map-style)
+  → GPU mel: MelSpec(n_fft=2048, hop=512, n_mels=128, fmin=50, fmax=15000) + AmplitudeToDB
+  → FilterAugment (freq-band gain ramps, DCASE 2021, p=0.5)
+  → SpecAugment (2 time masks, 2 freq masks)
+  → SumixFreq (batch-level spectrogram mixup, key 5th-place trick)
+  → EfficientNet-B0 (tf_efficientnet_b0.ns_jft_in1k, 3-ch replication)
+  → GEMFreqPool(p=3.0) → AttentionSEDHead → sigmoid
+  → Focal BCE (γ=2.0)
+  → OneCycleLR (lr=1e-3, 30 epochs, 10% warmup)
 ```
 
-**Dual loss** (clip + frame):
-```
-total_loss = clip_w * clip_loss(clip_pred, labels)
-           + frame_w * BCE(frame_logit, frame_labels)
-```
-All custom clip losses (focal, bce_pos_weight, asl) now correctly include frame BCE.
-Bug: prior to 2026-03-22, `_compute_loss` else-branch silently dropped frame supervision.
+**Data split**: `train_folds.csv` (pre-computed 5-fold stratified by primary_label)
+**Validation**: ALL 66 labeled soundscape windows (best test-domain proxy)
+**Config**: `configs/sed_b0_v1.yaml`
 
-**v33-v36 improvement chain** (running on GPU1):
-| Version | Key change | Status |
-|---------|-----------|--------|
-| v33 | WarmRestart (T0=25, T_mult=2), bce dual loss | ep3/50, best=0.7625 |
-| v34 | Focal loss γ=2.0 + frame BCE (bug fixed) | Queued |
-| v35 | Focal loss γ=3.0 + frame BCE (bug fixed) | Queued |
-| v36 | BCE pos_weight=2.0 + frame BCE (bug fixed) | Queued |
+What changed vs old SED:
+| Old | New |
+|-----|-----|
+| Generator-based IterableDataset | Map-style Dataset + DataLoader shuffle |
+| n_fft=1024, hop=320, n_mels=128 | n_fft=2048, hop=512, n_mels=128, fmin=50, fmax=15000 |
+| No SumixFreq | SumixFreq (batch-level mixup) |
+| No FilterAugment | FilterAugment (DCASE 2021) |
+| Dual loss (clip+frame BCE) | Single Focal BCE (γ=2.0) |
+| Soundscape-based validation | All 66 labeled soundscape windows |
+| Custom fold splits | Pre-computed train_folds.csv (stratified) |
+| train on soundscapes too | train_audio/ only (soundscapes = validation) |
+
+### 4. ProtoSSM — Prototypical State Space Model (v1)
+
+Temporal model on **Perch v2 embeddings** from labeled soundscapes.
+
+```
+perch_labeled_ss.npz (66 labeled soundscape files, 12 windows each)
+  → Perch embeddings (B, 12, 1536) + teacher logits + site/hour prior
+  → Linear(1536→128) + LayerNorm + GELU
+  → 2× BidirectionalSelectiveSSM(d_model=128, d_state=16)
+  → Prototypical cosine head (234 learnable prototypes)
+  → Gated fusion with Perch teacher logits (per-class α)
+  → Focal BCE + 0.3×MSE distillation + 0.1×taxonomic BCE
+```
+
+**Config**: `configs/proto_ssm_v1.yaml`
+**Parameters**: ~390K
+
+---
+
+### 5. Noisy Student Pipeline (NEW — 2026-03-22)
+
+**Goal**: Train SED + EfficientSSM without Perch dependency (true student models).
+Both models take **raw audio** as input. 4 rounds × 5 folds × 2 models.
+
+#### SED Student (`train_sed_ns.py`)
+
+```
+train_audio/ + pseudo_labels/ns_rK.csv
+  → AudioClipDataset (same as SED v1)
+  → Same mel + FilterAugment + SpecAugment + SumixFreq
+  → EfficientNet-B0 → GEMFreqPool → AttentionSEDHead → sigmoid
+  → Focal BCE, OneCycleLR lr=1e-3, 30 epochs, early_stop=7
+  → Validation: labeled soundscape OOF macro AUC
+```
+
+#### EfficientSSM Student (`train_ssm_ns.py`)
+
+```
+train_audio/ (T=1) + pseudo soundscape sequences (T=12)
+  → raw clip (CLIP_SAMPLES) → Mel(128) → EfficientNet-B0(global_pool='avg') → (d_feat=1280)
+  → stack T clips → (B, T, 1280) → Linear(1280→256) + LayerNorm
+  → 2× BidirectionalSelectiveSSM(d_model=256, d_state=16)
+  → Linear → (B, T, n_classes)
+  → Focal BCE, AdamW lr=1e-3 (all params), 40 epochs, early_stop=7
+  → Validation: labeled soundscape sequences, per-window AUC
+```
+
+**Pseudo label generation**: `scripts/gen_pseudo_ns.py` (ensemble of SED OOF + SSM OOF + Perch teacher)
+**Perch embeddings for init**: `scripts/extract_perch_all_ss_emb.py` → `outputs/perch_all_ss_emb.npz`
+**Pipeline script**: `scripts/run_ns_pipeline.sh` (4 rounds sequential)
+**Configs**: `configs/sed_ns_b0_r{1-4}.yaml`, `configs/ssm_ns_b0_r{1-4}.yaml`
+**WandB**: project=`birdclef-2026`, tags=[model, round, fold]
+**Round 0**: `pseudo_labels/ns_r0.csv` (Perch teacher only, no student)
+
+---
+
+## Currently Running Experiments (2026-03-22)
+
+| Experiment | Config | Status | GPU | Log |
+|-----------|--------|--------|-----|-----|
+| **sed-ns-b0-r1 fold0** | `configs/sed_ns_b0_r1.yaml` | 🔄 Running | GPU1 | `outputs/logs/sed_ns_r1_fold0.log` |
+| **ssm-ns-b0-r1 fold0** | `configs/ssm_ns_b0_r1.yaml` | ⏳ Queued after SED | GPU1 | `outputs/logs/ssm_ns_r1_fold0.log` |
+
+Monitor: `python3 scripts/monitor_experiments.py --excel`
 
 ---
 
@@ -110,62 +166,59 @@ Bug: prior to 2026-03-22, `_compute_loss` else-branch silently dropped frame sup
 BirdClef-2026-Codebase/
 │
 ├── configs/
-│   ├── sed_b0_v*.yaml                        # SED experiment configs
-│   ├── sed_b0_v33_warmrestart.yaml           # v33: warm restart
-│   ├── sed_b0_v34_focal_g2.yaml              # v34: focal γ=2
-│   ├── sed_b0_v35_focal_g3.yaml              # v35: focal γ=3
-│   ├── sed_b0_v36_pos_weight.yaml            # v36: BCE pos_weight=2
-│   └── embed_distill_*.yaml                  # Embedding distillation experiments
+│   ├── sed_b0_v1.yaml              # SED v1 (5th-place inspired)
+│   ├── proto_ssm_v1.yaml           # ProtoSSM v1 (Perch-based temporal model)
+│   ├── sed_ns_b0_r{1-4}.yaml       # SED Noisy Student rounds 1-4
+│   └── ssm_ns_b0_r{1-4}.yaml       # EfficientSSM Noisy Student rounds 1-4
 │
-├── submissions_v3/                           # Current submission notebooks
-│   ├── birdclef-2026-v3-lgbm-infer.ipynb              # LGBM probe (LB 0.925)
-│   ├── birdclef-2026-v3-lgbm-event-smooth.ipynb       # + event smooth (LB 0.925)
-│   ├── birdclef-2026-v3-lgbm-event-r50-softrich-postproc.ipynb  # + R50/R51 post-proc
-│   ├── birdclef-2026-v3-lgbm-4fold.ipynb              # 4-fold LGBM probe ensemble
-│   └── weights/                                        # Model weights for Kaggle upload
+├── birdclef-2026/
+│   └── notebook resource/current_subs/  # Submission notebooks (LB 0.926)
+│       ├── lgbm-infer-branchens-ssm-full.ipynb    # Full SSM blend
+│       ├── lgbm-infer-branchens-ssm-light.ipynb   # Light SSM blend
+│       └── lgbm-branchens-csebbs-protossm-v4-full-postpro.ipynb  # Full postproc + SSM
 │
-├── event_smooth/                             # Post-processing experiment notebooks
-│   ├── postproc_R50_lmax_pre_aves_softrich.ipynb     # R50: OOF 0.8163
-│   ├── postproc_R51_lmax_pre_softrich_a040.ipynb     # R51: OOF 0.8164 (best)
-│   └── best_postproc_R51_*.ipynb                     # Save-best checkpoint
+├── event_smooth/                   # Post-processing experiments (R46→R51)
 │
 ├── src/
 │   ├── data/
-│   │   ├── dataset.py                       # CachedEmbeddingDataset, SoundscapeDataset
-│   │   ├── augment.py                       # Mixup, time masking, gain
-│   │   └── mel_dataset.py                   # MelClipDataset, MelSoundscapeDataset
-│   │                                        # SoftPseudoSoundscapeDataset
+│   │   ├── dataset.py              # CachedEmbeddingDataset, SoundscapeDataset
+│   │   └── augment.py              # Mixup, time masking, gain
 │   ├── model/
-│   │   ├── classifier.py                    # PerchClassifier (label/embedding head)
-│   │   ├── sed_model.py                     # SEDModel, GEMFreqPool, AttentionSEDHead
-│   │   ├── pcen.py                          # PCEN learnable frontend
-│   │   └── losses.py                        # FocalBCELoss, ASLoss
-│   └── utils/config.py                      # YAML config loader
+│   │   ├── proto_ssm.py            # ProtoSSM, SelectiveSSM (Perch-based)
+│   │   └── classifier.py           # PerchClassifier (label/embedding head)
+│   └── utils/config.py             # YAML config loader
 │
-├── train_sed.py                             # SED end-to-end training (raw audio → mel)
-│                                            # _compute_loss: dual loss fixed 2026-03-22
-│                                            # Supports: focal/bce_pos_weight/asl clip loss
-│                                            # + frame BCE always applied when frame_w>0
-├── train_distill.py                         # Perch→SED knowledge distillation
-├── train_embed_distill.py                   # Embedding distillation training
-├── train_sedp.py                            # SED_P (PCEN+MaskedBCE+LLRD+AMP)
+├── train_sed_ns.py                 # SED Noisy Student (EfficientNet-B0, raw audio)
+│                                   # AudioClipDataset + PseudoSoundscapeDataset
+│                                   # Focal BCE, OneCycleLR, early_stop=7, wandb
+│
+├── train_ssm_ns.py                 # EfficientSSM Noisy Student (raw audio)
+│                                   # EfficientNet-B0 + BiSSM, T=1/12 sequences
+│                                   # AdamW lr=1e-3, early_stop=7, wandb
+│
+├── train_proto_ssm.py              # ProtoSSM 5-fold training (Perch-based)
 │
 ├── scripts/
-│   ├── eval_smooth_experiments.py           # Post-processing sweep (R46→R53)
-│   │                                        # Finds optimal lmax/SoftRich/cSEBBs params
-│   ├── sweep_vlom_blend.py                  # Sweep PERCH_W/SED_W blend on soundscape val
-│   ├── eval_sed_holdout.py                  # SED holdout AUC eval
-│   ├── eval_sed_holdout_tta.py              # Holdout eval with TTA
-│   ├── eval_geo_holdout.py                  # Geo-holdout evaluation
-│   ├── pseudo_label_sed.py                  # Generate pseudo labels from SED
-│   └── update_exp_results.py               # Auto-update reports/exp_results.xlsx
+│   ├── gen_pseudo_ns.py                  # Generate pseudo labels (SED+SSM+Perch ensemble)
+│   ├── extract_perch_all_ss_emb.py       # Extract Perch emb for all soundscapes
+│   ├── run_ns_pipeline.sh                # 4-round Noisy Student pipeline
+│   ├── extract_ss_labeled_embeddings.py  # Build perch_labeled_ss.npz
+│   ├── monitor_experiments.py            # Status + Excel update (15-min cron)
+│   └── eval_smooth_experiments.py        # Post-processing sweep
 │
 ├── pseudo_labels/
-│   ├── round2_pseudo.csv ~ round5_pseudo.csv
-│   └── combined_pseudo_r1.csv
+│   ├── ns_r0.csv                   # Round 0: Perch teacher only
+│   └── ns_r{1-4}.csv               # Rounds 1-4: SED+SSM+Perch ensemble
+│
+├── outputs/
+│   ├── logs/
+│   │   ├── sed_ns_r1_fold{0-4}.log # SED NS training logs
+│   │   └── ssm_ns_r1_fold{0-4}.log # SSM NS training logs
+│   ├── sed-ns-b0-r{1-4}/           # SED NS checkpoints per round
+│   └── ssm-ns-b0-r{1-4}/           # SSM NS checkpoints per round
 │
 └── reports/
-    └── exp_results.xlsx                     # Experiment log (auto-updated)
+    └── exp_results.xlsx            # Experiment log (auto-updated by monitor)
 ```
 
 ---
@@ -181,44 +234,50 @@ BirdClef-2026-Codebase/
 | Bayesian prior fusion | ~+0.02 LB | Site/hour priors on Perch logits |
 | 3-model Perch ensemble | +0.0327 holdout | 0.9453 → 0.9780 |
 | VLOM blend (Perch+SED) | LB 0.892→0.921 | Geometric-RMS blend beats linear |
-| Event smooth (local-max α=0.15) | LB 0.908 | Aves classes — preserves transient peaks |
-| Gaussian logit smooth | LB 0.910 | Applied to logits (not probs) before sigmoid |
-| Temperature scaling T=1.15 | LB 0.908 | Softens overconfident logits |
-| lmax_pre_aves (α=0.1, Aves-only) | OOF +0.0001 | Local-max propagation in logit space |
 | SoftRich (α=0.40) | OOF 0.8164 | Cross-file richness normalization |
-| cSEBBs (cp_blend=0.60, cp_thr=0.05) | OOF 0.8140→0.8164 | Change-point rich-segment boosting |
-| Pseudo labels | +0.003 LB | Small but consistent |
-| Soundscape domain adaptation | +0.010 holdout | label-soundscape vs label-pseudo |
+| cSEBBs (cp_blend=0.60) | OOF 0.8140→0.8164 | Change-point rich-segment boosting |
+| SumixFreq (batch mixup) | Key aug | 5th place: batch-level spectrogram mixup |
+| FilterAugment (DCASE 2021) | Key aug | Frequency-band gain ramps |
 
 ### What Didn't Work
 
 | Technique | Result | Notes |
 |-----------|--------|-------|
-| Focal clip loss only (no frame BCE) | Silent bug | Frame supervision ignored — now fixed |
+| Old SED training approach | -0.013 LB | Wrong data (soundscape-centric), wrong mel, no SumixFreq |
+| Dual clip+frame loss | Bug-prone | Silently dropped frame supervision; now replaced with single focal |
 | ASL + secondary_weight=1.0 | Noisy gradients | Amplifies unreliable XC secondary labels |
-| CAWR scheduler | AUC collapse | Collapses at restart epochs |
-| PT-MAP (few-shot meta-learning) | No gain | lgbm-infer = ptmap-lgbm = 0.925. PT-MAP ineffective |
-| kNN probe (vs LGBM) | -0.002 LB | 0.925→0.923 when replacing LGBM with kNN |
-| Quantile-Mix / RankBlend (R31) | Catastrophic | Destroys class-relative ordering |
-| Gaussian smooth on probs (post-sigmoid) | Weaker | Logit-space smoothing consistently better |
-| Replacing competitor SED with our SED | -0.013 LB | 0.921→0.908 — our SED still weak on soundscapes |
+| PT-MAP (few-shot meta-learning) | No gain | lgbm-infer = ptmap-lgbm = 0.925 |
+| Gaussian smooth on probs | Weaker | Logit-space smoothing consistently better |
+| Pseudo labels in SED | Breaks diversity | Collapses Perch teacher signal diversity |
+
+### SED Root Cause Analysis (2026-03-22)
+
+The old SED approach had multiple fundamental problems:
+1. **Wrong primary data**: Trained mostly on soundscape windows (66 files) instead of `train_audio/` (35k recordings)
+2. **Wrong mel params**: n_fft=1024, hop=320 → underresolved; should be n_fft=2048, hop=512, fmin=50, fmax=15000
+3. **Missing SumixFreq**: The key batch-level spectrogram mixup from 5th place was missing
+4. **Dual loss complexity**: clip+frame BCE was complex and bug-prone; 5th place uses single focal BCE
+5. **Generator dataset**: IterableDataset can't be properly shuffled; map-style Dataset is correct
 
 ---
 
 ## Running Experiments
 
 ```bash
-# SED v33-v36 improvement chain (GPU1)
-CUDA_VISIBLE_DEVICES=1 nohup bash scripts/after_sed_v5.sh > outputs/sed_v33_v36_chain.log 2>&1 &
+# Noisy Student Pipeline (4 rounds, GPU1)
+ROUND=1 bash scripts/run_ns_pipeline.sh 2>&1 | tee outputs/ns_pipeline.log
 
-# Post-processing sweep (R46→R53)
-CUDA_VISIBLE_DEVICES=1 python3 scripts/eval_smooth_experiments.py
+# Single fold (SED NS)
+CUDA_VISIBLE_DEVICES=1 python train_sed_ns.py --config configs/sed_ns_b0_r1.yaml --fold 0 --device cuda:0
 
-# VLOM blend sweep (find optimal PERCH_W/SED_W)
-CUDA_VISIBLE_DEVICES=1 python3 scripts/sweep_vlom_blend.py
+# Single fold (SSM NS)
+CUDA_VISIBLE_DEVICES=1 python train_ssm_ns.py --config configs/ssm_ns_b0_r1.yaml --fold 0 --device cuda:0
 
-# SED holdout eval
-CUDA_VISIBLE_DEVICES=1 python scripts/eval_sed_holdout.py --checkpoint outputs/sed-b0-v33-warmrestart/best.pt
+# Generate pseudo labels for next round
+python scripts/gen_pseudo_ns.py --round 1 --sed_dir outputs/sed-ns-b0-r1 --ssm_dir outputs/ssm-ns-b0-r1
+
+# Monitor progress (Excel + status)
+python3 scripts/monitor_experiments.py --excel
 ```
 
 ---
@@ -228,4 +287,5 @@ CUDA_VISIBLE_DEVICES=1 python scripts/eval_sed_holdout.py --checkpoint outputs/s
 - Only submit when **individual SED soundscape val AUC > 0.9193** (v5 benchmark), OR as part of ensemble with competitor SED
 - Only evaluate/submit **nohuman models** (non-nohuman results discarded from 2026-03-15)
 - All training must run on **GPU1** (`CUDA_VISIBLE_DEVICES=1`)
+- **No unlabeled data** in current experiments — semi-supervised learning planned for later
 - Current LB anchor: **0.926** — only submit if expected to beat this
