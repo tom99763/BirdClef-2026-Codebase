@@ -1,0 +1,96 @@
+experiment:
+  name: sed-b0-v36-pos-weight
+  seed: 42
+
+# v36: Per-class positive-weight BCE (EDA-derived sqrt weighting)
+#
+# EDA findings (birdclef-2026/train.csv, 234 classes, 35549 samples):
+#   - Median class neg:pos = 341:1  (104 samples out of 35549)
+#   - 53 classes with 0 samples → Laplace-smoothed to n_pos=1
+#   - Max sqrt weight ≈ sqrt(35548/1) ≈ 188 → clipped to max_weight=20.0
+#
+# BCEPosWeightLoss design:
+#   - pos_weight[c] = sqrt(n_neg[c] / n_pos[c]), clipped to [1, 20]
+#   - Weights are class-specific vs focal loss which is sample-specific
+#   - Avoids focal loss trivial-minimum: weights are fixed scalars, not p-dependent
+#   - Dual loss (clip + frame) keeps spatial supervision.
+#   - No warmup: LR starts at max (1e-3) and decays monotonically (large→small).
+#
+# Comparison matrix:
+#   v31: BCE, no weighting, lr=1e-3, no warmup
+#   v34: FocalBCE gamma=2.0, alpha=0.75, lr=1e-3, no warmup
+#   v35: FocalBCE gamma=3.0, alpha=0.75, lr=1e-3, no warmup
+#   v36: BCEPosWeight sqrt(n_neg/n_pos) clip=20, lr=1e-3, no warmup  ← this
+
+data:
+  train_audio_dir: birdclef-2026/train_audio
+  train_soundscapes_dir: birdclef-2026/train_soundscapes
+  train_csv: birdclef-2026/train.csv
+  taxonomy_csv: birdclef-2026/taxonomy.csv
+  soundscapes_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  sample_submission_csv: birdclef-2026/sample_submission.csv
+  min_rating: 0.0
+  use_secondary_labels: true
+  secondary_label_weight: 1.0
+  max_files: null
+  noise_dir: null
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5
+  n_clips_per_file: 3
+
+mel:
+  n_fft: 2048
+  hop_length: 512
+  n_mels: 224
+  fmin: 0.0
+  fmax: 16000.0
+
+model:
+  backbone: tf_efficientnet_b0.ns_jft_in1k
+  pretrained: true
+  dropout: 0.1
+  in_chans: 3
+  use_gem: true
+  gem_p_init: 3.0
+  use_gpu_mel: true
+
+training:
+  epochs: 50
+  batch_size: 32
+  optimizer: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: cosine
+  warmup_epochs: 0
+  label_smoothing: 0.0
+  mixup_alpha: 0.5
+  loss: bce_pos_weight        # BCEPosWeightLoss: per-class sqrt(n_neg/n_pos) clip=20
+  clip_loss_weight: 0.5
+  frame_loss_weight: 0.5
+  soundscape_only: false
+  use_soundscapes_in_train: false
+  soundscape_val_frac: 1.0
+  soundscape_oversample: 1
+  save_topk_checkpoints: 5
+  early_stopping_patience: 20
+
+augmentation:
+  enabled: true
+  noise_level: 0.005
+  gain_range: [0.7, 1.3]
+  time_masking: true
+  time_mask_param: 30
+  freq_masking: true
+  freq_mask_param: 30
+
+wandb:
+  enabled: true
+  entity: null
+  project: birdclef-2026
+  tags: [SED, v36, bce-pos-weight, sqrt-weighting, no-warmup]
+
+output:
+  dir: outputs
+  checkpoint_dir: checkpoints
