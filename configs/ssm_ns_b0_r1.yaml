@@ -1,0 +1,44 @@
+experiment:
+  name: ssm-ns-b0-r1
+  seed: 42
+  round: 1
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  pseudo_labels_csv:     pseudo_labels/ns_r0.csv
+  n_folds:               5
+
+model:
+  backbone:        tf_efficientnet_b0.ns_jft_in1k
+  d_model:         256
+  d_state:         16
+  n_ssm_layers:    2
+  n_windows:       12
+  dropout:         0.1
+  drop_path_rate:  0.0
+  n_mels:          224
+  n_fft:           2048
+  hop_length:      512
+  fmin:            0
+  fmax:            16000
+  top_db:          80.0
+  peak_norm:       false
+  freq_mask:       24
+  time_mask:       32
+
+training:
+  epochs:            40
+  batch_size:        16
+  pseudo_batch_size: 4
+  learning_rate:     1.0e-3
+  weight_decay:      1.0e-4
+  focal_gamma:       2.0
+  pseudo_weight:     0.5
+
+output:
+  dir:         outputs/ssm-ns-b0-r1
+  infer_all_ss: true
