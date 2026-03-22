@@ -1,0 +1,94 @@
+experiment:
+  name: sed-b0-v35-focal-g3
+  seed: 42
+
+# v35: Binary Focal Loss, gamma=3.0, alpha=0.75 (EDA-corrected, higher focus)
+#
+# EDA findings (birdclef-2026/train.csv, 234 classes, 35549 samples):
+#   - Median class neg:pos = 341:1  (104 samples out of 35549)
+#   - Max imbalance: ~35548:1 (53 classes with 0 samples)
+#   - Insecta (28 classes): median 0 samples — extreme tail
+#
+# Focal loss design rationale vs v34:
+#   - gamma=3.0: stronger suppression of easy negatives than gamma=2.0
+#     Rationale: Our max imbalance (35548:1) is far beyond RetinaNet's ~1:1000.
+#     At extreme imbalance, easy-negatives dominate even after gamma=2.0 suppression.
+#     gamma=3.0 pushes harder toward the 0-sample and <10-sample class tail.
+#   - alpha=0.75: same as v34 — positives weighted 3x higher to avoid trivial min
+#   - Direct ablation vs v34: only change is gamma (2.0 → 3.0)
+#   - No warmup: LR starts at max (1e-3) and decays monotonically (large→small).
+
+data:
+  train_audio_dir: birdclef-2026/train_audio
+  train_soundscapes_dir: birdclef-2026/train_soundscapes
+  train_csv: birdclef-2026/train.csv
+  taxonomy_csv: birdclef-2026/taxonomy.csv
+  soundscapes_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  sample_submission_csv: birdclef-2026/sample_submission.csv
+  min_rating: 0.0
+  use_secondary_labels: true
+  secondary_label_weight: 1.0
+  max_files: null
+  noise_dir: null
+
+audio:
+  sample_rate: 32000
+  clip_duration: 5
+  n_clips_per_file: 3
+
+mel:
+  n_fft: 2048
+  hop_length: 512
+  n_mels: 224
+  fmin: 0.0
+  fmax: 16000.0
+
+model:
+  backbone: tf_efficientnet_b0.ns_jft_in1k
+  pretrained: true
+  dropout: 0.1
+  in_chans: 3
+  use_gem: true
+  gem_p_init: 3.0
+  use_gpu_mel: true
+
+training:
+  epochs: 50
+  batch_size: 32
+  optimizer: adamw
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: cosine
+  warmup_epochs: 0
+  label_smoothing: 0.0
+  mixup_alpha: 0.5
+  loss: focal_bce             # FocalBCELossTorch
+  focal_gamma: 3.0            # EDA: max imbalance ~35548:1 → gamma=3.0 for extreme tail
+  focal_alpha: 0.75           # EDA: corrected → pos needs 3x weight to avoid trivial min
+  clip_loss_weight: 0.5
+  frame_loss_weight: 0.5
+  soundscape_only: false
+  use_soundscapes_in_train: false
+  soundscape_val_frac: 1.0
+  soundscape_oversample: 1
+  save_topk_checkpoints: 5
+  early_stopping_patience: 20
+
+augmentation:
+  enabled: true
+  noise_level: 0.005
+  gain_range: [0.7, 1.3]
+  time_masking: true
+  time_mask_param: 30
+  freq_masking: true
+  freq_mask_param: 30
+
+wandb:
+  enabled: true
+  entity: null
+  project: birdclef-2026
+  tags: [SED, v35, focal-bce, gamma3, alpha0.75, no-warmup]
+
+output:
+  dir: outputs
+  checkpoint_dir: checkpoints

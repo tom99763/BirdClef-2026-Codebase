@@ -413,7 +413,14 @@ def _compute_loss(loss_fn, clip_pred, frame_logit, labels, clip_w=1.0, frame_w=0
             return clip_w * clip_loss + frame_w * frame_loss
         return clip_loss
     else:
-        return loss_fn(clip_pred, labels)
+        # Custom loss (focal_bce, bce_pos_weight, asl):
+        # clip loss uses the custom loss_fn; frame loss uses plain BCE on logits.
+        clip_loss = loss_fn(clip_pred, labels)
+        if frame_w > 0 and frame_logit is not None:
+            frame_labels = labels.unsqueeze(1).expand_as(frame_logit)
+            frame_loss = F.binary_cross_entropy_with_logits(frame_logit, frame_labels)
+            return clip_w * clip_loss + frame_w * frame_loss
+        return clip_w * clip_loss
 
 
 def train_epoch(
