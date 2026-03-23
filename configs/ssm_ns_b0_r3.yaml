@@ -9,7 +9,7 @@ data:
   soundscape_dir:        birdclef-2026/train_soundscapes
   soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
   taxonomy_csv:          birdclef-2026/taxonomy.csv
-  pseudo_labels_csv:     pseudo_labels/ns_r2.csv
+  pseudo_labels_csv:     pseudo_labels/ssm_r2.csv  # SSM-only pseudo from round 2
   n_folds:               5
 
 model:
