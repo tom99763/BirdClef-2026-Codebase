@@ -120,9 +120,51 @@ def get_species_cols(df: pd.DataFrame) -> list:
     return [c for c in df.columns if c not in non_species]
 
 
+def merge_5s_to_10s(df: pd.DataFrame, species_cols: list) -> pd.DataFrame:
+    """Convert 5s Perch windows to 10s-aligned pseudo labels.
+
+    For each 10s training clip (stride=5s), the pseudo label is the max across
+    the two overlapping 5s windows — matches BirdCLEF 2025 1st place:
+    "the maximum probability for each label was taken across the segments within the interval."
+
+    Input row_id format:  {soundscape_id}_{end_sec}   e.g. ...080005_10
+    Output row_id format: {soundscape_id}_{end_sec}   e.g. ...080005_10 (10s end times: 10,15,20...)
+    """
+    rows_out = []
+    # Group by soundscape file
+    df = df.copy()
+    df['_fname'] = df['row_id'].apply(lambda r: str(r).rsplit('_', 1)[0])
+    df['_offset'] = df['row_id'].apply(lambda r: int(str(r).rsplit('_', 1)[1]))
+
+    for fname, grp in df.groupby('_fname'):
+        grp = grp.sort_values('_offset').reset_index(drop=True)
+        offsets = grp['_offset'].tolist()   # e.g. [5, 10, 15, 20, ..., 60]
+        probs   = grp[species_cols].values  # (N, 234)
+
+        # Build a map: offset → probability row
+        off2row = {o: i for i, o in enumerate(offsets)}
+
+        # Generate 10s windows: end times = 10, 15, 20, ..., max_offset+5 (up to 12 windows)
+        max_off = max(offsets)
+        for end in range(10, max_off + 6, 5):
+            prev = end - 5   # the 5s window just before this end
+            curr = end       # the 5s window ending at this end
+            rows = [probs[off2row[o]] for o in [prev, curr] if o in off2row]
+            if not rows:
+                continue
+            merged = np.max(rows, axis=0)   # max across overlapping 5s windows
+            new_rid = f"{fname}_{end}"
+            rows_out.append([new_rid] + merged.tolist())
+
+    out = pd.DataFrame(rows_out, columns=['row_id'] + species_cols)
+    print(f"  merge_5s_to_10s: {len(df)} 5s rows → {len(out)} 10s rows")
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--round',      type=int, required=True, help='Pseudo label round number')
+    parser.add_argument('--clip_sec',   type=int, default=10, help='Student training clip duration (s)')
     parser.add_argument('--perch_csv',  default='outputs/perch_teacher_all_ss.csv')
     parser.add_argument('--sed_dir',    default=None, help='SED experiment dir (has all_ss_probs.npz)')
     parser.add_argument('--ssm_dir',    default=None, help='SSM experiment dir (has all_ss_probs.npz)')
@@ -145,6 +187,12 @@ def main():
     perch_df     = load_perch_probs(args.perch_csv)
     species_cols = get_species_cols(perch_df)
     assert len(species_cols) == NUM_CLASSES, f"Expected 234 species cols, got {len(species_cols)}"
+
+    # Merge 5s Perch windows to match student clip duration (e.g. 10s)
+    if args.clip_sec > 5:
+        print(f"Merging 5s Perch windows → {args.clip_sec}s clips (max across overlapping windows)")
+        perch_df = merge_5s_to_10s(perch_df, species_cols)
+
     row_ids      = perch_df['row_id'].astype(str).tolist()
     perch_probs  = perch_df[species_cols].values.astype(np.float32)
 

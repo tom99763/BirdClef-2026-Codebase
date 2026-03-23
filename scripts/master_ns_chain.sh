@@ -30,6 +30,7 @@ log "Teacher extraction done."
 log "Generating pseudo_labels/ns_r0.csv from new teacher..."
 python3 scripts/gen_pseudo_ns.py \
     --round    0 \
+    --clip_sec 10 \
     --perch_csv outputs/perch_teacher_all_ss.csv \
     --perch_w  1.0 \
     --out      pseudo_labels/ns_r0.csv \

@@ -232,6 +232,12 @@ NUM_CLASSES  = 234
 N_WINDOWS    = 12
 
 
+def absmax_normalize(audio: np.ndarray) -> np.ndarray:
+    """Normalize audio to [-1, 1] by absolute maximum (1st place technique)."""
+    m = np.abs(audio).max()
+    return audio / (m + 1e-8) if m > 1e-8 else audio
+
+
 def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> np.ndarray:
     try:
         audio, orig_sr = sf.read(path, dtype='float32', always_2d=False)
@@ -246,7 +252,7 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
     else:
         start = np.random.randint(0, len(audio) - n_samples + 1)
         audio = audio[start:start + n_samples]
-    return audio.astype(np.float32)
+    return absmax_normalize(audio.astype(np.float32))
 
 
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
@@ -265,7 +271,7 @@ def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
         audio = np.pad(audio, (0, n_samples - len(audio)))
     else:
         audio = audio[:n_samples]
-    return audio.astype(np.float32)
+    return absmax_normalize(audio.astype(np.float32))
 
 
 # ── Datasets ───────────────────────────────────────────────────────────────────
@@ -595,19 +601,17 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                 p_labels = p_labels.to(device)  # (Bp, T, n_classes)
 
                 if pseudo_mixup_a > 0 and p_wavs.shape[0] > 1:
-                    # Pseudo × pseudo MixUp with max labels
-                    lam = float(torch.distributions.Beta(pseudo_mixup_a, pseudo_mixup_a).sample())
+                    # Pseudo × pseudo MixUp with max labels, fixed lam=0.5 (1st place)
                     idx = torch.randperm(p_wavs.shape[0], device=device)
-                    p_wavs   = lam * p_wavs   + (1 - lam) * p_wavs[idx]
+                    p_wavs   = 0.5 * p_wavs   + 0.5 * p_wavs[idx]
                     p_labels = torch.max(p_labels, p_labels[idx])  # union
 
                     # Cross-domain mix: blend labeled clips into pseudo sequences
                     # Broadcast labeled clip (B, CLIP) across T windows of pseudo (Bp, T, CLIP)
                     n_cross = min(p_wavs.shape[0], wavs.shape[0])
-                    lam_c = float(torch.distributions.Beta(pseudo_mixup_a, pseudo_mixup_a).sample())
                     lab_clips = wavs[:n_cross, 0, :]                              # (n_cross, CLIP)
                     lab_clips = lab_clips.unsqueeze(1).expand(-1, p_wavs.shape[1], -1)  # (n_cross, T, CLIP)
-                    p_wavs[:n_cross]   = lam_c * p_wavs[:n_cross] + (1 - lam_c) * lab_clips
+                    p_wavs[:n_cross]   = 0.5 * p_wavs[:n_cross] + 0.5 * lab_clips
                     lab_lbls = labels[:n_cross].unsqueeze(1).expand(-1, p_wavs.shape[1], -1)  # (n_cross, T, C)
                     p_labels[:n_cross] = torch.max(p_labels[:n_cross], lab_lbls)  # union
 

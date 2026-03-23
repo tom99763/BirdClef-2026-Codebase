@@ -151,19 +151,25 @@ class SpecAug(nn.Module):
         return x
 
 
-def mixup(x, y, alpha=0.4):
-    """Mixup augmentation — audio mixed linearly, labels take union (max).
-
-    1st place BirdCLEF 2025: labels = max(y_a, y_b) because mixing two audio
-    clips means all species from both clips are present in the mix.
+def absmax_normalize(audio: np.ndarray) -> np.ndarray:
+    """Normalize audio by absolute maximum (1st place BirdCLEF 2025).
+    Ensures consistent amplitude scale before MixUp blending.
     """
-    if alpha <= 0:
-        return x, y
-    lam = np.random.beta(alpha, alpha)
+    m = np.abs(audio).max()
+    return audio / (m + 1e-8) if m > 1e-8 else audio
+
+
+def audio_mixup(x: torch.Tensor, y: torch.Tensor) -> tuple:
+    """MixUp on raw audio with fixed lam=0.5 (1st place BirdCLEF 2025).
+
+    Key insight from 1st place: variable lam near 0 or 1 suppresses meaningful
+    signal. Constant 0.5 ensures both clips always contribute equally.
+    Labels take union (max) because all species from both clips are present.
+    """
     B = x.shape[0]
     idx = torch.randperm(B, device=x.device)
-    mixed_x = lam * x + (1 - lam) * x[idx]
-    mixed_y = torch.max(y, y[idx])          # union of labels
+    mixed_x = 0.5 * x + 0.5 * x[idx]
+    mixed_y = torch.max(y, y[idx])
     return mixed_x, mixed_y
 
 
@@ -175,7 +181,7 @@ NUM_CLASSES = 234
 
 
 def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> np.ndarray:
-    """Load audio, pad/trim to n_samples."""
+    """Load audio, pad/trim to n_samples, absmax normalize."""
     try:
         audio, orig_sr = sf.read(path, dtype='float32', always_2d=False)
         if audio.ndim == 2:
@@ -187,15 +193,14 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
     if len(audio) < n_samples:
         audio = np.pad(audio, (0, n_samples - len(audio)))
     else:
-        # Random crop during training
         start = np.random.randint(0, len(audio) - n_samples + 1)
         audio = audio[start:start + n_samples]
-    return audio.astype(np.float32)
+    return absmax_normalize(audio.astype(np.float32))
 
 
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
                   n_samples: int = CLIP_SAMPLES) -> np.ndarray:
-    """Load an audio clip from a soundscape at a given second offset."""
+    """Load soundscape clip by end-time offset, absmax normalize."""
     try:
         start_sample = max(0, offset_sec - n_samples // sr) * sr
         audio, orig_sr = sf.read(path, start=start_sample, frames=n_samples * 2,
@@ -210,7 +215,26 @@ def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
         audio = np.pad(audio, (0, n_samples - len(audio)))
     else:
         audio = audio[:n_samples]
-    return audio.astype(np.float32)
+    return absmax_normalize(audio.astype(np.float32))
+
+
+def load_ss_clip_by_start(path: str, start_sec: int, sr: int = SR,
+                           n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+    """Load soundscape clip by start time, absmax normalize."""
+    try:
+        audio, orig_sr = sf.read(path, start=start_sec * sr, frames=n_samples * 2,
+                                  dtype='float32', always_2d=False)
+        if audio.ndim == 2:
+            audio = audio.mean(axis=1)
+        if orig_sr != sr:
+            audio = librosa.resample(audio, orig_sr=orig_sr, target_sr=sr)
+    except Exception:
+        return np.zeros(n_samples, dtype=np.float32)
+    if len(audio) < n_samples:
+        audio = np.pad(audio, (0, n_samples - len(audio)))
+    else:
+        audio = audio[:n_samples]
+    return absmax_normalize(audio.astype(np.float32))
 
 
 class TrainAudioDataset(Dataset):
@@ -249,31 +273,73 @@ class TrainAudioDataset(Dataset):
 
 
 class PseudoSoundscapeDataset(Dataset):
-    """Dataset for pseudo-labeled soundscape 5-second windows."""
+    """Pseudo-labeled soundscape dataset — 1st place BirdCLEF 2025 design.
+
+    Key features:
+    - Random interval selection: randomly picks a clip-sized interval from each
+      soundscape instead of fixed stride, providing more augmentation.
+    - Max-pool labels: pseudo label = max over all pseudo windows covered by the
+      random interval, matching how 1st place handles multi-frame aggregation.
+    - WeightedRandomSampler support: soundscapes with higher total confidence
+      (sum of per-soundscape max class probs) are sampled more frequently,
+      giving preference to high-quality pseudo labels.
+    """
 
     def __init__(self, pseudo_df: pd.DataFrame, ss_dir: str, species_cols: list):
-        self.df           = pseudo_df.reset_index(drop=True)
         self.ss_dir       = ss_dir
         self.species_cols = species_cols
 
-        # Parse filenames and offsets from row_id
-        import re
-        self._paths   = []
-        self._offsets = []
-        for rid in self.df['row_id']:
-            parts = str(rid).rsplit('_', 1)
-            fname = parts[0] + '.ogg'
-            off   = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 5
-            self._paths.append(os.path.join(ss_dir, fname))
-            self._offsets.append(off)
+        # Group by soundscape, build per-soundscape structure
+        pseudo_df = pseudo_df.copy()
+        pseudo_df['_fname']  = pseudo_df['row_id'].apply(
+            lambda r: str(r).rsplit('_', 1)[0] + '.ogg')
+        pseudo_df['_offset'] = pseudo_df['row_id'].apply(
+            lambda r: int(str(r).rsplit('_', 1)[1]) if str(r).rsplit('_', 1)[-1].isdigit() else 5)
+
+        self._soundscapes = []   # list of (path, offsets_array, probs_array)
+        self._weights     = []
+
+        for fname, grp in pseudo_df.groupby('_fname'):
+            grp     = grp.sort_values('_offset').reset_index(drop=True)
+            offsets = grp['_offset'].values                              # (N,) end-times
+            probs   = grp[species_cols].values.astype(np.float32)        # (N, 234)
+            path    = os.path.join(ss_dir, fname)
+            # Weight = sum of per-window max class prob (1st place WeightedRandomSampler)
+            weight  = float(probs.max(axis=1).sum())
+            self._soundscapes.append((path, offsets, probs))
+            self._weights.append(max(weight, 1e-6))
 
     def __len__(self):
-        return len(self.df)
+        return len(self._soundscapes)
+
+    def get_weights(self):
+        """Return per-soundscape sampling weights for WeightedRandomSampler."""
+        return self._weights
 
     def __getitem__(self, idx):
-        audio = load_ss_clip(self._paths[idx], self._offsets[idx])
-        label = self.df.iloc[idx][self.species_cols].values.astype(np.float32)
-        return torch.from_numpy(audio), torch.from_numpy(label)
+        path, offsets, probs = self._soundscapes[idx]
+        clip_dur = CLIP_SAMPLES // SR
+
+        # Random start: [0, max_start] where max_start keeps clip within soundscape
+        max_offset_end = int(offsets.max())
+        max_start = max(0, max_offset_end - clip_dur)
+        start_sec = np.random.randint(0, max_start + 1)
+
+        audio = load_ss_clip_by_start(path, start_sec)
+
+        # Max-pool pseudo labels across all windows covered by [start_sec, start_sec+clip_dur]
+        # offset is end-time: window i covers [offset-5, offset]
+        clip_end = start_sec + clip_dur
+        covered  = [(i, o) for i, o in enumerate(offsets)
+                    if o > start_sec and (o - 5) < clip_end]
+        if covered:
+            label = probs[[i for i, _ in covered]].max(axis=0)
+        else:
+            # Fallback: nearest window
+            nearest = int(np.argmin(np.abs(offsets - (start_sec + clip_dur // 2))))
+            label   = probs[nearest]
+
+        return torch.from_numpy(audio), torch.from_numpy(label.astype(np.float32))
 
 
 class SoundscapeValDataset(Dataset):
@@ -416,7 +482,11 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                                num_workers=4, pin_memory=True, drop_last=True)
     pseudo_loader = None
     if pseudo_ds and len(pseudo_ds) > 0:
-        pseudo_loader = DataLoader(pseudo_ds, batch_size=bs, shuffle=True,
+        from torch.utils.data import WeightedRandomSampler
+        _w = pseudo_ds.get_weights()
+        _sampler = WeightedRandomSampler(weights=_w, num_samples=len(pseudo_ds),
+                                         replacement=True)
+        pseudo_loader = DataLoader(pseudo_ds, batch_size=bs, sampler=_sampler,
                                    num_workers=2, pin_memory=True, drop_last=True)
     val_loader    = DataLoader(val_ds, batch_size=bs, shuffle=False,
                                num_workers=2, pin_memory=True)
@@ -481,15 +551,11 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
         ep_loss = 0.0
         n_steps = 0
 
-        # 1st place: combine labeled + pseudo into one batch, cross-domain MixUp
+        # 1st place: combine labeled + pseudo, MixUp on RAW AUDIO with fixed lam=0.5
         pseudo_iter = iter(pseudo_loader) if pseudo_loader else None
         for audio_waves, audio_labels in audio_loader:
             audio_waves  = audio_waves.to(device)
             audio_labels = audio_labels.to(device)
-
-            with torch.no_grad():
-                mel = mel_tf(audio_waves)
-            mel = spec_aug(mel)
 
             if pseudo_iter:
                 try:
@@ -499,23 +565,22 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                     pseudo_waves, pseudo_labels = next(pseudo_iter)
                 pseudo_waves  = pseudo_waves.to(device)
                 pseudo_labels = pseudo_labels.to(device)
-                with torch.no_grad():
-                    pseudo_mel = mel_tf(pseudo_waves)
-                pseudo_mel = spec_aug(pseudo_mel)
 
-                # Concatenate labeled + pseudo → single cross-domain MixUp
-                combined_mel    = torch.cat([mel, pseudo_mel], dim=0)
+                # Concatenate → audio-level MixUp with fixed lam=0.5 (1st place)
+                combined_audio  = torch.cat([audio_waves, pseudo_waves], dim=0)
                 combined_labels = torch.cat([audio_labels, pseudo_labels], dim=0)
-                combined_mel, combined_labels = mixup(combined_mel, combined_labels, mixup_a)
-
-                with torch.cuda.amp.autocast():
-                    out  = model(combined_mel)
-                    loss = criterion(out['clipwise_logit'], combined_labels)
+                combined_audio, combined_labels = audio_mixup(combined_audio, combined_labels)
             else:
-                mel, audio_labels = mixup(mel, audio_labels, mixup_a)
-                with torch.cuda.amp.autocast():
-                    out  = model(mel)
-                    loss = criterion(out['clipwise_logit'], audio_labels)
+                combined_audio, combined_labels = audio_mixup(audio_waves, audio_labels)
+
+            # Mel + SpecAugment AFTER audio MixUp
+            with torch.no_grad():
+                combined_mel = mel_tf(combined_audio)
+            combined_mel = spec_aug(combined_mel)
+
+            with torch.cuda.amp.autocast():
+                out  = model(combined_mel)
+                loss = criterion(out['clipwise_logit'], combined_labels)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
