@@ -27,10 +27,10 @@ python3 scripts/extract_perch_teacher_all_ss.py \
 log "Teacher extraction done."
 
 # ── 3. Regenerate Round-0 pseudo labels ──────────────────────────────────────
-log "Generating pseudo_labels/ns_r0.csv from new teacher..."
+log "Generating pseudo_labels/ns_r0.csv from new teacher (20s clip format)..."
 python3 scripts/gen_pseudo_ns.py \
     --round    0 \
-    --clip_sec 10 \
+    --clip_sec 20 \
     --perch_csv outputs/perch_teacher_all_ss.csv \
     --perch_w  1.0 \
     --out      pseudo_labels/ns_r0.csv \
@@ -38,15 +38,15 @@ python3 scripts/gen_pseudo_ns.py \
 log "ns_r0.csv ready."
 
 # ── 4. Launch SED and SSM chains in parallel ─────────────────────────────────
-log "Launching SED-10s NS chain..."
-nohup bash scripts/auto_sed_ns_10s_full.sh \
-    > "${LOG}/auto_sed_ns_10s_full.log" 2>&1 &
+log "Launching SED-20s NS chain (1st-place clip length + SumixFreq)..."
+nohup bash scripts/auto_sed_ns_20s_full.sh \
+    > "${LOG}/auto_sed_ns_20s_full.log" 2>&1 &
 SED_PID=$!
 log "SED chain PID: ${SED_PID}"
 
-log "Launching SSM-10s NS chain..."
-nohup bash scripts/auto_ssm_ns_10s_full.sh \
-    > "${LOG}/auto_ssm_ns_10s_full.log" 2>&1 &
+log "Launching SSM-20s NS chain (1st-place clip length + SumixFreq)..."
+nohup bash scripts/auto_ssm_ns_20s_full.sh \
+    > "${LOG}/auto_ssm_ns_20s_full.log" 2>&1 &
 SSM_PID=$!
 log "SSM chain PID: ${SSM_PID}"
 

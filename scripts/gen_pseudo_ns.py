@@ -120,44 +120,46 @@ def get_species_cols(df: pd.DataFrame) -> list:
     return [c for c in df.columns if c not in non_species]
 
 
-def merge_5s_to_10s(df: pd.DataFrame, species_cols: list) -> pd.DataFrame:
-    """Convert 5s Perch windows to 10s-aligned pseudo labels.
+def merge_5s_to_Ns(df: pd.DataFrame, species_cols: list,
+                   clip_sec: int = 10, stride_sec: int = 5) -> pd.DataFrame:
+    """Convert 5s Perch windows to N-second-aligned pseudo labels (generalised).
 
-    For each 10s training clip (stride=5s), the pseudo label is the max across
-    the two overlapping 5s windows — matches BirdCLEF 2025 1st place:
-    "the maximum probability for each label was taken across the segments within the interval."
+    For each N-second training clip (stride=stride_sec), the pseudo label is
+    max across all 5s Perch windows that fall within the clip — matches
+    BirdCLEF 2025 1st place:
+    "the maximum probability for each label was taken across the segments
+    within the interval."
 
-    Input row_id format:  {soundscape_id}_{end_sec}   e.g. ...080005_10
-    Output row_id format: {soundscape_id}_{end_sec}   e.g. ...080005_10 (10s end times: 10,15,20...)
+    clip_sec=10  → each clip covers 2 Perch windows (prev + curr)
+    clip_sec=20  → each clip covers 4 Perch windows
+
+    Input row_id format:  {soundscape_id}_{end_sec}   (5s grid)
+    Output row_id format: {soundscape_id}_{end_sec}   (stride_sec grid, start ≥ clip_sec)
     """
     rows_out = []
-    # Group by soundscape file
     df = df.copy()
-    df['_fname'] = df['row_id'].apply(lambda r: str(r).rsplit('_', 1)[0])
+    df['_fname']  = df['row_id'].apply(lambda r: str(r).rsplit('_', 1)[0])
     df['_offset'] = df['row_id'].apply(lambda r: int(str(r).rsplit('_', 1)[1]))
 
     for fname, grp in df.groupby('_fname'):
-        grp = grp.sort_values('_offset').reset_index(drop=True)
-        offsets = grp['_offset'].tolist()   # e.g. [5, 10, 15, 20, ..., 60]
-        probs   = grp[species_cols].values  # (N, 234)
-
-        # Build a map: offset → probability row
+        grp    = grp.sort_values('_offset').reset_index(drop=True)
+        offsets = grp['_offset'].tolist()
+        probs   = grp[species_cols].values   # (N_perch, 234)
         off2row = {o: i for i, o in enumerate(offsets)}
-
-        # Generate 10s windows: end times = 10, 15, 20, ..., max_offset+5 (up to 12 windows)
         max_off = max(offsets)
-        for end in range(10, max_off + 6, 5):
-            prev = end - 5   # the 5s window just before this end
-            curr = end       # the 5s window ending at this end
-            rows = [probs[off2row[o]] for o in [prev, curr] if o in off2row]
+
+        # Generate clip end-times with stride_sec step, starting at clip_sec
+        for end in range(clip_sec, max_off + stride_sec + 1, stride_sec):
+            # Perch 5s windows whose end-time falls within [end-clip_sec+5 .. end]
+            window_offsets = range(end - clip_sec + 5, end + 1, 5)
+            rows = [probs[off2row[o]] for o in window_offsets if o in off2row]
             if not rows:
                 continue
-            merged = np.max(rows, axis=0)   # max across overlapping 5s windows
-            new_rid = f"{fname}_{end}"
-            rows_out.append([new_rid] + merged.tolist())
+            merged = np.max(rows, axis=0)   # max across overlapping Perch windows
+            rows_out.append([f"{fname}_{end}"] + merged.tolist())
 
     out = pd.DataFrame(rows_out, columns=['row_id'] + species_cols)
-    print(f"  merge_5s_to_10s: {len(df)} 5s rows → {len(out)} 10s rows")
+    print(f"  merge_5s_to_Ns(clip={clip_sec}s): {len(df)} 5s rows → {len(out)} {clip_sec}s rows")
     return out
 
 
@@ -188,10 +190,10 @@ def main():
     species_cols = get_species_cols(perch_df)
     assert len(species_cols) == NUM_CLASSES, f"Expected 234 species cols, got {len(species_cols)}"
 
-    # Merge 5s Perch windows to match student clip duration (e.g. 10s)
+    # Merge 5s Perch windows to match student clip duration (e.g. 10s, 20s)
     if args.clip_sec > 5:
         print(f"Merging 5s Perch windows → {args.clip_sec}s clips (max across overlapping windows)")
-        perch_df = merge_5s_to_10s(perch_df, species_cols)
+        perch_df = merge_5s_to_Ns(perch_df, species_cols, clip_sec=args.clip_sec)
 
     row_ids      = perch_df['row_id'].astype(str).tolist()
     perch_probs  = perch_df[species_cols].values.astype(np.float32)

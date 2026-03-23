@@ -1,0 +1,47 @@
+experiment:
+  name: sed-ns-b0-20s-r3
+  seed: 42
+  round: 1
+
+data:
+  train_csv:              birdclef-2026/train.csv
+  soundscape_labels_csv:  birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:           birdclef-2026/taxonomy.csv
+  audio_dir:              birdclef-2026/train_audio
+  soundscape_dir:         birdclef-2026/train_soundscapes
+  pseudo_labels_csv:      pseudo_labels/ns_r2.csv   # Round 2 pseudo (20s format)
+  n_folds:                5
+
+model:
+  backbone:         tf_efficientnet_b0.ns_jft_in1k
+  clip_duration:    20
+  n_mels:           224
+  n_fft:            2048
+  hop_length:       512
+  fmin:             0
+  fmax:             16000
+  top_db:           80.0
+  power:            2.0
+  norm:             slaney
+  mel_scale:        htk
+  peak_norm:        false
+  dropout:          0.1
+  drop_path_rate:   0.1
+  gem_p_init:       3.0
+  freq_mask:        24
+  time_mask:        64   # wider time mask for 20s clips
+
+training:
+  epochs:             30
+  batch_size:         16   # smaller batch: 20s clips use 2× memory
+  learning_rate:      1.0e-3
+  weight_decay:       1.0e-4
+  focal_gamma:        2.0
+  mixup_alpha:        0.15
+  pseudo_weight:      1.0
+  pseudo_mixup_alpha: 0.15
+  use_sumix_freq:     true   # 1st place: SumixFreq
+
+output:
+  dir:          outputs/sed-ns-b0-20s-r3
+  infer_all_ss: false

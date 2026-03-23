@@ -151,14 +151,18 @@ class EfficientSSM(nn.Module):
         # Linear classification head
         self.classifier = nn.Linear(d_model, n_classes)
 
-    def forward(self, wavs, mel_tf, spec_aug=None):
+    def forward(self, wavs, mel_tf, spec_aug=None, pre_mel=None):
         B, T, S = wavs.shape
 
         # Extract per-clip features in parallel
-        with torch.no_grad():
-            mel = mel_tf(wavs.reshape(B * T, S))       # (B*T, 3, n_mels, T_frames)
-        if spec_aug is not None:
-            mel = spec_aug(mel)
+        # pre_mel: if provided (e.g. after SumixFreq), skip internal mel computation
+        if pre_mel is not None:
+            mel = pre_mel  # (B*T, 3, n_mels, T_frames) — already augmented
+        else:
+            with torch.no_grad():
+                mel = mel_tf(wavs.reshape(B * T, S))   # (B*T, 3, n_mels, T_frames)
+            if spec_aug is not None:
+                mel = spec_aug(mel)
         feat = self.backbone(mel).reshape(B, T, -1)    # (B, T, d_feat)
 
         h = self.input_proj(feat) + self.pos_enc[:, :T, :]
@@ -396,6 +400,22 @@ class SoundscapeValSequenceDataset(Dataset):
         return torch.from_numpy(clips[:N_WINDOWS]), torch.from_numpy(labels[:T])
 
 
+# ── Augmentation helpers ────────────────────────────────────────────────────────
+
+def sumix_freq(mel: torch.Tensor, labels: torch.Tensor) -> tuple:
+    """SumixFreq (1st place BirdCLEF 2025): per-frequency-bin random selection.
+
+    mel:    (B, 3, n_mels, T_frames)
+    labels: (B, n_classes)
+    """
+    B = mel.shape[0]
+    if B < 2:
+        return mel, labels
+    idx  = torch.randperm(B, device=mel.device)
+    mask = (torch.rand(mel.shape[2], device=mel.device) > 0.5).view(1, 1, -1, 1)
+    return torch.where(mask, mel[idx], mel), torch.max(labels, labels[idx])
+
+
 # ── Loss ───────────────────────────────────────────────────────────────────────
 
 class FocalBCE(nn.Module):
@@ -556,6 +576,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     criterion      = FocalBCE(gamma=t_cfg.get('focal_gamma', 2.0))
     pseudo_w       = t_cfg.get('pseudo_weight', 1.0)          # 1st place: equal weight
     pseudo_mixup_a = t_cfg.get('pseudo_mixup_alpha', 0.15)    # MixUp on pseudo sequences too
+    use_sumix_freq = t_cfg.get('use_sumix_freq', False)       # 1st place: SumixFreq
 
     best_auc       = 0.0
     best_state     = None
@@ -590,9 +611,21 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             # wavs: (B, 1, CLIP_SAMPLES)   labels: (B, 1, n_classes)
             wavs   = wavs.to(device)
             labels = labels.to(device).squeeze(1)          # (B, n_classes)
-            with torch.cuda.amp.autocast():
-                logits = model(wavs, mel_tf, spec_aug).squeeze(1)  # (B, n_classes)
-                loss   = criterion(logits, labels)
+
+            if use_sumix_freq:
+                # Compute mel explicitly so SumixFreq can mix frequency bins
+                with torch.no_grad():
+                    B = wavs.shape[0]
+                    lab_mel = mel_tf(wavs.reshape(B, CLIP_SAMPLES))  # (B, 3, F, T)
+                lab_mel = spec_aug(lab_mel)
+                lab_mel, labels = sumix_freq(lab_mel, labels)
+                with torch.cuda.amp.autocast():
+                    logits = model(wavs, mel_tf, pre_mel=lab_mel).squeeze(1)
+                    loss   = criterion(logits, labels)
+            else:
+                with torch.cuda.amp.autocast():
+                    logits = model(wavs, mel_tf, spec_aug).squeeze(1)  # (B, n_classes)
+                    loss   = criterion(logits, labels)
 
             # Pseudo sequences (T=12)
             if pseudo_iter:

@@ -159,6 +159,27 @@ def absmax_normalize(audio: np.ndarray) -> np.ndarray:
     return audio / (m + 1e-8) if m > 1e-8 else audio
 
 
+def sumix_freq(mel: torch.Tensor, labels: torch.Tensor) -> tuple:
+    """SumixFreq (1st place BirdCLEF 2025): per-frequency-bin random selection.
+
+    Different species occupy different frequency bands. Mixing at the frequency
+    bin level creates more realistic multi-species spectrograms than waveform
+    mixing, because each frequency bin comes fully from one recording.
+
+    mel:    (B, 3, n_mels, T_frames) — already normalised mel spectrogram
+    labels: (B, n_classes)
+    Returns (mixed_mel, max_labels) — max labels = union of both clips' species.
+    """
+    B = mel.shape[0]
+    if B < 2:
+        return mel, labels
+    idx  = torch.randperm(B, device=mel.device)
+    # Binary mask: (1, 1, n_mels, 1) broadcast over batch, channels, time
+    mask = (torch.rand(mel.shape[2], device=mel.device) > 0.5).view(1, 1, -1, 1)
+    mixed = torch.where(mask, mel[idx], mel)
+    return mixed, torch.max(labels, labels[idx])
+
+
 def audio_mixup(x: torch.Tensor, y: torch.Tensor) -> tuple:
     """MixUp on raw audio with fixed lam=0.5 (1st place BirdCLEF 2025).
 
@@ -529,6 +550,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     mixup_a         = t_cfg.get('mixup_alpha', 0.15)          # 1st place: 0.15
     pseudo_mixup_a  = t_cfg.get('pseudo_mixup_alpha', 0.15)   # MixUp on pseudo data too
     pseudo_w        = t_cfg.get('pseudo_weight', 1.0)         # 1st place: equal weight
+    use_sumix_freq  = t_cfg.get('use_sumix_freq', False)      # 1st place: SumixFreq
     criterion       = FocalBCE(gamma=gamma)
 
     best_auc        = 0.0
@@ -583,6 +605,10 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             with torch.no_grad():
                 combined_mel = mel_tf(combined_audio)
             combined_mel = spec_aug(combined_mel)
+
+            # SumixFreq AFTER mel (1st place): per-freq-bin random selection
+            if use_sumix_freq:
+                combined_mel, combined_labels = sumix_freq(combined_mel, combined_labels)
 
             with torch.cuda.amp.autocast():
                 out  = model(combined_mel)
