@@ -135,28 +135,35 @@ train_audio/ (T=1) + pseudo soundscape sequences (T=12)
   → raw clip (CLIP_SAMPLES) → Mel(128) → EfficientNet-B0(global_pool='avg') → (d_feat=1280)
   → stack T clips → (B, T, 1280) → Linear(1280→256) + LayerNorm
   → 2× BidirectionalSelectiveSSM(d_model=256, d_state=16)
-  → Linear → (B, T, n_classes)
-  → Focal BCE, AdamW lr=1e-3 (all params), 40 epochs, early_stop=7
-  → Validation: labeled soundscape sequences, per-window AUC
+  → Prototypical cosine head (234 prototypes, EMA-smoothed)
+  → Focal BCE, AdamW lr=1e-3, proto_temp lr×0.01, 40 epochs, early_stop=7
+  → Validation: labeled soundscape sequences, per-window AUC (uses EMA prototypes)
 ```
+
+**Cosine head stabilization** (2026-03-23):
+- **EMA prototypes**: `proto_ema` buffer updated after each step (`momentum=0.99`); val uses EMA, train uses learnable prototypes → eliminates AUC oscillation
+- **proto_temp lr**: `lr × 0.01` (separate param group) → prevents temperature from overshooting
+- Result: ep1→ep4 monotonically increasing (0.69→0.86→0.88→0.90), vs prior cosine head which oscillated ±0.15
 
 **Pseudo label generation**: `scripts/gen_pseudo_ns.py` (ensemble of SED OOF + SSM OOF + Perch teacher)
 **Perch embeddings for init**: `scripts/extract_perch_all_ss_emb.py` → `outputs/perch_all_ss_emb.npz`
-**Pipeline script**: `scripts/run_ns_pipeline.sh` (4 rounds sequential)
+**Orchestrator**: `scripts/auto_ns_r1.sh` — SED chain (folds 0-4) and SSM chain (folds 0-4) run in parallel independently; sync at end for infer_all_ss → gen_pseudo
 **Configs**: `configs/sed_ns_b0_r{1-4}.yaml`, `configs/ssm_ns_b0_r{1-4}.yaml`
 **WandB**: project=`birdclef-2026`, tags=[model, round, fold]
 **Round 0**: `pseudo_labels/ns_r0.csv` (Perch teacher only, no student)
 
 ---
 
-## Currently Running Experiments (2026-03-22)
+## Currently Running Experiments (2026-03-23)
 
 | Experiment | Config | Status | GPU | Log |
 |-----------|--------|--------|-----|-----|
-| **sed-ns-b0-r1 fold0** | `configs/sed_ns_b0_r1.yaml` | 🔄 Running | GPU1 | `outputs/logs/sed_ns_r1_fold0.log` |
-| **ssm-ns-b0-r1 fold0** | `configs/ssm_ns_b0_r1.yaml` | ⏳ Queued after SED | GPU1 | `outputs/logs/ssm_ns_r1_fold0.log` |
+| **sed-ns-b0-r1 folds 0-4** | `configs/sed_ns_b0_r1.yaml` | 🔄 Running (chain) | GPU1 | `outputs/logs/sed_ns_r1_fold{N}.log` |
+| **ssm-ns-b0-r1 folds 0-4** | `configs/ssm_ns_b0_r1.yaml` | 🔄 Running (chain) | GPU1 | `outputs/logs/ssm_ns_r1_fold{N}.log` |
 
-Monitor: `python3 scripts/monitor_experiments.py --excel`
+Orchestrator: `nohup bash scripts/auto_ns_r1.sh > outputs/logs/auto_ns_r1.log 2>&1 &`
+
+Monitor: `tail -f outputs/logs/auto_ns_r1.log`
 
 ---
 
