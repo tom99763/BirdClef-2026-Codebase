@@ -145,10 +145,20 @@ train_audio/ (T=1) + pseudo soundscape sequences (T=12)
 - **proto_temp lr**: `lr × 0.01` (separate param group) → prevents temperature from overshooting
 - Result: ep1→ep4 monotonically increasing (0.69→0.86→0.88→0.90), vs prior cosine head which oscillated ±0.15
 
-**Pseudo label generation**: `scripts/gen_pseudo_ns.py` (ensemble of SED OOF + SSM OOF + Perch teacher)
-**Perch embeddings for init**: `scripts/extract_perch_all_ss_emb.py` → `outputs/perch_all_ss_emb.npz`
-**Orchestrator**: `scripts/auto_ns_r1.sh` — SED chain (folds 0-4) and SSM chain (folds 0-4) run in parallel independently; sync at end for infer_all_ss → gen_pseudo
+**Pseudo label generation** (2026-03-23 update):
+- **SED chain**: pure SED predictions only → `pseudo_labels/sed_r{k}.csv` (`perch_w=0, sed_w=1.0`)
+- **SSM chain**: pure SSM predictions only → `pseudo_labels/ssm_r{k}.csv` (`perch_w=0, ssm_w=1.0`)
+- Matches BirdCLEF 2025 1st place (Babych): Perch only used for round 0; student-only predictions for round 1+
+- Pipeline: sigmoid probs → power transform (γ=2.0) → per-class 95th percentile threshold → CSV
+
+**Orchestrators** (fully independent, no cross-chain dependency):
+- `scripts/auto_sed_ns_full.sh` — SED r1→r4, generates `sed_r{k}.csv` pseudo labels
+- `scripts/auto_ssm_ns_full.sh` — SSM r1→r4, generates `ssm_r{k}.csv` pseudo labels
+- Skip logic: fold checkpoint exists → skip immediately; process running → wait (SED chain only waits for SED processes, SSM for SSM)
+
 **Configs**: `configs/sed_ns_b0_r{1-4}.yaml`, `configs/ssm_ns_b0_r{1-4}.yaml`
+- r2 SED: `pseudo_labels/sed_r1.csv`, r2 SSM: `pseudo_labels/ssm_r1.csv` (independent chains)
+
 **WandB**: project=`birdclef-2026`, tags=[model, round, fold]
 **Round 0**: `pseudo_labels/ns_r0.csv` (Perch teacher only, no student)
 
@@ -156,14 +166,18 @@ train_audio/ (T=1) + pseudo soundscape sequences (T=12)
 
 ## Currently Running Experiments (2026-03-23)
 
-| Experiment | Config | Status | GPU | Log |
-|-----------|--------|--------|-----|-----|
-| **sed-ns-b0-r1 folds 0-4** | `configs/sed_ns_b0_r1.yaml` | 🔄 Running (chain) | GPU1 | `outputs/logs/sed_ns_r1_fold{N}.log` |
-| **ssm-ns-b0-r1 folds 0-4** | `configs/ssm_ns_b0_r1.yaml` | 🔄 Running (chain) | GPU1 | `outputs/logs/ssm_ns_r1_fold{N}.log` |
+| Experiment | Config | Status | GPU | Notes |
+|-----------|--------|--------|-----|-------|
+| **SED NS r1 fold3+** | `configs/sed_ns_b0_r1.yaml` | 🔄 Running | GPU1 | fold0-2 done (best: ~0.9482/0.9305/~) |
+| **SSM NS r1 fold0** | `configs/ssm_ns_b0_r1.yaml` | 🔄 Running | GPU1 | ep19 AUC=0.5511, best=0.9415@ep16 |
 
-Orchestrator: `nohup bash scripts/auto_ns_r1.sh > outputs/logs/auto_ns_r1.log 2>&1 &`
+Two fully independent chains (launched 2026-03-23):
+```bash
+nohup bash scripts/auto_sed_ns_full.sh > outputs/logs/auto_sed_ns_full.log 2>&1 &
+nohup bash scripts/auto_ssm_ns_full.sh > outputs/logs/auto_ssm_ns_full.log 2>&1 &
+```
 
-Monitor: `tail -f outputs/logs/auto_ns_r1.log`
+Monitor: `tail -f outputs/logs/auto_sed_ns_full.log outputs/logs/auto_ssm_ns_full.log`
 
 ---
 
@@ -206,16 +220,18 @@ BirdClef-2026-Codebase/
 ├── train_proto_ssm.py              # ProtoSSM 5-fold training (Perch-based)
 │
 ├── scripts/
-│   ├── gen_pseudo_ns.py                  # Generate pseudo labels (SED+SSM+Perch ensemble)
+│   ├── gen_pseudo_ns.py                  # Generate pseudo labels (model-only or +Perch)
+│   ├── auto_sed_ns_full.sh               # SED chain r1→r4 (independent, pure SED pseudo)
+│   ├── auto_ssm_ns_full.sh               # SSM chain r1→r4 (independent, pure SSM pseudo)
 │   ├── extract_perch_all_ss_emb.py       # Extract Perch emb for all soundscapes
-│   ├── run_ns_pipeline.sh                # 4-round Noisy Student pipeline
 │   ├── extract_ss_labeled_embeddings.py  # Build perch_labeled_ss.npz
 │   ├── monitor_experiments.py            # Status + Excel update (15-min cron)
 │   └── eval_smooth_experiments.py        # Post-processing sweep
 │
 ├── pseudo_labels/
-│   ├── ns_r0.csv                   # Round 0: Perch teacher only
-│   └── ns_r{1-4}.csv               # Rounds 1-4: SED+SSM+Perch ensemble
+│   ├── ns_r0.csv                   # Round 0: Perch teacher only (shared init)
+│   ├── sed_r{1-4}.csv              # SED chain pseudo labels (pure SED predictions)
+│   └── ssm_r{1-4}.csv              # SSM chain pseudo labels (pure SSM predictions)
 │
 ├── outputs/
 │   ├── logs/
@@ -271,8 +287,9 @@ The old SED approach had multiple fundamental problems:
 ## Running Experiments
 
 ```bash
-# Noisy Student Pipeline (4 rounds, GPU1)
-ROUND=1 bash scripts/run_ns_pipeline.sh 2>&1 | tee outputs/ns_pipeline.log
+# Launch fully independent NS chains (r1→r4, GPU1)
+nohup bash scripts/auto_sed_ns_full.sh > outputs/logs/auto_sed_ns_full.log 2>&1 &
+nohup bash scripts/auto_ssm_ns_full.sh > outputs/logs/auto_ssm_ns_full.log 2>&1 &
 
 # Single fold (SED NS)
 CUDA_VISIBLE_DEVICES=1 python train_sed_ns.py --config configs/sed_ns_b0_r1.yaml --fold 0 --device cuda:0
@@ -280,8 +297,8 @@ CUDA_VISIBLE_DEVICES=1 python train_sed_ns.py --config configs/sed_ns_b0_r1.yaml
 # Single fold (SSM NS)
 CUDA_VISIBLE_DEVICES=1 python train_ssm_ns.py --config configs/ssm_ns_b0_r1.yaml --fold 0 --device cuda:0
 
-# Generate pseudo labels for next round
-python scripts/gen_pseudo_ns.py --round 1 --sed_dir outputs/sed-ns-b0-r1 --ssm_dir outputs/ssm-ns-b0-r1
+# Generate pseudo labels (SED-only, for next round)
+python scripts/gen_pseudo_ns.py --round 1 --sed_dir outputs/sed-ns-b0-r1 --perch_w 0 --sed_w 1.0 --out pseudo_labels/sed_r1.csv
 
 # Monitor progress (Excel + status)
 python3 scripts/monitor_experiments.py --excel

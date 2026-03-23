@@ -9,7 +9,7 @@ data:
   taxonomy_csv:           birdclef-2026/taxonomy.csv
   audio_dir:              birdclef-2026/train_audio
   soundscape_dir:         birdclef-2026/train_soundscapes
-  pseudo_labels_csv:      pseudo_labels/ns_r2.csv   # Round 0 pseudo (Perch teacher)
+  pseudo_labels_csv:      pseudo_labels/sed_r2.csv  # SED-only pseudo from round 2
   n_folds:                5
 
 model:
