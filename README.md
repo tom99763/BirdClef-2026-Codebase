@@ -42,79 +42,213 @@ Audio (60s) → 12×5s clips → Perch v2 TFLite →
   → lmax_pre_aves(α=0.1) → SoftRich(α=0.40) → cSEBBs → submission
 ```
 
-### 2. Noisy Student Pipeline (10s clips, 1st-place inspired, 2026-03-23)
+### 2. Noisy Student Pipeline (20s clips, 1st-place inspired, 2026-03-23)
 
 **Goal**: Train SED + EfficientSSM students independently over 4 rounds. Both take **raw audio** as input with no Perch dependency at inference.
 
-#### Design Decisions (BirdCLEF 2025 1st place — Babych)
+#### 1st-place Techniques Adopted (Babych 2025, BirdCLEF)
 
-| Technique | Implementation |
-|-----------|---------------|
-| **Multi-iterative pseudo-labeling** | 4 rounds × 5 folds; each round uses previous round's predictions |
-| **MixUp alpha=0.15** | Applied to labeled and pseudo data |
-| **Cross-domain MixUp** | labeled + pseudo **concatenated into one batch** → single MixUp pass |
-| **Max-of-labels** | `label = max(label_a, label_b)` — union of species; correct for audio mixing |
-| **Stochastic Depth** | `drop_path_rate=0.1` in EfficientNet-B0 backbone |
-| **Pseudo weight = 1.0** | Equal weighting of labeled and pseudo losses |
-| **Power transform (γ=2.0)** | Applied before 95th-percentile threshold for pseudo label generation |
-| **LR Warmup (SSM)** | 5-epoch linear warmup → stabilizes SSM state matrices |
+| Technique | Implementation | Where |
+|-----------|---------------|-------|
+| **20s clip duration** | `clip_duration: 20` in configs; covers 4 Perch 5s windows | All NS configs |
+| **SumixFreq** | Per-freq-bin random selection between two mel spectrograms | `train_sed_ns.py`, `train_ssm_ns.py` |
+| **Overlapping window inference** | 20s window, 5s stride; each 5s frame averaged from multiple windows | Submission notebook |
+| **Babych smoothing kernel** | `[0.1, 0.2, 0.4, 0.2, 0.1]` temporal smoothing | Submission notebook |
+| **absmax normalization** | Normalize each clip to `[-1, 1]` before mel | `load_audio_clip`, `load_ss_clip` |
+| **Cross-domain MixUp (lam=0.5)** | labeled + pseudo in same batch, fixed λ=0.5 | Both students |
+| **Max-of-labels** | `label = max(label_a, label_b)` — union of species | Both students |
+| **Stochastic Depth** | `drop_path_rate=0.1` in EfficientNet-B0 backbone | Both students |
+| **Power transform (γ=2.0) + 95th-pct threshold** | Controls pseudo label confidence | `gen_pseudo_ns.py` |
+| **LR warmup (SSM)** | 5-epoch linear warmup → stabilizes SSM state matrices | `train_ssm_ns.py` |
 
-#### SED Student (`train_sed_ns.py`, configs: `sed_ns_b0_10s_r{1-4}.yaml`)
+---
 
-```
-train_audio/ + pseudo_labels/ns_r0.csv (round 1)
-  → 10s clips (CLIP_SAMPLES = SR×10), inference: STRIDE=SR×5 → 12 row_ids per soundscape
-  → MelSpec(n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000) + AmplitudeToDB
-  → SpecAugment (freq_mask=24, time_mask=32)
-  → EfficientNet-B0 (tf_efficientnet_b0.ns_jft_in1k, drop_path=0.1)
-  → GEMFreqPool → AttentionSEDHead → sigmoid
-  → Focal BCE (γ=2.0), CosineAnnealingLR, 30 epochs, early_stop=7
-  → Cross-domain MixUp: concat(labeled_mel, pseudo_mel) → MixUp → single forward pass
-  → Label mixing: max(label_a, label_b)
-  → Validation: labeled soundscape OOF (ss_auc = macro ROC-AUC on soundscape hold-out)
+## Noisy Student Training — Step-by-Step
+
+### Prerequisites
+
+```bash
+export CUDA_VISIBLE_DEVICES=1   # All training on GPU1
 ```
 
-#### EfficientSSM Student (`train_ssm_ns.py`, configs: `ssm_ns_b0_10s_r{1-4}.yaml`)
+### Step 0 — Train Perch Head (Teacher)
+
+Fine-tune a linear head on top of frozen Perch v2 embeddings using labeled soundscape data:
+
+```bash
+python3 train.py --config configs/exp_nohuman_label_soundscape_train.yaml
+# Outputs: weights/label_head_soundscape_train.tflite (or .pt)
+# WandB run: perch-head-retrain-r1
+# ~80 epochs; monitor: tail -f outputs/logs/perch_head_retrain.log
+```
+
+### Step 1 — Extract Teacher Predictions
+
+Run the fine-tuned Perch head over all training soundscapes to generate 5s-window predictions:
+
+```bash
+python3 scripts/extract_perch_teacher_all_ss.py \
+    --output outputs/perch_teacher_all_ss.csv
+# Output: CSV with columns [row_id, species_1, ..., species_234]
+# row_ids are in 5s format: <filename>_5, _10, ..., _60
+```
+
+### Step 2 — Generate Round-0 Pseudo Labels
+
+Merge 5s Perch windows into 20s-aligned pseudo labels for student training:
+
+```bash
+python3 scripts/gen_pseudo_ns.py \
+    --round    0 \
+    --clip_sec 20 \
+    --perch_csv outputs/perch_teacher_all_ss.csv \
+    --perch_w  1.0 \
+    --out      pseudo_labels/ns_r0.csv
+# Output: pseudo_labels/ns_r0.csv
+# row_ids: <filename>_20, _25, _30, ..., _65 (20s windows, 5s stride)
+# Power transform (γ=2.0) + 95th-percentile threshold applied
+```
+
+### Step 3 — Run Noisy Student Chains (R1→R4)
+
+Launch SED and SSM chains in parallel. Each chain trains 5 folds per round and
+auto-generates pseudo labels for the next round.
+
+**Option A: Automated (recommended)**
+
+```bash
+# Launch both chains in parallel (background)
+nohup bash scripts/auto_sed_ns_20s_full.sh \
+    > outputs/logs/auto_sed_ns_20s_full.log 2>&1 &
+echo "SED PID: $!"
+
+nohup bash scripts/auto_ssm_ns_20s_full.sh \
+    > outputs/logs/auto_ssm_ns_20s_full.log 2>&1 &
+echo "SSM PID: $!"
+```
+
+**Option B: Full automated chain (waits for Perch head to finish first)**
+
+```bash
+nohup bash scripts/master_ns_chain.sh \
+    > outputs/logs/master_ns_chain.log 2>&1 &
+```
+
+**Option C: Manual single fold (debug/testing)**
+
+```bash
+# SED, round 1, fold 0
+python3 train_sed_ns.py \
+    --config configs/sed_ns_b0_20s_r1.yaml \
+    --fold   0 \
+    --device cuda:0
+
+# SSM, round 1, fold 0
+python3 train_ssm_ns.py \
+    --config configs/ssm_ns_b0_20s_r1.yaml \
+    --fold   0 \
+    --device cuda:0
+```
+
+#### What Each Chain Does (R1→R4 loop)
+
+```
+For R in 1 2 3 4:
+  1. Train 5 folds:  train_{sed,ssm}_ns.py --config *_r{R}.yaml --fold {0..4}
+     → outputs/{sed,ssm}-ns-b0-20s-r{R}/fold{F}_best.pt
+     Skip logic: checkpoint exists → skip fold
+  2. Infer all soundscapes: train_{sed,ssm}_ns.py --infer_all_ss
+     → outputs/{sed,ssm}-ns-b0-20s-r{R}/all_ss_probs.npz
+  3. Generate pseudo labels (R < 4 only):
+     gen_pseudo_ns.py --round R --clip_sec 20 --{sed,ssm}_dir ... --out pseudo_labels/{sed,ssm}_20s_r{R}.csv
+  4. Update next round config: sed -i pseudo_labels_csv → new CSV
+```
+
+### Step 4 — Monitor Training
+
+```bash
+# Tail individual fold logs
+tail -f outputs/logs/sed_ns_20s_r1_fold0.log
+tail -f outputs/logs/ssm_ns_20s_r1_fold0.log
+
+# Check master chain progress
+tail -f outputs/logs/master_ns_chain.log
+
+# Monitor all experiments (updates Excel)
+python3 scripts/monitor_experiments.py --excel
+```
+
+### Step 5 — Inference / Submission
+
+After round 4 completes (or latest available round), use the submission notebook:
+
+```
+birdclef-2026/notebook resource/current_subs/ns_perch_sed_ssm_submission.ipynb
+```
+
+Update `SED_DIR` and `SSM_DIR` in CONFIG cell to point to the latest round's weights dir.
+Upload weights folder to Kaggle dataset and submit.
+
+**1st-place inference settings (already in notebook):**
+- `CLIP_SEC = 20` — matches 20s training clips
+- `OVERLAP_INFERENCE = True` — overlapping 20s windows, 5s stride
+- `BABYCH_SMOOTH_KERNEL = True` — temporal smoothing kernel `[0.1, 0.2, 0.4, 0.2, 0.1]`
+- `BranchEns→cSEBBs` — SED temporal postprocessing (OOF AUC 0.8045)
+
+---
+
+### Config Files
+
+| Config | Rounds | Clip | Batch | Notes |
+|--------|--------|------|-------|-------|
+| `sed_ns_b0_20s_r{1-4}.yaml` | 4 | 20s | 16 | SED, SumixFreq, early_stop=7 |
+| `ssm_ns_b0_20s_r{1-4}.yaml` | 4 | 20s | 8 (pseudo=2) | SSM, 5-ep warmup, SumixFreq |
+
+Round 1 configs use `pseudo_labels/ns_r0.csv`. Rounds 2-4 are auto-updated by the chain scripts.
+
+### Key Architecture Details
+
+#### SED Student (`train_sed_ns.py`)
+
+```
+train_audio/ clips + pseudo_labels/*_r{N}.csv
+  → 20s clips (CLIP_SAMPLES = SR×20), absmax normalized
+  → MelSpec(n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000, power=2, slaney/htk)
+  → SpecAugment (freq_mask=24, time_mask=64)
+  → SumixFreq: per-freq-bin random selection between two labeled mels  ← 1st place
+  → Cross-domain MixUp (λ=0.5): concat(labeled, pseudo) → single forward pass
+  → EfficientNet-B0 → GEMFreqPool(p=3) → AttentionSEDHead
+  → Focal BCE (γ=2.0), lr=1e-3, CosineAnnealing, 30 epochs, early_stop=7
+  → Validation: soundscape OOF macro ROC-AUC
+```
+
+#### EfficientSSM Student (`train_ssm_ns.py`)
 
 ```
 train_audio/ (T=1) + pseudo soundscape sequences (T=12)
-  → 10s clips → Mel → EfficientNet-B0(global_pool='avg') → (B, T, 1280)
-  → Linear(1280→256) + LayerNorm
+  → 20s clips, absmax normalized
+  → Mel → EfficientNet-B0(global_pool='avg') → (B, T, 1280)
+  → Linear(1280→256) + LayerNorm + GELU
   → 2× BidirectionalSSM(d_model=256, d_state=16)
-  → Linear head (nn.Linear(256, 234))         ← replaced cosine head (unstable)
+  → Linear classifier (256→234)   ← stable; cosine head causes AUC oscillation
   → Focal BCE (γ=2.0)
-  → AdamW lr=1e-3, 5-ep linear warmup + CosineAnnealing, 30 epochs, early_stop=7
-  → Cross-domain MixUp: pseudo×pseudo (max labels) + labeled clips broadcast across T
-  → Validation: labeled soundscape sequences, per-window AUC
+  → AdamW lr=1e-3, 5-ep linear warmup + CosineAnnealing, 40 epochs, early_stop=7
+  → Cross-domain MixUp: pseudo×pseudo (max labels) + labeled broadcast across T
+  → SumixFreq on labeled mel (pre_mel path)
 ```
 
-**Why linear head (not cosine)**: EMA prototypes drift during training, temperature can diverge →
-causes 0.9→0.6 AUC oscillation in later epochs. Linear head is stable.
+**Why linear head (not cosine)**: EMA prototypes drift → temperature diverges → 0.9→0.6 AUC oscillation.
 
-**Why LR warmup for SSM**: SSM state matrices (A, B, C, dt) are sensitive to large gradients at init.
-5-epoch linear warmup prevents early destabilization.
+**Why LR warmup for SSM**: SSM state matrices (A, B, C, dt) sensitive to large gradients at init.
 
-#### Round 0 Pseudo Labels (Teacher)
+#### Round 0 Pseudo Labels (Teacher Pipeline)
 
 ```
-train.py → Perch head fine-tuned on train_soundscapes (wandb: perch-head-retrain-r1)
-  → extract_perch_teacher_all_ss.py → outputs/perch_teacher_all_ss.csv
-  → gen_pseudo_ns.py --round 0 → pseudo_labels/ns_r0.csv
+Perch head fine-tune (train.py)
+  → extract_perch_teacher_all_ss.py → outputs/perch_teacher_all_ss.csv (5s format)
+  → gen_pseudo_ns.py --clip_sec 20  → pseudo_labels/ns_r0.csv (20s format)
+     Power transform p[i]^2.0 → 95th-percentile threshold per species
 ```
-
-#### Orchestration
-
-```
-scripts/master_ns_chain.sh
-  1. Wait for Perch head training (train.py) to finish
-  2. extract_perch_teacher_all_ss.py  → outputs/perch_teacher_all_ss.csv
-  3. gen_pseudo_ns.py --round 0       → pseudo_labels/ns_r0.csv
-  4. Launch in parallel:
-     ├── auto_sed_ns_10s_full.sh   SED  r1→r4, GPU1 → sed_10s_r{k}.csv
-     └── auto_ssm_ns_10s_full.sh   SSM  r1→r4, GPU1 → ssm_10s_r{k}.csv
-```
-
-Skip logic: fold checkpoint exists → skip; old incomplete checkpoints must be deleted before launch.
 
 ---
 
@@ -122,10 +256,15 @@ Skip logic: fold checkpoint exists → skip; old incomplete checkpoints must be 
 
 | Process | Status | Notes |
 |---------|--------|-------|
-| `train.py` (perch-head-retrain-r1) | 🔄 ep≈25/80, best=0.9555 | wandb: perch-head-retrain-r1, GPU1 |
-| `master_ns_chain.sh` | ⏳ Waiting for Perch | Will auto-launch SED+SSM after Perch completes |
+| `auto_sed_ns_20s_full.sh` | 🔄 r1 fold0 training | GPU1, 20s clips, SumixFreq |
+| `auto_ssm_ns_20s_full.sh` | 🔄 r1 fold0 training | GPU1, 20s clips, SumixFreq |
 
 Monitor: `python3 scripts/monitor_experiments.py --excel`
+
+```bash
+tail -f outputs/logs/auto_sed_ns_20s_full.log
+tail -f outputs/logs/auto_ssm_ns_20s_full.log
+```
 
 ---
 
@@ -136,34 +275,37 @@ BirdClef-2026-Codebase/
 │
 ├── configs/
 │   ├── exp_nohuman_label_soundscape_train.yaml  # Perch head retrain config (teacher)
-│   ├── sed_ns_b0_10s_r{1-4}.yaml               # SED NS 10s rounds 1-4
-│   └── ssm_ns_b0_10s_r{1-4}.yaml               # EfficientSSM NS 10s rounds 1-4
+│   ├── sed_ns_b0_20s_r{1-4}.yaml               # SED NS 20s rounds 1-4
+│   └── ssm_ns_b0_20s_r{1-4}.yaml               # EfficientSSM NS 20s rounds 1-4
 │
-├── train.py                # Perch head fine-tuning (teacher for round 0), early_stop=10
-├── train_sed_ns.py         # SED Noisy Student — cross-domain MixUp, max labels
-├── train_ssm_ns.py         # EfficientSSM NS — linear head, 5-ep warmup, cross-domain mix
+├── train.py                # Perch head fine-tuning (teacher for round 0)
+├── train_sed_ns.py         # SED Noisy Student — SumixFreq, cross-domain MixUp, absmax norm
+├── train_ssm_ns.py         # EfficientSSM NS — linear head, 5-ep warmup, SumixFreq
 │
 ├── scripts/
-│   ├── master_ns_chain.sh              # Wait Perch → ns_r0 → launch SED+SSM chains
-│   ├── auto_sed_ns_10s_full.sh         # SED chain r1→r4
-│   ├── auto_ssm_ns_10s_full.sh         # SSM chain r1→r4
+│   ├── master_ns_chain.sh              # Full pipeline: wait Perch → ns_r0 → launch SED+SSM
+│   ├── auto_sed_ns_20s_full.sh         # SED chain r1→r4 (20s clips)
+│   ├── auto_ssm_ns_20s_full.sh         # SSM chain r1→r4 (20s clips)
 │   ├── extract_perch_teacher_all_ss.py # Perch teacher predictions for all soundscapes
 │   ├── gen_pseudo_ns.py                # Power transform (γ=2.0) + 95th-pct → pseudo CSV
 │   └── monitor_experiments.py         # Status print + Excel update (15-min cron)
 │
 ├── pseudo_labels/
-│   ├── ns_r0.csv              # Round 0: Perch teacher only (shared init for both chains)
-│   ├── sed_10s_r{1-3}.csv     # SED-only pseudo labels (generated per round)
-│   └── ssm_10s_r{1-3}.csv     # SSM-only pseudo labels (generated per round)
+│   ├── ns_r0.csv              # Round 0: Perch teacher, 20s format (_20, _25, ..., _65)
+│   ├── sed_20s_r{1-3}.csv     # SED-only pseudo labels (generated per round)
+│   └── ssm_20s_r{1-3}.csv     # SSM-only pseudo labels (generated per round)
 │
 ├── outputs/
 │   ├── logs/
-│   │   ├── perch_head_retrain.log
-│   │   ├── master_ns_chain.log
-│   │   ├── sed_ns_10s_r{N}_fold{F}.log
-│   │   └── ssm_ns_10s_r{N}_fold{F}.log
-│   ├── sed-ns-b0-10s-r{1-4}/   # SED NS checkpoints + all_ss_probs.npz
-│   └── ssm-ns-b0-10s-r{1-4}/   # SSM NS checkpoints + all_ss_probs.npz
+│   │   ├── auto_sed_ns_20s_full.log
+│   │   ├── auto_ssm_ns_20s_full.log
+│   │   ├── sed_ns_20s_r{N}_fold{F}.log
+│   │   └── ssm_ns_20s_r{N}_fold{F}.log
+│   ├── sed-ns-b0-20s-r{1-4}/   # SED NS checkpoints + all_ss_probs.npz
+│   └── ssm-ns-b0-20s-r{1-4}/   # SSM NS checkpoints + all_ss_probs.npz
+│
+├── birdclef-2026/notebook resource/current_subs/
+│   └── ns_perch_sed_ssm_submission.ipynb   # Submission: TFLite Perch + NS-SED + NS-SSM
 │
 └── reports/
     └── ns_chain_progress.xlsx   # Auto-updated every 15min (latest + history sheets)
