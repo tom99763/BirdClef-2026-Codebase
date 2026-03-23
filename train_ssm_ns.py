@@ -146,7 +146,16 @@ class EfficientSSM(nn.Module):
         self.ssm_merge = nn.ModuleList([nn.Linear(2 * d_model, d_model) for _ in range(n_ssm_layers)])
         self.ssm_norm  = nn.ModuleList([nn.LayerNorm(d_model)           for _ in range(n_ssm_layers)])
         self.ssm_drop  = nn.Dropout(dropout)
-        self.head      = nn.Linear(d_model, n_classes)
+
+        # Prototypical cosine head
+        self.prototypes = nn.Parameter(torch.randn(n_classes, d_model) * 0.02)
+        self.proto_temp = nn.Parameter(torch.tensor(10.0))
+        # EMA prototype buffer (used during eval for stable val AUC)
+        self.register_buffer('proto_ema', torch.randn(n_classes, d_model) * 0.02)
+
+    @torch.no_grad()
+    def update_proto_ema(self, momentum: float = 0.99):
+        self.proto_ema.mul_(momentum).add_(self.prototypes.data * (1.0 - momentum))
 
     def forward(self, wavs, mel_tf, spec_aug=None):
         B, T, S = wavs.shape
@@ -170,7 +179,12 @@ class EfficientSSM(nn.Module):
             h   = self.ssm_drop(h)
             h   = norm(h + residual)
 
-        return self.head(h)   # (B, T, n_classes)
+        h_norm = F.normalize(h, dim=-1)
+        # Use EMA prototypes in eval mode (stable), learnable in training (grad flow)
+        proto  = self.prototypes if self.training else self.proto_ema
+        p_norm = F.normalize(proto, dim=-1)
+        temp   = F.softplus(self.proto_temp)
+        return torch.matmul(h_norm, p_norm.T) * temp   # (B, T, n_classes)
 
 
 # ── Mel + augmentation ─────────────────────────────────────────────────────────
@@ -522,9 +536,14 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     print(f"  EfficientSSM params: {n_params:,}")
 
     lr = t_cfg.get('learning_rate', 1e-3)
+    temp_lr_scale = t_cfg.get('proto_temp_lr_scale', 0.01)
+    other_params = [p for n, p in model.named_parameters() if 'proto_temp' not in n]
+    temp_params  = [model.proto_temp]
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr           = lr,
+        [
+            {'params': other_params, 'lr': lr},
+            {'params': temp_params,  'lr': lr * temp_lr_scale},
+        ],
         weight_decay = t_cfg.get('weight_decay', 1e-4),
     )
 
@@ -590,6 +609,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
+            model.update_proto_ema()
             ep_loss += loss.item()
             n_steps += 1
 
