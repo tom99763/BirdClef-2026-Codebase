@@ -41,4 +41,4 @@ training:
 
 output:
   dir:         outputs/ssm-ns-b0-r1
-  infer_all_ss: true
+  infer_all_ss: false

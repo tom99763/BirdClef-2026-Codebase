@@ -41,4 +41,4 @@ training:
 
 output:
   dir:          outputs/sed-ns-b0-r2
-  infer_all_ss: true     # after training, run inference on all soundscapes
+  infer_all_ss: false     # after training, run inference on all soundscapes
