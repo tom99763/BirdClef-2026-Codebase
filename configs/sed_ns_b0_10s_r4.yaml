@@ -1,0 +1,46 @@
+experiment:
+  name: sed-ns-b0-10s-r4
+  seed: 42
+  round: 4
+
+data:
+  train_csv:              birdclef-2026/train.csv
+  soundscape_labels_csv:  birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:           birdclef-2026/taxonomy.csv
+  audio_dir:              birdclef-2026/train_audio
+  soundscape_dir:         birdclef-2026/train_soundscapes
+  pseudo_labels_csv:      pseudo_labels/sed_10s_r3.csv
+  n_folds:                5
+
+model:
+  backbone:         tf_efficientnet_b0.ns_jft_in1k
+  clip_duration:    10
+  n_mels:           224
+  n_fft:            2048
+  hop_length:       512
+  fmin:             0
+  fmax:             16000
+  top_db:           80.0
+  power:            2.0
+  norm:             slaney
+  mel_scale:        htk
+  peak_norm:        false
+  dropout:          0.1
+  drop_path_rate:   0.1
+  gem_p_init:       3.0
+  freq_mask:        24
+  time_mask:        32
+
+training:
+  epochs:         30
+  batch_size:     32
+  learning_rate:  1.0e-3
+  weight_decay:   1.0e-4
+  focal_gamma:    2.0
+  mixup_alpha:    0.15
+  pseudo_weight:  1.0
+  pseudo_mixup_alpha: 0.15
+
+output:
+  dir:          outputs/sed-ns-b0-10s-r4
+  infer_all_ss: false

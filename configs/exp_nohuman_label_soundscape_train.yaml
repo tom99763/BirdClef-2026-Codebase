@@ -16,7 +16,7 @@
 #   3. soundscape_oversample: 5  (739 clips vs 85536 train clips → ~87x undersample)
 
 experiment:
-  name: "nohuman-label-soundscape-train"
+  name: "perch-head-retrain-r1"
   seed: 42
 
 data:
@@ -74,7 +74,7 @@ wandb:
   enabled: true
   project: "birdclef-2026"
   entity: null
-  tags: ["nohuman", "label-head", "soundscape-train", "holdout-val", "pseudo-labels"]
+  tags: ["perch-head", "retrain", "ns-pipeline", "early-stopping"]
   log_model: false
 
 output:

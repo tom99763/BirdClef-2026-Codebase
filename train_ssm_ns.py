@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -147,15 +148,8 @@ class EfficientSSM(nn.Module):
         self.ssm_norm  = nn.ModuleList([nn.LayerNorm(d_model)           for _ in range(n_ssm_layers)])
         self.ssm_drop  = nn.Dropout(dropout)
 
-        # Prototypical cosine head
-        self.prototypes = nn.Parameter(torch.randn(n_classes, d_model) * 0.02)
-        self.proto_temp = nn.Parameter(torch.tensor(10.0))
-        # EMA prototype buffer (used during eval for stable val AUC)
-        self.register_buffer('proto_ema', torch.randn(n_classes, d_model) * 0.02)
-
-    @torch.no_grad()
-    def update_proto_ema(self, momentum: float = 0.99):
-        self.proto_ema.mul_(momentum).add_(self.prototypes.data * (1.0 - momentum))
+        # Linear classification head
+        self.classifier = nn.Linear(d_model, n_classes)
 
     def forward(self, wavs, mel_tf, spec_aug=None):
         B, T, S = wavs.shape
@@ -179,12 +173,7 @@ class EfficientSSM(nn.Module):
             h   = self.ssm_drop(h)
             h   = norm(h + residual)
 
-        h_norm = F.normalize(h, dim=-1)
-        # Use EMA prototypes in eval mode (stable), learnable in training (grad flow)
-        proto  = self.prototypes if self.training else self.proto_ema
-        p_norm = F.normalize(proto, dim=-1)
-        temp   = F.softplus(self.proto_temp)
-        return torch.matmul(h_norm, p_norm.T) * temp   # (B, T, n_classes)
+        return self.classifier(h)   # (B, T, n_classes)
 
 
 # ── Mel + augmentation ─────────────────────────────────────────────────────────
@@ -263,7 +252,7 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
                  n_samples: int = CLIP_SAMPLES) -> np.ndarray:
     try:
-        start_sample = max(0, (offset_sec - 5)) * sr
+        start_sample = max(0, offset_sec - n_samples // sr) * sr
         audio, orig_sr = sf.read(path, start=start_sample, frames=n_samples * 2,
                                  dtype='float32', always_2d=False)
         if audio.ndim == 2:
@@ -461,9 +450,12 @@ def macro_auc(y_true, y_score):
 # ── Training ───────────────────────────────────────────────────────────────────
 
 def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
+    global CLIP_SAMPLES
     t_cfg   = cfg['training']
     d_cfg   = cfg['data']
     m_cfg   = cfg.get('model', {})
+    clip_dur = m_cfg.get('clip_duration', 5)
+    CLIP_SAMPLES = SR * clip_dur
     out_dir = Path(cfg['output']['dir'])
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -536,22 +528,24 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     print(f"  EfficientSSM params: {n_params:,}")
 
     lr = t_cfg.get('learning_rate', 1e-3)
-    temp_lr_scale = t_cfg.get('proto_temp_lr_scale', 0.01)
-    other_params = [p for n, p in model.named_parameters() if 'proto_temp' not in n]
-    temp_params  = [model.proto_temp]
     optimizer = torch.optim.AdamW(
-        [
-            {'params': other_params, 'lr': lr},
-            {'params': temp_params,  'lr': lr * temp_lr_scale},
-        ],
+        model.parameters(),
+        lr           = lr,
         weight_decay = t_cfg.get('weight_decay', 1e-4),
     )
 
-    epochs    = t_cfg.get('epochs', 40)
-    sched     = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
+    epochs       = t_cfg.get('epochs', 40)
+    warmup_eps   = t_cfg.get('warmup_epochs', 5)
+    def _lr_lambda(ep):
+        if ep < warmup_eps:
+            return (ep + 1) / warmup_eps
+        progress = (ep - warmup_eps) / max(epochs - warmup_eps, 1)
+        return 1e-6 / lr + (1 - 1e-6 / lr) * 0.5 * (1 + math.cos(math.pi * progress))
+    sched     = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_lambda)
     scaler    = torch.cuda.amp.GradScaler()
-    criterion = FocalBCE(gamma=t_cfg.get('focal_gamma', 2.0))
-    pseudo_w  = t_cfg.get('pseudo_weight', 0.5)
+    criterion      = FocalBCE(gamma=t_cfg.get('focal_gamma', 2.0))
+    pseudo_w       = t_cfg.get('pseudo_weight', 1.0)          # 1st place: equal weight
+    pseudo_mixup_a = t_cfg.get('pseudo_mixup_alpha', 0.15)    # MixUp on pseudo sequences too
 
     best_auc       = 0.0
     best_state     = None
@@ -572,7 +566,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             reinit  = True,
         )
 
-    print(f"  Training fold {fold} for {epochs} epochs  lr={lr:.1e}")
+    print(f"  Training fold {fold} for {epochs} epochs  lr={lr:.1e}  warmup={warmup_eps}ep")
 
     for ep in range(1, epochs + 1):
         model.train()
@@ -599,6 +593,24 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                     p_wavs, p_labels = next(pseudo_iter)
                 p_wavs   = p_wavs.to(device)    # (Bp, T, CLIP_SAMPLES)
                 p_labels = p_labels.to(device)  # (Bp, T, n_classes)
+
+                if pseudo_mixup_a > 0 and p_wavs.shape[0] > 1:
+                    # Pseudo × pseudo MixUp with max labels
+                    lam = float(torch.distributions.Beta(pseudo_mixup_a, pseudo_mixup_a).sample())
+                    idx = torch.randperm(p_wavs.shape[0], device=device)
+                    p_wavs   = lam * p_wavs   + (1 - lam) * p_wavs[idx]
+                    p_labels = torch.max(p_labels, p_labels[idx])  # union
+
+                    # Cross-domain mix: blend labeled clips into pseudo sequences
+                    # Broadcast labeled clip (B, CLIP) across T windows of pseudo (Bp, T, CLIP)
+                    n_cross = min(p_wavs.shape[0], wavs.shape[0])
+                    lam_c = float(torch.distributions.Beta(pseudo_mixup_a, pseudo_mixup_a).sample())
+                    lab_clips = wavs[:n_cross, 0, :]                              # (n_cross, CLIP)
+                    lab_clips = lab_clips.unsqueeze(1).expand(-1, p_wavs.shape[1], -1)  # (n_cross, T, CLIP)
+                    p_wavs[:n_cross]   = lam_c * p_wavs[:n_cross] + (1 - lam_c) * lab_clips
+                    lab_lbls = labels[:n_cross].unsqueeze(1).expand(-1, p_wavs.shape[1], -1)  # (n_cross, T, C)
+                    p_labels[:n_cross] = torch.max(p_labels[:n_cross], lab_lbls)  # union
+
                 with torch.cuda.amp.autocast():
                     p_logits = model(p_wavs, mel_tf, spec_aug)  # (Bp, T, n_classes)
                     p_loss   = criterion(p_logits, p_labels)
@@ -609,7 +621,6 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-            model.update_proto_ema()
             ep_loss += loss.item()
             n_steps += 1
 
@@ -676,8 +687,11 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
 
 def infer_all_soundscapes(cfg: dict, device: torch.device):
     """5-fold ensemble on all soundscapes -> all_ss_probs.npz."""
+    global CLIP_SAMPLES
     d_cfg   = cfg['data']
     m_cfg   = cfg.get('model', {})
+    clip_dur = m_cfg.get('clip_duration', 5)
+    CLIP_SAMPLES = SR * clip_dur
     out_dir = Path(cfg['output']['dir'])
     ss_dir  = Path(d_cfg['soundscape_dir'])
     taxonomy     = pd.read_csv(d_cfg['taxonomy_csv'])
@@ -720,15 +734,20 @@ def infer_all_soundscapes(cfg: dict, device: torch.device):
                 audio = audio.mean(axis=1)
         except Exception:
             continue
-        n_clips = min(len(audio) // CLIP_SAMPLES, N_WINDOWS)
+        STRIDE  = SR * 5   # always 5s stride → 12 rows per 60s soundscape
+        n_clips = min(len(audio) // STRIDE, N_WINDOWS)
         if n_clips == 0:
             continue
 
-        clips = np.stack([
-            audio[ci * CLIP_SAMPLES:(ci + 1) * CLIP_SAMPLES] for ci in range(n_clips)
-        ], axis=0).astype(np.float32)
+        def _window(ci):
+            start = ci * STRIDE
+            seg   = audio[start:start + CLIP_SAMPLES]
+            if len(seg) < CLIP_SAMPLES:
+                seg = np.pad(seg, (0, CLIP_SAMPLES - len(seg)))
+            return seg.astype(np.float32)
 
-        wavs = torch.from_numpy(clips[None]).to(device)  # (1, T, CLIP_SAMPLES)
+        clips = np.stack([_window(ci) for ci in range(n_clips)], axis=0)
+        wavs  = torch.from_numpy(clips[None]).to(device)  # (1, T, CLIP_SAMPLES)
         with torch.no_grad():
             acc = np.zeros((n_clips, NUM_CLASSES), dtype=np.float32)
             for mdl in fold_models:
