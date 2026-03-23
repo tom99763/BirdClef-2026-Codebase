@@ -238,7 +238,9 @@ def absmax_normalize(audio: np.ndarray) -> np.ndarray:
     return audio / (m + 1e-8) if m > 1e-8 else audio
 
 
-def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+def load_audio_clip(path: str, sr: int = SR, n_samples: int = None) -> np.ndarray:
+    if n_samples is None:
+        n_samples = CLIP_SAMPLES  # read global at call time (not definition time)
     try:
         audio, orig_sr = sf.read(path, dtype='float32', always_2d=False)
         if audio.ndim == 2:
@@ -256,7 +258,9 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
 
 
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
-                 n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+                 n_samples: int = None) -> np.ndarray:
+    if n_samples is None:
+        n_samples = CLIP_SAMPLES  # read global at call time (not definition time)
     try:
         start_sample = max(0, offset_sec - n_samples // sr) * sr
         audio, orig_sr = sf.read(path, start=start_sample, frames=n_samples * 2,

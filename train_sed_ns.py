@@ -180,8 +180,10 @@ CLIP_SAMPLES = SR * 5
 NUM_CLASSES = 234
 
 
-def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+def load_audio_clip(path: str, sr: int = SR, n_samples: int = None) -> np.ndarray:
     """Load audio, pad/trim to n_samples, absmax normalize."""
+    if n_samples is None:
+        n_samples = CLIP_SAMPLES  # read global at call time (not definition time)
     try:
         audio, orig_sr = sf.read(path, dtype='float32', always_2d=False)
         if audio.ndim == 2:
@@ -199,8 +201,10 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
 
 
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
-                  n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+                  n_samples: int = None) -> np.ndarray:
     """Load soundscape clip by end-time offset, absmax normalize."""
+    if n_samples is None:
+        n_samples = CLIP_SAMPLES  # read global at call time (not definition time)
     try:
         start_sample = max(0, offset_sec - n_samples // sr) * sr
         audio, orig_sr = sf.read(path, start=start_sample, frames=n_samples * 2,
@@ -219,8 +223,10 @@ def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
 
 
 def load_ss_clip_by_start(path: str, start_sec: int, sr: int = SR,
-                           n_samples: int = CLIP_SAMPLES) -> np.ndarray:
+                           n_samples: int = None) -> np.ndarray:
     """Load soundscape clip by start time, absmax normalize."""
+    if n_samples is None:
+        n_samples = CLIP_SAMPLES  # read global at call time (not definition time)
     try:
         audio, orig_sr = sf.read(path, start=start_sec * sr, frames=n_samples * 2,
                                   dtype='float32', always_2d=False)
