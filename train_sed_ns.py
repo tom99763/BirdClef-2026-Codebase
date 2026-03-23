@@ -152,14 +152,18 @@ class SpecAug(nn.Module):
 
 
 def mixup(x, y, alpha=0.4):
-    """Mixup augmentation."""
+    """Mixup augmentation — audio mixed linearly, labels take union (max).
+
+    1st place BirdCLEF 2025: labels = max(y_a, y_b) because mixing two audio
+    clips means all species from both clips are present in the mix.
+    """
     if alpha <= 0:
         return x, y
     lam = np.random.beta(alpha, alpha)
     B = x.shape[0]
     idx = torch.randperm(B, device=x.device)
     mixed_x = lam * x + (1 - lam) * x[idx]
-    mixed_y = lam * y + (1 - lam) * y[idx]
+    mixed_y = torch.max(y, y[idx])          # union of labels
     return mixed_x, mixed_y
 
 
@@ -191,9 +195,9 @@ def load_audio_clip(path: str, sr: int = SR, n_samples: int = CLIP_SAMPLES) -> n
 
 def load_ss_clip(path: str, offset_sec: int, sr: int = SR,
                   n_samples: int = CLIP_SAMPLES) -> np.ndarray:
-    """Load a 5-second clip from a soundscape at a given second offset."""
+    """Load an audio clip from a soundscape at a given second offset."""
     try:
-        start_sample = max(0, (offset_sec - 5)) * sr
+        start_sample = max(0, offset_sec - n_samples // sr) * sr
         audio, orig_sr = sf.read(path, start=start_sample, frames=n_samples * 2,
                                   dtype='float32', always_2d=False)
         if audio.ndim == 2:
@@ -357,9 +361,12 @@ def macro_auc(y_true, y_score):
 
 
 def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
+    global CLIP_SAMPLES
     t_cfg   = cfg['training']
     d_cfg   = cfg['data']
     m_cfg   = cfg.get('model', {})
+    clip_dur = m_cfg.get('clip_duration', 5)
+    CLIP_SAMPLES = SR * clip_dur
     out_dir = Path(cfg['output']['dir'])
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -442,10 +449,11 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     sched  = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
     scaler = torch.cuda.amp.GradScaler()
 
-    gamma      = t_cfg.get('focal_gamma', 2.0)
-    mixup_a    = t_cfg.get('mixup_alpha', 0.4)
-    pseudo_w   = t_cfg.get('pseudo_weight', 0.5)  # weight for pseudo loss
-    criterion  = FocalBCE(gamma=gamma)
+    gamma           = t_cfg.get('focal_gamma', 2.0)
+    mixup_a         = t_cfg.get('mixup_alpha', 0.15)          # 1st place: 0.15
+    pseudo_mixup_a  = t_cfg.get('pseudo_mixup_alpha', 0.15)   # MixUp on pseudo data too
+    pseudo_w        = t_cfg.get('pseudo_weight', 1.0)         # 1st place: equal weight
+    criterion       = FocalBCE(gamma=gamma)
 
     best_auc        = 0.0
     best_state      = None
@@ -473,23 +481,16 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
         ep_loss = 0.0
         n_steps = 0
 
-        # Interleave audio and pseudo batches
+        # 1st place: combine labeled + pseudo into one batch, cross-domain MixUp
         pseudo_iter = iter(pseudo_loader) if pseudo_loader else None
         for audio_waves, audio_labels in audio_loader:
             audio_waves  = audio_waves.to(device)
             audio_labels = audio_labels.to(device)
 
-            # Mel + augment
             with torch.no_grad():
                 mel = mel_tf(audio_waves)
             mel = spec_aug(mel)
-            mel, audio_labels = mixup(mel, audio_labels, mixup_a)
 
-            with torch.cuda.amp.autocast():
-                out  = model(mel)
-                loss = criterion(out['clipwise_logit'], audio_labels)
-
-            # Add pseudo loss if available
             if pseudo_iter:
                 try:
                     pseudo_waves, pseudo_labels = next(pseudo_iter)
@@ -501,10 +502,20 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                 with torch.no_grad():
                     pseudo_mel = mel_tf(pseudo_waves)
                 pseudo_mel = spec_aug(pseudo_mel)
+
+                # Concatenate labeled + pseudo → single cross-domain MixUp
+                combined_mel    = torch.cat([mel, pseudo_mel], dim=0)
+                combined_labels = torch.cat([audio_labels, pseudo_labels], dim=0)
+                combined_mel, combined_labels = mixup(combined_mel, combined_labels, mixup_a)
+
                 with torch.cuda.amp.autocast():
-                    pseudo_out = model(pseudo_mel)
-                    pseudo_loss = criterion(pseudo_out['clipwise_logit'], pseudo_labels)
-                loss = loss + pseudo_w * pseudo_loss
+                    out  = model(combined_mel)
+                    loss = criterion(out['clipwise_logit'], combined_labels)
+            else:
+                mel, audio_labels = mixup(mel, audio_labels, mixup_a)
+                with torch.cuda.amp.autocast():
+                    out  = model(mel)
+                    loss = criterion(out['clipwise_logit'], audio_labels)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()
@@ -574,8 +585,11 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
 
 def infer_all_soundscapes(cfg: dict, device: torch.device):
     """Run 5-fold ensemble inference on all soundscapes, save all_ss_probs.npz."""
+    global CLIP_SAMPLES
     d_cfg   = cfg['data']
     m_cfg   = cfg.get('model', {})
+    clip_dur = m_cfg.get('clip_duration', 5)
+    CLIP_SAMPLES = SR * clip_dur
     out_dir = Path(cfg['output']['dir'])
     ss_dir  = Path(d_cfg['soundscape_dir'])
     taxonomy = pd.read_csv(d_cfg['taxonomy_csv'])
@@ -618,12 +632,16 @@ def infer_all_soundscapes(cfg: dict, device: torch.device):
         except Exception:
             continue
 
-        n_clips = len(audio) // CLIP_SAMPLES
+        STRIDE = SR * 5   # always 5s stride → 12 rows per 60s soundscape
+        n_clips = min(len(audio) // STRIDE, 12)
         if n_clips == 0:
             continue
 
         for ci in range(n_clips):
-            clip = audio[ci * CLIP_SAMPLES:(ci + 1) * CLIP_SAMPLES]
+            start = ci * STRIDE
+            clip  = audio[start:start + CLIP_SAMPLES]
+            if len(clip) < CLIP_SAMPLES:
+                clip = np.pad(clip, (0, CLIP_SAMPLES - len(clip)))
             wav  = torch.from_numpy(clip[None]).to(device)
             with torch.no_grad():
                 mel = mel_tf(wav)
@@ -665,6 +683,11 @@ def main():
 
     out_dir = Path(cfg['output']['dir'])
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # If --infer_all_ss is passed standalone (no --fold), skip training entirely
+    if args.infer_all_ss and args.fold is None:
+        infer_all_soundscapes(cfg, device)
+        return
 
     n_folds  = cfg['data'].get('n_folds', 5)
     folds    = [args.fold] if args.fold is not None else list(range(n_folds))

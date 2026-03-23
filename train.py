@@ -621,10 +621,12 @@ def main():
         print("Loss: BinaryCrossentropy")
 
     # ── Training loop ─────────────────────────────────────────────────────────
-    best_roc_auc = 0.0
-    best_epoch = 0
+    best_roc_auc   = 0.0
+    best_epoch     = 0
+    no_improve_cnt = 0
+    patience       = getattr(config.training, 'early_stopping_patience', 10)
     val_batch_size = config.training.batch_size * 2
-    epoch_history = []   # list of dicts, one per epoch
+    epoch_history  = []   # list of dicts, one per epoch
     t_start = time.time()
 
     print(f"\n{'='*60}")
@@ -709,13 +711,19 @@ def main():
 
         # Checkpoint best model
         if val_roc_auc > best_roc_auc:
-            best_roc_auc = val_roc_auc
-            best_epoch = epoch
+            best_roc_auc   = val_roc_auc
+            best_epoch     = epoch
+            no_improve_cnt = 0
             ckpt_path = os.path.join(ckpt_dir, "best_head")
             model.save_head(ckpt_path)
             tqdm.write(f"  ↑ New best cMAP={best_roc_auc:.4f}")
             if wandb_run:
                 wandb_run.log({"val/best_roc_auc": best_roc_auc, "epoch": epoch})
+        else:
+            no_improve_cnt += 1
+            if no_improve_cnt >= patience:
+                tqdm.write(f"  Early stopping at epoch {epoch} (no improvement for {patience} epochs)")
+                break
 
     total_time = time.time() - t_start
     _save_results(out_dir, run_name, config, epoch_history, best_roc_auc, best_epoch,
