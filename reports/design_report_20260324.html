@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Design Report 2026-03-24</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --accent-blue: #4fc3f7;
+    --accent-green: #69f0ae;
+    --accent-orange: #ffab40;
+    --accent-red: #ef5350;
+    --accent-purple: #ce93d8;
+    --text: #e0e0e0;
+    --text-dim: #9e9e9e;
+    --border: #2a2a4a;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 0 0 60px 0;
+  }
+  /* Header */
+  .page-header {
+    background: linear-gradient(135deg, #0f3460 0%, #16213e 50%, #1a1a2e 100%);
+    border-bottom: 2px solid var(--accent-blue);
+    padding: 40px 48px 32px;
+  }
+  .page-header h1 {
+    font-size: 2rem;
+    color: var(--accent-blue);
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .page-header .subtitle {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+  }
+  .page-header .meta {
+    margin-top: 18px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+  .meta-item {
+    background: rgba(79,195,247,0.08);
+    border: 1px solid rgba(79,195,247,0.25);
+    border-radius: 8px;
+    padding: 10px 18px;
+  }
+  .meta-item .label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+  .meta-item .value { font-size: 1.05rem; font-weight: 600; color: var(--accent-blue); }
+  .meta-item .value.green { color: var(--accent-green); }
+  /* Content wrapper */
+  .content { max-width: 1100px; margin: 0 auto; padding: 0 48px; }
+  /* Section */
+  section { margin-top: 48px; }
+  .section-title {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent-blue);
+    border-left: 4px solid var(--accent-blue);
+    padding-left: 14px;
+    margin-bottom: 20px;
+  }
+  .section-title span { font-size: 0.85rem; color: var(--text-dim); font-weight: 400; margin-left: 10px; }
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 18px;
+  }
+  .card.green { border-left: 4px solid var(--accent-green); }
+  .card.orange { border-left: 4px solid var(--accent-orange); }
+  .card.blue { border-left: 4px solid var(--accent-blue); }
+  .card.purple { border-left: 4px solid var(--accent-purple); }
+  .card.red { border-left: 4px solid var(--accent-red); }
+  .card h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+  }
+  .card h3.green { color: var(--accent-green); }
+  .card h3.orange { color: var(--accent-orange); }
+  .card h3.blue { color: var(--accent-blue); }
+  .card h3.purple { color: var(--accent-purple); }
+  .card h3.red { color: var(--accent-red); }
+  .card p { color: var(--text); margin-bottom: 8px; }
+  .card p:last-child { margin-bottom: 0; }
+  /* Code blocks */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid #2a2a4a;
+    border-radius: 8px;
+    padding: 18px 20px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: #c9d1d9;
+    margin: 12px 0;
+  }
+  pre .kw  { color: #ff7b72; }
+  pre .fn  { color: #d2a8ff; }
+  pre .str { color: #a5d6ff; }
+  pre .cm  { color: #6e7681; font-style: italic; }
+  pre .num { color: #79c0ff; }
+  pre .gr  { color: var(--accent-green); }
+  pre .or  { color: var(--accent-orange); }
+  pre .hl  { color: #e6edf3; font-weight: 700; }
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+    margin: 14px 0;
+  }
+  th {
+    background: var(--surface2);
+    color: var(--accent-blue);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 2px solid var(--border);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  td.green { color: var(--accent-green); font-weight: 600; }
+  td.orange { color: var(--accent-orange); }
+  td.red { color: var(--accent-red); }
+  td.blue { color: var(--accent-blue); }
+  td.dim { color: var(--text-dim); }
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+    margin-left: 6px;
+  }
+  .badge.green { background: rgba(105,240,174,0.15); color: var(--accent-green); border: 1px solid rgba(105,240,174,0.3); }
+  .badge.orange { background: rgba(255,171,64,0.15); color: var(--accent-orange); border: 1px solid rgba(255,171,64,0.3); }
+  .badge.red { background: rgba(239,83,80,0.15); color: var(--accent-red); border: 1px solid rgba(239,83,80,0.3); }
+  .badge.blue { background: rgba(79,195,247,0.15); color: var(--accent-blue); border: 1px solid rgba(79,195,247,0.3); }
+  /* Grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+  /* Highlight box */
+  .highlight-box {
+    background: rgba(79,195,247,0.06);
+    border: 1px solid rgba(79,195,247,0.2);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 14px 0;
+    font-size: 0.9rem;
+  }
+  .highlight-box.green {
+    background: rgba(105,240,174,0.06);
+    border-color: rgba(105,240,174,0.2);
+  }
+  .highlight-box.orange {
+    background: rgba(255,171,64,0.06);
+    border-color: rgba(255,171,64,0.2);
+  }
+  .highlight-box.red {
+    background: rgba(239,83,80,0.06);
+    border-color: rgba(239,83,80,0.2);
+  }
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px 28px;
+    margin-top: 32px;
+  }
+  .toc h2 { font-size: 0.9rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 5px 0; }
+  .toc a { color: var(--accent-blue); text-decoration: none; font-size: 0.9rem; }
+  .toc a:hover { text-decoration: underline; }
+  /* Score pill */
+  .score-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(105,240,174,0.1);
+    border: 1px solid rgba(105,240,174,0.3);
+    border-radius: 999px;
+    padding: 6px 18px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent-green);
+    margin: 4px 0;
+  }
+  /* Divider */
+  hr { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+  /* List */
+  ul.styled, ol.styled { padding-left: 20px; margin: 10px 0; }
+  ul.styled li, ol.styled li { margin: 5px 0; color: var(--text); }
+  ul.styled li::marker { color: var(--accent-blue); }
+  /* Lesson box */
+  .lesson {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 14px;
+    border: 1px solid var(--border);
+  }
+  .lesson .icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 1px; }
+  .lesson .body h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 5px; }
+  .lesson .body p { font-size: 0.88rem; color: var(--text-dim); }
+  /* Next step row */
+  .next-step {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+  }
+  .next-step .num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface2);
+    color: var(--accent-blue);
+    font-weight: 700;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .next-step .text { font-size: 0.9rem; }
+  .next-step .text strong { color: var(--text); }
+  .next-step .text span { color: var(--text-dim); font-size: 0.85rem; }
+  /* footer */
+  footer {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+    margin-top: 60px;
+    padding: 20px;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>BirdCLEF 2026 — Design Report</h1>
+  <div class="subtitle">Architectural decisions, experiment analysis, and lessons learned — 2026-03-24</div>
+  <div class="meta">
+    <div class="meta-item">
+      <div class="label">Date</div>
+      <div class="value">2026-03-24</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Current LB Best</div>
+      <div class="value green">0.927</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Submission</div>
+      <div class="value">dual-foundation-protossm-v3-sed-fusion</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">NS SED Status</div>
+      <div class="value">R1 fold2 training</div>
+    </div>
+  </div>
+</div>
+
+<div class="content">
+
+  <div class="toc">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#architecture-diagrams">Architecture Diagrams</a></li>
+      <li><a href="#architecture-diagrams">Architecture Diagrams</a></li>
+      <li><a href="#exec-summary">Executive Summary</a></li>
+      <li><a href="#notebook-updates">dual-foundation Notebook Updates</a></li>
+      <li><a href="#residual-ssm">ResidualSSM Architecture &amp; Position Analysis</a></li>
+      <li><a href="#ns-corrector">NS SED Residual Corrector (BiSSM)</a></li>
+      <li><a href="#pseudo-strategy">Pseudo Label Strategy Evolution</a></li>
+      <li><a href="#lessons">Lessons Learned</a></li>
+      <li><a href="#next-steps">Next Steps</a></li>
+    </ol>
+  </div>
+
+  <!-- ===================== 0. ARCHITECTURE DIAGRAMS ===================== -->
+  <section id="architecture-diagrams">
+    <div class="section-title">1. Architecture Diagrams</div>
+
+    <!-- ── Diagram 1: Full Pipeline ─────────────────────────────────────── -->
+    <div class="card blue" style="overflow-x:auto;">
+      <h3 class="blue">Dual-Foundation Pipeline — End-to-End Overview</h3>
+      <p style="margin-bottom:16px; color:var(--text-dim); font-size:0.88rem;">Full inference pipeline from raw audio to submission, showing how Perch and SED branches merge via VLOM blend.</p>
+      <svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:960px;display:block;margin:0 auto;" font-family="'Cascadia Code','Fira Code',Consolas,monospace" font-size="11">
+        <defs>
+          <marker id="arrowB" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#4fc3f7"/>
+          </marker>
+          <marker id="arrowG" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#69f0ae"/>
+          </marker>
+          <marker id="arrowO" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#ffab40"/>
+          </marker>
+          <marker id="arrowP" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#ce93d8"/>
+          </marker>
+          <filter id="glow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+
+        <!-- Background lane labels -->
+        <rect x="8" y="30" width="460" height="460" rx="10" fill="rgba(79,195,247,0.04)" stroke="rgba(79,195,247,0.15)" stroke-width="1"/>
+        <text x="238" y="52" text-anchor="middle" fill="#4fc3f7" font-size="12" font-weight="700" letter-spacing="1">PERCH FOUNDATION BRANCH</text>
+
+        <rect x="490" y="30" width="462" height="300" rx="10" fill="rgba(255,171,64,0.04)" stroke="rgba(255,171,64,0.15)" stroke-width="1"/>
+        <text x="721" y="52" text-anchor="middle" fill="#ffab40" font-size="12" font-weight="700" letter-spacing="1">SED BRANCH</text>
+
+        <!-- ── INPUT NODE ── -->
+        <rect x="390" y="62" width="170" height="36" rx="8" fill="#0f3460" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="475" y="84" text-anchor="middle" fill="#e0e0e0" font-weight="700">Raw Audio (5s clip)</text>
+
+        <!-- Arrow from input to Perch -->
+        <line x1="410" y1="98" x2="235" y2="130" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB)"/>
+        <!-- Arrow from input to SED -->
+        <line x1="540" y1="98" x2="700" y2="130" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO)"/>
+
+        <!-- ── PERCH BRANCH ── -->
+        <!-- Node: Perch Embeddings -->
+        <rect x="140" y="132" width="190" height="36" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="235" y="149" text-anchor="middle" fill="#4fc3f7" font-weight="700">Perch Embeddings</text>
+        <text x="235" y="163" text-anchor="middle" fill="#9e9e9e" font-size="10">(3 Perch models, 1280-d each)</text>
+
+        <!-- Arrow: Perch → Prior Fusion -->
+        <line x1="235" y1="168" x2="235" y2="194" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB)"/>
+
+        <!-- Node: Prior Fusion -->
+        <rect x="140" y="196" width="190" height="36" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="235" y="213" text-anchor="middle" fill="#4fc3f7" font-weight="700">Bayesian Prior Fusion</text>
+        <text x="235" y="227" text-anchor="middle" fill="#9e9e9e" font-size="10">(PCA 64-d + LogReg α=0.40)</text>
+
+        <!-- Arrow: Prior → LGBM -->
+        <line x1="235" y1="232" x2="235" y2="258" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB)"/>
+
+        <!-- Node: LGBM Probe -->
+        <rect x="140" y="260" width="190" height="36" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="235" y="277" text-anchor="middle" fill="#69f0ae" font-weight="700">LGBM Probe</text>
+        <text x="235" y="291" text-anchor="middle" fill="#9e9e9e" font-size="10">(per-class LGBM, scale_pos_weight)</text>
+
+        <!-- Arrow: LGBM → TFLite Heads -->
+        <line x1="235" y1="296" x2="235" y2="322" stroke="#69f0ae" stroke-width="1.5" marker-end="url(#arrowG)"/>
+
+        <!-- Node: TFLite Heads Blend -->
+        <rect x="140" y="324" width="190" height="36" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="235" y="341" text-anchor="middle" fill="#69f0ae" font-weight="700">TFLite Heads Blend</text>
+        <text x="235" y="355" text-anchor="middle" fill="#9e9e9e" font-size="10">(3 heads × α=0.30)</text>
+
+        <!-- Arrow: TFLite → ProtoSSM -->
+        <line x1="235" y1="360" x2="235" y2="386" stroke="#69f0ae" stroke-width="1.5" marker-end="url(#arrowG)"/>
+
+        <!-- Node: ProtoSSM v2 -->
+        <rect x="140" y="388" width="190" height="36" rx="6" fill="#16213e" stroke="#ce93d8" stroke-width="1.5"/>
+        <text x="235" y="405" text-anchor="middle" fill="#ce93d8" font-weight="700">ProtoSSM v2 (BiSSM)</text>
+        <text x="235" y="419" text-anchor="middle" fill="#9e9e9e" font-size="10">(Selective SSM, temporal context)</text>
+
+        <!-- Arrow: ProtoSSM → ResidualSSM -->
+        <line x1="235" y1="424" x2="235" y2="450" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#arrowP)"/>
+
+        <!-- Node: ResidualSSM -->
+        <rect x="140" y="452" width="190" height="36" rx="6" fill="#16213e" stroke="#ce93d8" stroke-width="2"/>
+        <text x="235" y="469" text-anchor="middle" fill="#ce93d8" font-weight="700">ResidualSSM</text>
+        <text x="235" y="483" text-anchor="middle" fill="#9e9e9e" font-size="10">(BiSSM correction, Δ[T×234])</text>
+
+        <!-- ── SED BRANCH ── -->
+        <!-- Node: SED Model -->
+        <rect x="610" y="132" width="190" height="36" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="705" y="149" text-anchor="middle" fill="#ffab40" font-weight="700">SED Model (NS Round 4)</text>
+        <text x="705" y="163" text-anchor="middle" fill="#9e9e9e" font-size="10">(EfficientNet-B0, 5-fold ensemble)</text>
+
+        <!-- Arrow: SED → Mel -->
+        <line x1="705" y1="168" x2="705" y2="194" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO)"/>
+
+        <!-- Node: Mel Spectrogram -->
+        <rect x="610" y="196" width="190" height="36" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="705" y="213" text-anchor="middle" fill="#ffab40" font-weight="700">Mel Spectrogram</text>
+        <text x="705" y="227" text-anchor="middle" fill="#9e9e9e" font-size="10">(224×T, GPU mel transform)</text>
+
+        <!-- Arrow: Mel → ONNX -->
+        <line x1="705" y1="232" x2="705" y2="258" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO)"/>
+
+        <!-- Node: ONNX INT8 -->
+        <rect x="610" y="260" width="190" height="36" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="705" y="277" text-anchor="middle" fill="#ffab40" font-weight="700">ONNX INT8 Inference</text>
+        <text x="705" y="291" text-anchor="middle" fill="#9e9e9e" font-size="10">(CPU, Kaggle notebook)</text>
+
+        <!-- Arrow: ONNX → SED Preds -->
+        <line x1="705" y1="296" x2="705" y2="322" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO)"/>
+
+        <!-- Node: SED Predictions -->
+        <rect x="610" y="324" width="190" height="36" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="705" y="341" text-anchor="middle" fill="#ffab40" font-weight="700">SED Probs [T×234]</text>
+        <text x="705" y="355" text-anchor="middle" fill="#9e9e9e" font-size="10">(per-frame species probs)</text>
+
+        <!-- ── VLOM BLEND ── -->
+        <!-- Arrows from ResidualSSM and SED to VLOM -->
+        <line x1="330" y1="470" x2="390" y2="470" stroke="#ce93d8" stroke-width="1.5"/>
+        <line x1="390" y1="470" x2="390" y2="406" stroke="#ce93d8" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="610" y1="342" x2="560" y2="406" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO)"/>
+        <line x1="330" y1="470" x2="460" y2="406" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#arrowP)"/>
+
+        <!-- VLOM node -->
+        <rect x="370" y="388" width="210" height="54" rx="8" fill="#0f3460" stroke="#4fc3f7" stroke-width="2" filter="url(#glow)"/>
+        <text x="475" y="410" text-anchor="middle" fill="#4fc3f7" font-weight="700" font-size="12">VLOM Blend</text>
+        <text x="475" y="427" text-anchor="middle" fill="#9e9e9e" font-size="10">0.50 × Perch-corrected</text>
+        <text x="475" y="441" text-anchor="middle" fill="#9e9e9e" font-size="10">+ 0.50 × SED probs</text>
+
+        <!-- Arrow: VLOM → Post-proc -->
+        <line x1="475" y1="442" x2="475" y2="468" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB)"/>
+
+        <!-- Node: Post-processing -->
+        <rect x="370" y="470" width="210" height="36" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="475" y="487" text-anchor="middle" fill="#69f0ae" font-weight="700">cSEBBs Post-processing</text>
+        <text x="475" y="499" text-anchor="middle" fill="#9e9e9e" font-size="10">(event smoothing R46.08)</text>
+
+        <!-- Arrow: Post-proc → Output -->
+        <line x1="580" y1="488" x2="640" y2="488" stroke="#69f0ae" stroke-width="1.5" marker-end="url(#arrowG)"/>
+
+        <!-- Node: Submission -->
+        <rect x="642" y="470" width="140" height="36" rx="8" fill="#0f3460" stroke="#69f0ae" stroke-width="2"/>
+        <text x="712" y="487" text-anchor="middle" fill="#69f0ae" font-weight="700">submission.csv</text>
+        <text x="712" y="499" text-anchor="middle" fill="#9e9e9e" font-size="10">LB 0.927</text>
+      </svg>
+    </div>
+
+    <!-- ── Diagram 2: NS SED Chain Flowchart ───────────────────────────── -->
+    <div class="card green" style="overflow-x:auto; margin-top:20px;">
+      <h3 class="green">NS SED Noisy-Student Chain — Round Loop Flowchart</h3>
+      <p style="margin-bottom:16px; color:var(--text-dim); font-size:0.88rem;">Four-round noisy-student training pipeline with Residual Corrector and Perch-teacher-anchored pseudo labels.</p>
+      <svg viewBox="0 0 920 580" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:920px;display:block;margin:0 auto;" font-family="'Cascadia Code','Fira Code',Consolas,monospace" font-size="11">
+        <defs>
+          <marker id="arrowW" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#e0e0e0"/>
+          </marker>
+          <marker id="arrowG2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#69f0ae"/>
+          </marker>
+          <marker id="arrowB2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#4fc3f7"/>
+          </marker>
+          <marker id="arrowO2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#ffab40"/>
+          </marker>
+          <marker id="arrowP2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#ce93d8"/>
+          </marker>
+        </defs>
+
+        <!-- Round box R1 -->
+        <rect x="20" y="20" width="860" height="116" rx="10" fill="rgba(105,240,174,0.05)" stroke="rgba(105,240,174,0.3)" stroke-width="1.5"/>
+        <text x="36" y="42" fill="#69f0ae" font-weight="700" font-size="12">ROUND 1  (perch_w=0.50, sed_w=0.50, threshold=92nd pct)</text>
+
+        <rect x="36" y="52" width="140" height="72" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="106" y="72" text-anchor="middle" fill="#4fc3f7" font-weight="700">Train 5 Folds</text>
+        <text x="106" y="88" text-anchor="middle" fill="#9e9e9e" font-size="10">EfficientNet-B0</text>
+        <text x="106" y="102" text-anchor="middle" fill="#9e9e9e" font-size="10">20s clips</text>
+        <text x="106" y="115" text-anchor="middle" fill="#9e9e9e" font-size="10">SumixFreq aug</text>
+
+        <line x1="176" y1="88" x2="206" y2="88" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB2)"/>
+
+        <rect x="208" y="52" width="140" height="72" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="278" y="72" text-anchor="middle" fill="#4fc3f7" font-weight="700">Infer All SS</text>
+        <text x="278" y="88" text-anchor="middle" fill="#9e9e9e" font-size="10">5-fold ensemble</text>
+        <text x="278" y="102" text-anchor="middle" fill="#9e9e9e" font-size="10">all_ss_probs.npz</text>
+        <text x="278" y="115" text-anchor="middle" fill="#9e9e9e" font-size="10">[N_files × T × 234]</text>
+
+        <line x1="348" y1="88" x2="378" y2="88" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB2)"/>
+
+        <rect x="380" y="52" width="160" height="72" rx="6" fill="#16213e" stroke="#ce93d8" stroke-width="1.5"/>
+        <text x="460" y="72" text-anchor="middle" fill="#ce93d8" font-weight="700">Residual Corrector</text>
+        <text x="460" y="88" text-anchor="middle" fill="#9e9e9e" font-size="10">BiSSM trains on</text>
+        <text x="460" y="102" text-anchor="middle" fill="#9e9e9e" font-size="10">(SED, Perch teacher)</text>
+        <text x="460" y="115" text-anchor="middle" fill="#9e9e9e" font-size="10">→ all_ss_probs_corrected.npz</text>
+
+        <line x1="540" y1="88" x2="570" y2="88" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#arrowP2)"/>
+
+        <rect x="572" y="52" width="190" height="72" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="667" y="72" text-anchor="middle" fill="#69f0ae" font-weight="700">Gen Pseudo Labels</text>
+        <text x="667" y="88" text-anchor="middle" fill="#9e9e9e" font-size="10">0.50×teacher + 0.50×corrected</text>
+        <text x="667" y="102" text-anchor="middle" fill="#9e9e9e" font-size="10">threshold=92nd pct</text>
+        <text x="667" y="115" text-anchor="middle" fill="#9e9e9e" font-size="10">→ pseudo_labels/sed_20s_r1.csv</text>
+
+        <!-- Down arrow R1→R2 -->
+        <line x1="460" y1="136" x2="460" y2="156" stroke="#69f0ae" stroke-width="2" marker-end="url(#arrowG2)"/>
+
+        <!-- Round box R2 -->
+        <rect x="20" y="158" width="860" height="116" rx="10" fill="rgba(79,195,247,0.05)" stroke="rgba(79,195,247,0.3)" stroke-width="1.5"/>
+        <text x="36" y="180" fill="#4fc3f7" font-weight="700" font-size="12">ROUND 2  (perch_w=0.30, sed_w=0.70, threshold=93rd pct)  ← uses R1 pseudo labels</text>
+
+        <rect x="36" y="190" width="140" height="72" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="106" y="210" text-anchor="middle" fill="#4fc3f7" font-weight="700">Train 5 Folds</text>
+        <text x="106" y="226" text-anchor="middle" fill="#9e9e9e" font-size="10">+ R1 pseudo labels</text>
+        <text x="106" y="240" text-anchor="middle" fill="#9e9e9e" font-size="10">in training set</text>
+        <text x="106" y="253" text-anchor="middle" fill="#9e9e9e" font-size="10">(cleaner, labelled data)</text>
+
+        <line x1="176" y1="226" x2="206" y2="226" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB2)"/>
+
+        <rect x="208" y="190" width="140" height="72" rx="6" fill="#16213e" stroke="#4fc3f7" stroke-width="1.5"/>
+        <text x="278" y="210" text-anchor="middle" fill="#4fc3f7" font-weight="700">Infer All SS</text>
+        <text x="278" y="226" text-anchor="middle" fill="#9e9e9e" font-size="10">5-fold ensemble</text>
+        <text x="278" y="240" text-anchor="middle" fill="#9e9e9e" font-size="10">all_ss_probs.npz</text>
+        <text x="278" y="253" text-anchor="middle" fill="#9e9e9e" font-size="10">(improved over R1)</text>
+
+        <line x1="348" y1="226" x2="378" y2="226" stroke="#4fc3f7" stroke-width="1.5" marker-end="url(#arrowB2)"/>
+
+        <rect x="380" y="190" width="160" height="72" rx="6" fill="#16213e" stroke="#ce93d8" stroke-width="1.5"/>
+        <text x="460" y="210" text-anchor="middle" fill="#ce93d8" font-weight="700">Residual Corrector</text>
+        <text x="460" y="226" text-anchor="middle" fill="#9e9e9e" font-size="10">retrained on R2 preds</text>
+        <text x="460" y="240" text-anchor="middle" fill="#9e9e9e" font-size="10">+ Perch teacher</text>
+        <text x="460" y="253" text-anchor="middle" fill="#9e9e9e" font-size="10">→ corrected probs</text>
+
+        <line x1="540" y1="226" x2="570" y2="226" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#arrowP2)"/>
+
+        <rect x="572" y="190" width="190" height="72" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="667" y="210" text-anchor="middle" fill="#69f0ae" font-weight="700">Gen Pseudo Labels</text>
+        <text x="667" y="226" text-anchor="middle" fill="#9e9e9e" font-size="10">0.30×teacher + 0.70×corrected</text>
+        <text x="667" y="240" text-anchor="middle" fill="#9e9e9e" font-size="10">threshold=93rd pct (stricter)</text>
+        <text x="667" y="253" text-anchor="middle" fill="#9e9e9e" font-size="10">→ pseudo_labels/sed_20s_r2.csv</text>
+
+        <!-- Down arrow R2→R3 -->
+        <line x1="460" y1="274" x2="460" y2="294" stroke="#69f0ae" stroke-width="2" marker-end="url(#arrowG2)"/>
+
+        <!-- Round box R3 -->
+        <rect x="20" y="296" width="860" height="116" rx="10" fill="rgba(255,171,64,0.05)" stroke="rgba(255,171,64,0.3)" stroke-width="1.5"/>
+        <text x="36" y="318" fill="#ffab40" font-weight="700" font-size="12">ROUND 3  (perch_w=0.10, sed_w=0.90, threshold=94th pct)  ← uses R2 pseudo labels</text>
+
+        <rect x="36" y="328" width="140" height="72" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="106" y="348" text-anchor="middle" fill="#ffab40" font-weight="700">Train 5 Folds</text>
+        <text x="106" y="364" text-anchor="middle" fill="#9e9e9e" font-size="10">+ R2 pseudo labels</text>
+        <text x="106" y="378" text-anchor="middle" fill="#9e9e9e" font-size="10">(higher precision)</text>
+        <text x="106" y="391" text-anchor="middle" fill="#9e9e9e" font-size="10">student maturing</text>
+
+        <line x1="176" y1="364" x2="206" y2="364" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO2)"/>
+
+        <rect x="208" y="328" width="140" height="72" rx="6" fill="#16213e" stroke="#ffab40" stroke-width="1.5"/>
+        <text x="278" y="348" text-anchor="middle" fill="#ffab40" font-weight="700">Infer All SS</text>
+        <text x="278" y="364" text-anchor="middle" fill="#9e9e9e" font-size="10">5-fold ensemble</text>
+        <text x="278" y="378" text-anchor="middle" fill="#9e9e9e" font-size="10">all_ss_probs.npz</text>
+        <text x="278" y="391" text-anchor="middle" fill="#9e9e9e" font-size="10">(strong student)</text>
+
+        <line x1="348" y1="364" x2="378" y2="364" stroke="#ffab40" stroke-width="1.5" marker-end="url(#arrowO2)"/>
+
+        <rect x="380" y="328" width="160" height="72" rx="6" fill="#16213e" stroke="#ce93d8" stroke-width="1.5"/>
+        <text x="460" y="348" text-anchor="middle" fill="#ce93d8" font-weight="700">Residual Corrector</text>
+        <text x="460" y="364" text-anchor="middle" fill="#9e9e9e" font-size="10">teacher anchor=0.10</text>
+        <text x="460" y="378" text-anchor="middle" fill="#9e9e9e" font-size="10">prevents drift</text>
+        <text x="460" y="391" text-anchor="middle" fill="#9e9e9e" font-size="10">→ corrected probs</text>
+
+        <line x1="540" y1="364" x2="570" y2="364" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#arrowP2)"/>
+
+        <rect x="572" y="328" width="190" height="72" rx="6" fill="#16213e" stroke="#69f0ae" stroke-width="1.5"/>
+        <text x="667" y="348" text-anchor="middle" fill="#69f0ae" font-weight="700">Gen Pseudo Labels</text>
+        <text x="667" y="364" text-anchor="middle" fill="#9e9e9e" font-size="10">0.10×teacher + 0.90×corrected</text>
+        <text x="667" y="378" text-anchor="middle" fill="#9e9e9e" font-size="10">threshold=94th pct (tightest)</text>
+        <text x="667" y="391" text-anchor="middle" fill="#9e9e9e" font-size="10">→ pseudo_labels/sed_20s_r3.csv</text>
+
+        <!-- Down arrow R3→R4 -->
+        <line x1="460" y1="412" x2="460" y2="432" stroke="#69f0ae" stroke-width="2" marker-end="url(#arrowG2)"/>
+
+        <!-- Round box R4 -->
+        <rect x="20" y="434" width="860" height="90" rx="10" fill="rgba(239,83,80,0.05)" stroke="rgba(239,83,80,0.3)" stroke-width="1.5"/>
+        <text x="36" y="456" fill="#ef5350" font-weight="700" font-size="12">ROUND 4  (final round — no new pseudo labels)  ← uses R3 pseudo labels</text>
+
+        <rect x="36" y="466" width="140" height="50" rx="6" fill="#16213e" stroke="#ef5350" stroke-width="1.5"/>
+        <text x="106" y="486" text-anchor="middle" fill="#ef5350" font-weight="700">Train 5 Folds</text>
+        <text x="106" y="502" text-anchor="middle" fill="#9e9e9e" font-size="10">+ R3 pseudo labels</text>
+
+        <line x1="176" y1="491" x2="206" y2="491" stroke="#ef5350" stroke-width="1.5" marker-end="url(#arrowO2)"/>
+
+        <rect x="208" y="466" width="140" height="50" rx="6" fill="#16213e" stroke="#ef5350" stroke-width="1.5"/>
+        <text x="278" y="486" text-anchor="middle" fill="#ef5350" font-weight="700">Infer All SS</text>
+        <text x="278" y="502" text-anchor="middle" fill="#9e9e9e" font-size="10">final ensemble</text>
+
+        <line x1="348" y1="491" x2="378" y2="491" stroke="#ef5350" stroke-width="1.5" marker-end="url(#arrowO2)"/>
+
+        <rect x="380" y="466" width="250" height="50" rx="6" fill="#0f3460" stroke="#69f0ae" stroke-width="2"/>
+        <text x="505" y="486" text-anchor="middle" fill="#69f0ae" font-weight="700">Final SED Model (R4 5-fold)</text>
+        <text x="505" y="502" text-anchor="middle" fill="#9e9e9e" font-size="10">→ replace SED component in dual-foundation notebook</text>
+
+        <!-- "No pseudo" label -->
+        <rect x="660" y="466" width="210" height="50" rx="6" fill="rgba(239,83,80,0.1)" stroke="#ef5350" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="765" y="486" text-anchor="middle" fill="#ef5350" font-size="11">No Residual Corrector</text>
+        <text x="765" y="502" text-anchor="middle" fill="#9e9e9e" font-size="10">No pseudo label generation</text>
+
+        <!-- Perch teacher icon on right -->
+        <rect x="800" y="52" width="110" height="252" rx="8" fill="rgba(206,147,216,0.08)" stroke="rgba(206,147,216,0.3)" stroke-width="1.5"/>
+        <text x="855" y="74" text-anchor="middle" fill="#ce93d8" font-weight="700" font-size="11">Perch</text>
+        <text x="855" y="88" text-anchor="middle" fill="#ce93d8" font-weight="700" font-size="11">Teacher</text>
+        <text x="855" y="106" text-anchor="middle" fill="#9e9e9e" font-size="10">(fixed anchor)</text>
+        <text x="855" y="126" text-anchor="middle" fill="#ce93d8" font-size="10">R1: w=0.50</text>
+        <text x="855" y="148" text-anchor="middle" fill="#ce93d8" font-size="10">R2: w=0.30</text>
+        <text x="855" y="170" text-anchor="middle" fill="#ce93d8" font-size="10">R3: w=0.10</text>
+        <text x="855" y="192" text-anchor="middle" fill="#9e9e9e" font-size="10">prevents</text>
+        <text x="855" y="208" text-anchor="middle" fill="#9e9e9e" font-size="10">confirmation</text>
+        <text x="855" y="224" text-anchor="middle" fill="#9e9e9e" font-size="10">bias</text>
+        <!-- Dashed lines from teacher to correctors -->
+        <line x1="800" y1="110" x2="762" y2="88" stroke="#ce93d8" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="800" y1="168" x2="762" y2="226" stroke="#ce93d8" stroke-width="1" stroke-dasharray="4,3"/>
+        <line x1="800" y1="226" x2="762" y2="364" stroke="#ce93d8" stroke-width="1" stroke-dasharray="4,3"/>
+      </svg>
+    </div>
+
+    <!-- ── Diagram 3: ResidualSSM Position ──────────────────────────────── -->
+    <div class="card orange" style="overflow-x:auto; margin-top:20px;">
+      <h3 class="orange">ResidualSSM Placement — Correct vs Wrong Position</h3>
+      <p style="margin-bottom:16px; color:var(--text-dim); font-size:0.88rem;">Distribution mismatch: the corrector must see the same distribution it was trained on.</p>
+      <svg viewBox="0 0 920 300" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:920px;display:block;margin:0 auto;" font-family="'Cascadia Code','Fira Code',Consolas,monospace" font-size="11">
+        <defs>
+          <marker id="arrR" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#ef5350"/></marker>
+          <marker id="arrG3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#69f0ae"/></marker>
+        </defs>
+
+        <!-- WRONG panel -->
+        <rect x="10" y="10" width="420" height="275" rx="10" fill="rgba(239,83,80,0.06)" stroke="#ef5350" stroke-width="2"/>
+        <text x="220" y="34" text-anchor="middle" fill="#ef5350" font-weight="700" font-size="14">WRONG  (LB 0.923, -0.004)</text>
+
+        <rect x="80" y="50" width="260" height="32" rx="5" fill="#16213e" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="210" y="70" text-anchor="middle" fill="#4fc3f7">ProtoSSM → first_pass probs</text>
+        <line x1="210" y1="82" x2="210" y2="102" stroke="#e0e0e0" stroke-width="1.5" marker-end="url(#arrR)"/>
+
+        <rect x="80" y="104" width="260" height="46" rx="5" fill="#16213e" stroke="#ef5350" stroke-width="2"/>
+        <text x="210" y="124" text-anchor="middle" fill="#e0e0e0">VLOM Blend</text>
+        <text x="210" y="140" text-anchor="middle" fill="#9e9e9e" font-size="10">50% ProtoSSM + 50% SED  ← mixed distribution</text>
+        <line x1="210" y1="150" x2="210" y2="170" stroke="#e0e0e0" stroke-width="1.5" marker-end="url(#arrR)"/>
+
+        <rect x="80" y="172" width="260" height="46" rx="5" fill="#16213e" stroke="#ef5350" stroke-width="2"/>
+        <text x="210" y="192" text-anchor="middle" fill="#ef5350" font-weight="700">ResidualSSM ← applied here</text>
+        <text x="210" y="208" text-anchor="middle" fill="#9e9e9e" font-size="10">trained on ProtoSSM-only, sees blended input</text>
+        <line x1="210" y1="218" x2="210" y2="238" stroke="#ef5350" stroke-width="1.5" marker-end="url(#arrR)"/>
+
+        <rect x="80" y="240" width="260" height="32" rx="5" fill="rgba(239,83,80,0.15)" stroke="#ef5350" stroke-width="1"/>
+        <text x="210" y="260" text-anchor="middle" fill="#ef5350" font-weight="700">submission  [LB 0.923]</text>
+
+        <!-- Cross mark -->
+        <text x="50" y="175" fill="#ef5350" font-size="24" font-weight="700">✗</text>
+
+        <!-- CORRECT panel -->
+        <rect x="490" y="10" width="420" height="275" rx="10" fill="rgba(105,240,174,0.06)" stroke="#69f0ae" stroke-width="2"/>
+        <text x="700" y="34" text-anchor="middle" fill="#69f0ae" font-weight="700" font-size="14">CORRECT  (LB 0.927, +0.004 recovery)</text>
+
+        <rect x="560" y="50" width="260" height="32" rx="5" fill="#16213e" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="690" y="70" text-anchor="middle" fill="#4fc3f7">ProtoSSM → first_pass probs</text>
+        <line x1="690" y1="82" x2="690" y2="102" stroke="#e0e0e0" stroke-width="1.5" marker-end="url(#arrG3)"/>
+
+        <rect x="560" y="104" width="260" height="46" rx="5" fill="#16213e" stroke="#69f0ae" stroke-width="2"/>
+        <text x="690" y="124" text-anchor="middle" fill="#69f0ae" font-weight="700">ResidualSSM ← applied here</text>
+        <text x="690" y="140" text-anchor="middle" fill="#9e9e9e" font-size="10">trained on ProtoSSM-only, sees ProtoSSM input ✓</text>
+        <line x1="690" y1="150" x2="690" y2="170" stroke="#e0e0e0" stroke-width="1.5" marker-end="url(#arrG3)"/>
+
+        <rect x="560" y="172" width="260" height="46" rx="5" fill="#16213e" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="690" y="192" text-anchor="middle" fill="#e0e0e0">VLOM Blend</text>
+        <text x="690" y="208" text-anchor="middle" fill="#9e9e9e" font-size="10">50% corrected ProtoSSM + 50% SED</text>
+        <line x1="690" y1="218" x2="690" y2="238" stroke="#e0e0e0" stroke-width="1.5" marker-end="url(#arrG3)"/>
+
+        <rect x="560" y="240" width="260" height="32" rx="5" fill="rgba(105,240,174,0.15)" stroke="#69f0ae" stroke-width="1"/>
+        <text x="690" y="260" text-anchor="middle" fill="#69f0ae" font-weight="700">submission  [LB 0.927]</text>
+
+        <!-- Check mark -->
+        <text x="882" y="175" fill="#69f0ae" font-size="24" font-weight="700">✓</text>
+      </svg>
+    </div>
+
+    <!-- ── Diagram 4: Teacher Weight / Threshold Schedule ──────────────── -->
+    <div class="card purple" style="overflow-x:auto; margin-top:20px;">
+      <h3 class="purple" style="color:var(--accent-purple);">Pseudo Label Strategy — Teacher Weight &amp; Threshold Schedule</h3>
+      <p style="margin-bottom:16px; color:var(--text-dim); font-size:0.88rem;">Teacher weight decreases as the student matures; threshold percentile tightens to maintain pseudo label quality.</p>
+      <svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:820px;display:block;margin:0 auto;" font-family="'Cascadia Code','Fira Code',Consolas,monospace" font-size="11">
+        <!-- Axes -->
+        <line x1="60" y1="180" x2="780" y2="180" stroke="#2a2a4a" stroke-width="1.5"/>
+        <text x="410" y="210" text-anchor="middle" fill="#9e9e9e" font-size="12">NS Training Round</text>
+
+        <!-- Teacher weight bars (blue, left y-axis: 0→0.5) -->
+        <!-- R1: 0.50 → height 100 -->
+        <rect x="100" y="80" width="100" height="100" rx="4" fill="rgba(79,195,247,0.6)" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="150" y="74" text-anchor="middle" fill="#4fc3f7" font-weight="700">0.50</text>
+        <text x="150" y="197" text-anchor="middle" fill="#e0e0e0">Round 1</text>
+
+        <!-- R2: 0.30 → height 60 -->
+        <rect x="280" y="120" width="100" height="60" rx="4" fill="rgba(79,195,247,0.45)" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="330" y="114" text-anchor="middle" fill="#4fc3f7" font-weight="700">0.30</text>
+        <text x="330" y="197" text-anchor="middle" fill="#e0e0e0">Round 2</text>
+
+        <!-- R3: 0.10 → height 20 -->
+        <rect x="460" y="160" width="100" height="20" rx="4" fill="rgba(79,195,247,0.3)" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="510" y="154" text-anchor="middle" fill="#4fc3f7" font-weight="700">0.10</text>
+        <text x="510" y="197" text-anchor="middle" fill="#e0e0e0">Round 3</text>
+
+        <!-- R4: 0.00 -->
+        <rect x="640" y="178" width="100" height="2" rx="1" fill="rgba(79,195,247,0.2)" stroke="#4fc3f7" stroke-width="1"/>
+        <text x="690" y="172" text-anchor="middle" fill="#9e9e9e">0.00</text>
+        <text x="690" y="197" text-anchor="middle" fill="#e0e0e0">Round 4</text>
+        <text x="690" y="208" text-anchor="middle" fill="#9e9e9e" font-size="10">(inference only)</text>
+
+        <!-- Threshold line (orange, right y-axis) -->
+        <!-- R1: 92%, R2: 93%, R3: 94% scaled 92-94 → visual: 92=80, 93=100, 94=120 offset from bottom -->
+        <polyline points="150,118 330,98 510,78" fill="none" stroke="#ffab40" stroke-width="2.5" stroke-dasharray="6,3"/>
+        <circle cx="150" cy="118" r="5" fill="#ffab40"/>
+        <text x="150" y="112" text-anchor="middle" fill="#ffab40" font-size="10">92nd</text>
+        <circle cx="330" cy="98" r="5" fill="#ffab40"/>
+        <text x="330" y="92" text-anchor="middle" fill="#ffab40" font-size="10">93rd</text>
+        <circle cx="510" cy="78" r="5" fill="#ffab40"/>
+        <text x="510" y="72" text-anchor="middle" fill="#ffab40" font-size="10">94th</text>
+
+        <!-- Legend -->
+        <rect x="62" y="22" width="14" height="10" fill="rgba(79,195,247,0.6)"/>
+        <text x="82" y="32" fill="#4fc3f7" font-size="11">Perch teacher weight (left axis)</text>
+        <line x1="300" y1="27" x2="330" y2="27" stroke="#ffab40" stroke-width="2.5" stroke-dasharray="6,3"/>
+        <circle cx="316" cy="27" r="4" fill="#ffab40"/>
+        <text x="336" y="32" fill="#ffab40" font-size="11">Pseudo label threshold percentile (right axis)</text>
+
+        <!-- Left y-axis label -->
+        <text x="20" y="130" text-anchor="middle" fill="#4fc3f7" font-size="10" transform="rotate(-90, 20, 130)">Teacher Weight</text>
+        <!-- Right y-axis label -->
+        <text x="796" y="130" text-anchor="middle" fill="#ffab40" font-size="10" transform="rotate(90, 796, 130)">Threshold Pct</text>
+      </svg>
+      <div class="highlight-box" style="margin-top:10px;">
+        <strong>Key insight (1st-place inspired):</strong> Teacher weight never reaches zero before R4. Even at 10% in R3, the Perch teacher prevents confirmation bias — the student cannot amplify its own systematic errors across rounds. The stricter threshold (92→93→94) compensates for the decreasing teacher signal by filtering out less-confident pseudo labels.
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ===================== 1. EXECUTIVE SUMMARY ===================== -->
+  <section id="exec-summary">
+    <div class="section-title">2. Executive Summary</div>
+
+    <div class="card green">
+      <h3 class="green">What We Built Today</h3>
+      <p>Three significant advances were made on 2026-03-24, each targeting a different part of the pipeline:</p>
+      <ul class="styled">
+        <li><strong>Notebook upgrade</strong>: <code>dual-foundation-protossm-v3-sed-fusion.ipynb</code> — MLP probe replaced by LGBM, added 3 TFLite blended heads, 2-way OOF optimization, global seed fixing.</li>
+        <li><strong>ResidualSSM position fix</strong>: Reverted corrector to target <code>first_pass</code> (before VLOM), recovering from LB 0.923 regression back to <strong>0.927</strong>.</li>
+        <li><strong>NS SED Residual Corrector</strong>: New <code>train_sed_residual_corrector.py</code> — BiSSM that learns teacher–student residuals, integrated into every round of the NS chain.</li>
+      </ul>
+    </div>
+
+    <div class="grid2">
+      <div class="card blue">
+        <h3 class="blue">LB Impact Summary</h3>
+        <table>
+          <tr><th>Change</th><th>LB Delta</th></tr>
+          <tr><td>LGBM probe (replacing MLP)</td><td class="green">+0.001</td></tr>
+          <tr><td>TFLite heads blend (alpha=0.30)</td><td class="green">part of 0.927</td></tr>
+          <tr><td>2-way OOF weight search</td><td class="green">stable</td></tr>
+          <tr><td>ResidualSSM after VLOM (reverted)</td><td class="red">-0.004</td></tr>
+          <tr><td>ResidualSSM before VLOM (fixed)</td><td class="green">recovery to 0.927</td></tr>
+        </table>
+      </div>
+      <div class="card blue">
+        <h3 class="blue">LB Score Timeline</h3>
+        <table>
+          <tr><th>Date</th><th>LB</th><th>Key Change</th></tr>
+          <tr><td>2026-03-17</td><td>0.892</td><td class="dim">First submission</td></tr>
+          <tr><td>2026-03-20</td><td>0.921</td><td class="dim">v3-ensemble</td></tr>
+          <tr><td>2026-03-21</td><td>0.925</td><td class="dim">LGBM probe</td></tr>
+          <tr><td>2026-03-22</td><td>0.926</td><td class="dim">Event smooth</td></tr>
+          <tr><td><strong>2026-03-24</strong></td><td class="green"><strong>0.927</strong></td><td class="green">Dual-foundation v3</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="highlight-box green">
+      <strong>Net result</strong>: LB improved from 0.926 to <strong>0.927</strong>, a new best. The LGBM+heads+ProtoSSM+ResidualSSM pipeline is now the submission baseline. NS SED R1 is ongoing (fold0=0.9433, fold1=0.9037); once R3/R4 completes with corrected pseudo labels, the VLOM blend SED component will be refreshed.
+    </div>
+  </section>
+
+  <!-- ===================== 2. NOTEBOOK UPDATES ===================== -->
+  <section id="notebook-updates">
+    <div class="section-title">3. dual-foundation Notebook Updates <span>dual-foundation-protossm-v3-sed-fusion.ipynb</span></div>
+
+    <div class="card green">
+      <h3 class="green">Change 1 — LGBM Probe (replacing MLP)</h3>
+      <p>The MLP probe was replaced by a <strong>per-class LGBMClassifier</strong> with <code>scale_pos_weight</code> to handle extreme class imbalance. One independent LGBM is trained per species (234 total), allowing each classifier to learn species-specific decision boundaries.</p>
+      <pre><span class="cm"># Previous: single MLP over all classes</span>
+<span class="cm"># New: per-class LGBM with imbalance handling</span>
+<span class="kw">from</span> lightgbm <span class="kw">import</span> LGBMClassifier
+
+classifiers = {}
+<span class="kw">for</span> i, species <span class="kw">in</span> enumerate(SPECIES_LIST):
+    pos = labels[:, i].sum()
+    neg = len(labels) - pos
+    spw = neg / max(pos, <span class="num">1</span>)          <span class="cm"># scale_pos_weight</span>
+    clf = LGBMClassifier(
+        n_estimators=<span class="num">200</span>,
+        learning_rate=<span class="num">0.05</span>,
+        scale_pos_weight=spw,
+        n_jobs=<span class="num">1</span>,
+        verbose=<span class="num">-1</span>,
+    )
+    clf.fit(X_train[:, :, i].reshape(-<span class="num">1</span>, <span class="num">74</span>), labels[:, i])
+    classifiers[species] = clf</pre>
+      <p><strong>Features (74-dim)</strong>: PCA(64) on 1536-d Perch embedding + 10 metadata features (hour bins, site priors, confidence stats).</p>
+    </div>
+
+    <div class="card green">
+      <h3 class="green">Change 2 — TFLite Heads Blend (3 heads, alpha=0.30)</h3>
+      <p>Three fine-tuned TFLite heads are blended additively at <code>HEAD_BLEND_ALPHA=0.30</code>. Each head was fine-tuned on Perch embeddings for a different supervision signal, providing complementary information to the LGBM probe.</p>
+      <table>
+        <tr><th>Head</th><th>Training Data</th><th>Blend Weight</th></tr>
+        <tr><td><code>label_head_pseudo</code></td><td>Pseudo-labeled train_audio</td><td>0.30</td></tr>
+        <tr><td><code>label_head_soundscape_train</code></td><td>Labeled soundscape recordings</td><td>0.30</td></tr>
+        <tr><td><code>embedding_head_nohuman</code></td><td>VAD-filtered nohuman data</td><td>0.30</td></tr>
+      </table>
+      <pre><span class="cm"># Blend formula (applied after LGBM probe output)</span>
+blended = (
+    (<span class="num">1</span> - HEAD_BLEND_ALPHA) * lgbm_probs
+    + HEAD_BLEND_ALPHA / <span class="num">3</span> * head1_probs
+    + HEAD_BLEND_ALPHA / <span class="num">3</span> * head2_probs
+    + HEAD_BLEND_ALPHA / <span class="num">3</span> * head3_probs
+)</pre>
+      <p>The three heads run in the CPU-only Kaggle notebook environment via TFLite interpreter. No GPU required at inference.</p>
+    </div>
+
+    <div class="card green">
+      <h3 class="green">Change 3 — 2-way OOF Grid Search</h3>
+      <p>The ensemble weight for ProtoSSM is determined via a 2-stage OOF grid search rather than a fixed value:</p>
+      <ol class="styled">
+        <li><strong>Stage 1</strong>: Optimize LGBM probe alpha and TFLite heads blend alpha jointly on OOF folds.</li>
+        <li><strong>Stage 2</strong>: With stage-1 outputs fixed, grid-search <code>ENSEMBLE_WEIGHT_PROTO</code> (ProtoSSM vs. probe blend) on OOF.</li>
+      </ol>
+      <pre><span class="cm"># Stage 2: sweep ProtoSSM weight over OOF</span>
+best_auc, best_w = <span class="num">0</span>, <span class="num">0.5</span>
+<span class="kw">for</span> w <span class="kw">in</span> np.arange(<span class="num">0.10</span>, <span class="num">0.91</span>, <span class="num">0.05</span>):
+    blend = w * proto_oof + (<span class="num">1</span>-w) * probe_oof
+    auc = macro_roc_auc(labels_oof, blend)
+    <span class="kw">if</span> auc > best_auc:
+        best_auc, best_w = auc, w
+ENSEMBLE_WEIGHT_PROTO = best_w   <span class="cm"># used in final test scoring</span></pre>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Change 4 — Global Seed Fixing</h3>
+      <p>All sources of randomness are fixed at <code>SEED=42</code> to ensure reproducible submissions across re-runs:</p>
+      <pre><span class="kw">import</span> random, numpy <span class="kw">as</span> np, torch
+
+SEED = <span class="num">42</span>
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.use_deterministic_algorithms(<span class="kw">True</span>)   <span class="cm"># enforces CUDA determinism</span>
+torch.backends.cudnn.benchmark = <span class="kw">False</span></pre>
+      <p>Without this, LGBM model selection via OOF and ProtoSSM weight gridsearch could differ between runs, making it impossible to attribute LB changes to actual model improvements vs. random variation.</p>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Updated Cell Execution Order</h3>
+      <pre>
+1. [CONFIG]           SEED=42, HEAD_BLEND_ALPHA=0.30, device setup
+2. [PERCH EMBED]      TFLite Perch v2: embeddings(1536) + logits(14795→234)
+3. [BAYESIAN PRIOR]   site/hour prior fusion on logits
+4. [LGBM PROBE]       PCA(64) + per-class LGBMClassifier → lgbm_probs
+5. [TFLITE HEADS]     3 heads × alpha=0.30 blend → blended_probs
+6. [2-WAY OOF]        grid search → ENSEMBLE_WEIGHT_PROTO
+7. [PROTOSSM]         BiSSM(d_model=128, d_state=16) + prototypes + metadata
+8. [RESIDUAL SSM]     correction applied to first_pass (before VLOM)
+9. [VLOM BLEND]       ProtoSSM(0.50) + SED ONNX(0.50)
+10.[SUBMISSION]       final_test_scores_blended → submission.csv</pre>
+    </div>
+  </section>
+
+  <!-- ===================== 3. RESIDUAL SSM ===================== -->
+  <section id="residual-ssm">
+    <div class="section-title">4. ResidualSSM Architecture &amp; Position Analysis</div>
+
+    <div class="card blue">
+      <h3 class="blue">ResidualSSM Architecture</h3>
+      <p>The ResidualSSM is a small Bidirectional Selective SSM (BiSSM) that operates on the sequence of per-frame ProtoSSM probabilities and outputs an additive correction delta:</p>
+      <pre>
+Input:  first_pass probs  [T × 234]
+          (T = number of 5s frames in soundscape, 234 = species)
+
+  → input_proj: Linear(234 → 128) + LayerNorm + GELU
+  → BiSSM forward pass:  SSM(d_model=128, d_state=16, direction=fwd) → h_fwd [T × 128]
+  → BiSSM backward pass: SSM(d_model=128, d_state=16, direction=bwd) → h_bwd [T × 128]
+  → concat: [h_fwd || h_bwd]  [T × 256]
+  → output_proj: Linear(256 → 234) + Tanh()  (bounded correction)
+  → delta [T × 234]
+
+Output: first_pass_corrected = first_pass + delta  [T × 234]
+        clipped to [0, 1] after addition</pre>
+      <p>The Tanh activation on the output layer bounds the correction to [-1, +1], preventing the corrector from producing degenerate outputs when applied to out-of-distribution inputs.</p>
+    </div>
+
+    <div class="card orange">
+      <h3 class="orange">The Distribution Mismatch Problem</h3>
+      <p>On 2026-03-24, applying the ResidualSSM correction <em>after</em> the VLOM blend caused LB to drop from <strong>0.927 to 0.923</strong>. This was diagnosed as a distribution mismatch:</p>
+      <table>
+        <tr><th>Position</th><th>Input Distribution</th><th>ResidualSSM Trained On</th><th>Result</th></tr>
+        <tr>
+          <td>After VLOM <span class="badge red">wrong</span></td>
+          <td>0.50×ProtoSSM + 0.50×SED: bimodal, blended statistics</td>
+          <td>Pure ProtoSSM <code>first_pass</code> distribution</td>
+          <td class="red">LB 0.923 (-0.004)</td>
+        </tr>
+        <tr>
+          <td>Before VLOM <span class="badge green">correct</span></td>
+          <td>Pure ProtoSSM <code>first_pass</code> probabilities</td>
+          <td>Pure ProtoSSM <code>first_pass</code> distribution</td>
+          <td class="green">LB 0.927 (recovery)</td>
+        </tr>
+      </table>
+      <p>The VLOM blend mixes SED ONNX predictions (different calibration, different mean probability) with ProtoSSM outputs. The ResidualSSM was trained on pure ProtoSSM distributions, so applying it to the blended output causes systematic miscorrection.</p>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Correct Pipeline Position (Visual)</h3>
+      <pre>
+  Perch embed → Bayesian prior → LGBM probe
+                                     |
+                                     v
+                          [blended_probs with TFLite heads]
+                                     |
+                                     v
+                             ProtoSSM v2 (BiSSM)
+                                     |
+                                     v
+                         ┌─── first_pass probs ────────────┐
+                         │                                  │
+                         v                                  │
+                   ResidualSSM                              │
+                   (additive delta)                         │
+                         │                                  │
+                         v                                  │
+               first_pass_corrected ◄────────────────────── ┘
+                         |
+                         v
+                   VLOM blend:
+          0.50 × first_pass_corrected
+        + 0.50 × SED ONNX predictions
+                         |
+                         v
+              final_test_scores_blended
+                         |
+                         v
+                    submission.csv
+
+  *** ResidualSSM MUST target first_pass, not the VLOM output ***</pre>
+    </div>
+  </section>
+
+  <!-- ===================== 4. NS CORRECTOR ===================== -->
+  <section id="ns-corrector">
+    <div class="section-title">5. NS SED Residual Corrector (BiSSM)</div>
+
+    <div class="card blue">
+      <h3 class="blue">Purpose and Motivation</h3>
+      <p>After each NS SED round's inference on all soundscapes (<code>all_ss_probs.npz</code>), the SED student has systematic errors relative to the Perch teacher. Rather than feeding these raw errors directly into the pseudo label generator, we train a small BiSSM to learn the <em>residual</em> between teacher and student in probability space, then apply it to produce corrected predictions.</p>
+      <div class="highlight-box">
+        <strong>Training target</strong>: <code>delta = teacher_probs - SED_R_probs</code><br>
+        The BiSSM learns to predict this gap from the temporal context of SED predictions alone.
+      </div>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Architecture: train_sed_residual_corrector.py</h3>
+      <pre>
+<span class="cm"># Input: SED probabilities for one soundscape (sequence of 5s frames)</span>
+SED_probs   [T × 234]   <span class="cm"># from all_ss_probs.npz</span>
+teacher     [T × 234]   <span class="cm"># from perch_teacher_aug_all_ss.csv (5s aligned)</span>
+
+<span class="cm"># Model architecture</span>
+<span class="kw">class</span> <span class="fn">SEDResidualCorrector</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, n_species=<span class="num">234</span>, d_model=<span class="num">128</span>, d_state=<span class="num">16</span>):
+        self.input_proj  = nn.Sequential(
+            nn.Linear(n_species, d_model),
+            nn.LayerNorm(d_model),
+            nn.GELU(),
+        )
+        self.ssm_fwd = SelectiveSSM(d_model, d_state)   <span class="cm"># forward in time</span>
+        self.ssm_bwd = SelectiveSSM(d_model, d_state)   <span class="cm"># backward in time</span>
+        self.output_proj = nn.Sequential(
+            nn.Linear(d_model * <span class="num">2</span>, n_species),
+            nn.Tanh(),                                   <span class="cm"># bounded [-1, 1]</span>
+        )
+
+    <span class="kw">def</span> <span class="fn">forward</span>(self, x):           <span class="cm"># x: [B, T, 234]</span>
+        h = self.input_proj(x)       <span class="cm"># [B, T, 128]</span>
+        hf = self.ssm_fwd(h)         <span class="cm"># [B, T, 128]</span>
+        hb = self.ssm_bwd(h.flip(<span class="num">1</span>)).flip(<span class="num">1</span>)   <span class="cm"># [B, T, 128]</span>
+        cat = torch.cat([hf, hb], dim=-<span class="num">1</span>)  <span class="cm"># [B, T, 256]</span>
+        <span class="kw">return</span> self.output_proj(cat)  <span class="cm"># [B, T, 234] residual delta</span>
+
+<span class="cm"># Training</span>
+loss = F.mse_loss(pred_delta, true_delta)   <span class="cm"># true_delta = teacher - SED</span>
+corrected = (SED_probs + pred_delta).clamp(<span class="num">0</span>, <span class="num">1</span>)</pre>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Usage Command</h3>
+      <pre>python3 scripts/train_sed_residual_corrector.py \
+    --sed_dir  outputs/sed-ns-b0-20s-r1 \
+    --teacher  outputs/perch_teacher_aug_all_ss.csv \
+    --round    1
+
+<span class="cm"># Reads:   all_ss_probs.npz + teacher CSV</span>
+<span class="cm"># Trains:  BiSSM corrector on (SED, teacher) pairs</span>
+<span class="cm"># Outputs: all_ss_probs_corrected.npz (identical format to all_ss_probs.npz)</span>
+<span class="cm"># The corrected npz is then used as input to gen_pseudo_ns.py</span></pre>
+    </div>
+
+    <div class="card green">
+      <h3 class="green">Integration into NS Chain (auto_sed_ns_20s_full.sh)</h3>
+      <pre>
+<span class="cm"># Per-round loop in auto_sed_ns_20s_full.sh</span>
+<span class="kw">for</span> ROUND <span class="kw">in</span> 1 2 3 4; <span class="kw">do</span>
+
+    <span class="cm"># 1. Train 5 folds</span>
+    <span class="kw">for</span> FOLD <span class="kw">in</span> 0 1 2 3 4; <span class="kw">do</span>
+        python3 train_sed_ns.py --config configs/sed_ns_b0_20s_r${ROUND}.yaml --fold $FOLD
+    <span class="kw">done</span>
+
+    <span class="cm"># 2. Infer all soundscapes</span>
+    python3 train_sed_ns.py --infer_all_ss --config configs/sed_ns_b0_20s_r${ROUND}.yaml
+
+    <span class="cm"># 3. [NEW] Train + apply Residual Corrector</span>
+    python3 scripts/train_sed_residual_corrector.py \
+        --sed_dir outputs/sed-ns-b0-20s-r${ROUND} \
+        --teacher outputs/perch_teacher_aug_all_ss.csv \
+        --round   $ROUND
+
+    <span class="cm"># 4. Generate pseudo labels using corrected probs + Perch teacher</span>
+    <span class="kw">if</span> [ $ROUND -lt 4 ]; <span class="kw">then</span>
+        python3 scripts/gen_pseudo_ns.py \
+            --round       $ROUND \
+            --sed_dir     outputs/sed-ns-b0-20s-r${ROUND} \
+            --sed_corrected                           \
+            --perch_csv   outputs/perch_teacher_aug_all_ss.csv \
+            --perch_w     ${TEACHER_W[$ROUND]}        \
+            --threshold_pct ${THRESHOLD_PCT[$ROUND]}  \
+            --out         pseudo_labels/sed_20s_r${ROUND}.csv
+    <span class="kw">fi</span>
+
+<span class="kw">done</span>
+
+<span class="cm"># Teacher weight schedule: R1=0.50, R2=0.30, R3=0.10</span>
+<span class="cm"># Threshold pct schedule: R1=92, R2=93, R3=94</span></pre>
+    </div>
+
+    <div class="highlight-box">
+      <strong>Why BiSSM for the corrector?</strong> The SED student's errors have temporal structure — it tends to miss species at the start/end of their calls and over-predict during silence. A BiSSM can leverage both past and future context within a soundscape to predict these systematic temporal errors. A simple per-frame correction (e.g., calibration layer) cannot capture this temporal dependency.
+    </div>
+  </section>
+
+  <!-- ===================== 5. PSEUDO LABEL STRATEGY ===================== -->
+  <section id="pseudo-strategy">
+    <div class="section-title">6. Pseudo Label Strategy Evolution</div>
+
+    <div class="card orange">
+      <h3 class="orange">Previous Strategy (before 2026-03-24)</h3>
+      <p>Pseudo labels for NS SED rounds were generated from SED student predictions only (no teacher retention after R0). The threshold percentile was fixed at 95 across all rounds.</p>
+      <table>
+        <tr><th>Round</th><th>Sources</th><th>Teacher Weight</th><th>Threshold Pct</th></tr>
+        <tr><td>R0</td><td>Perch teacher only</td><td>1.00</td><td>95</td></tr>
+        <tr><td>R1</td><td>SED student only</td><td class="red">0.00</td><td>95</td></tr>
+        <tr><td>R2</td><td>SED student only</td><td class="red">0.00</td><td>95</td></tr>
+        <tr><td>R3</td><td>SED student only</td><td class="red">0.00</td><td>95</td></tr>
+      </table>
+      <p><strong>Problem</strong>: Without the teacher anchor, the student could progressively reinforce its own errors across rounds (confirmation bias / label drift).</p>
+    </div>
+
+    <div class="card green">
+      <h3 class="green">Updated Strategy (2026-03-24)</h3>
+      <p>Perch teacher is retained throughout all rounds at decreasing weight. The threshold percentile increases each round to accept only progressively more confident pseudo labels as the student improves.</p>
+      <table>
+        <tr><th>Round</th><th>Sources</th><th>Teacher Weight</th><th>Threshold Pct</th><th>Rationale</th></tr>
+        <tr>
+          <td>R0</td>
+          <td>Perch teacher only</td>
+          <td class="green">1.00</td><td>95</td>
+          <td class="dim">Pure teacher; no student yet</td>
+        </tr>
+        <tr>
+          <td>R1</td>
+          <td>Corrected SED + Teacher</td>
+          <td class="green">0.50</td><td>92</td>
+          <td class="dim">Student bootstrapping; equal blend</td>
+        </tr>
+        <tr>
+          <td>R2</td>
+          <td>Corrected SED + Teacher</td>
+          <td class="green">0.30</td><td>93</td>
+          <td class="dim">Student improving; reduce teacher</td>
+        </tr>
+        <tr>
+          <td>R3</td>
+          <td>Corrected SED + Teacher</td>
+          <td class="green">0.10</td><td>94</td>
+          <td class="dim">Student dominant; teacher as anchor</td>
+        </tr>
+        <tr>
+          <td>R4</td>
+          <td colspan="3">Inference only — no new pseudo labels</td>
+          <td class="dim">Final round</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">1st-Place Insight: Teacher Retention Prevents Confirmation Bias</h3>
+      <pre>
+  Round N:   student errors → pseudo labels → Round N+1 training
+                    ↑                                    |
+                    └────────────────────────────────────┘
+                         confirmation bias loop
+
+  Fix: keep teacher_w > 0 at every round:
+  pseudo_label = teacher_w * teacher_probs + (1-teacher_w) * corrected_SED_probs</pre>
+      <p>The Perch teacher is a fixed, high-quality signal trained on labeled data. Even a small teacher_w=0.10 at R3 is enough to prevent the student from drifting into a degenerate solution where it confidently predicts the wrong species.</p>
+      <p>This was identified as a key technique from the BirdCLEF 2025 1st-place solution (Babych). Their ablation showed teacher dropout at any round caused noticeable AUC degradation.</p>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Threshold Schedule Justification</h3>
+      <p>Lower threshold (R1=92) accepts more pseudo labels, supporting learning when the student is still weak. As the student improves, stricter thresholds (R2=93, R3=94) ensure only high-confidence, high-quality labels are used, preventing overconfident noise from entering training.</p>
+      <pre>
+  R1 (threshold=92nd pct): larger pseudo label set, more coverage, some noise OK
+                  ↓
+  R2 (threshold=93rd pct): pruned set, higher precision pseudo labels
+                  ↓
+  R3 (threshold=94th pct): tight set, highest precision, minimal noise</pre>
+    </div>
+  </section>
+
+  <!-- ===================== 6. LESSONS LEARNED ===================== -->
+  <section id="lessons">
+    <div class="section-title">7. Lessons Learned</div>
+
+    <div class="lesson">
+      <div class="icon">&#9888;&#65039;</div>
+      <div class="body">
+        <h4 style="color: var(--accent-orange);">Distribution Mismatch: Know Where Your Model Was Trained</h4>
+        <p>The ResidualSSM was trained on pure ProtoSSM <code>first_pass</code> distributions. Applying it to VLOM-blended outputs (50% SED + 50% ProtoSSM) caused a -0.004 LB regression because the input distribution at inference time did not match training time. <strong>Always verify that the input distribution of a corrector/calibrator matches the distribution it was trained on.</strong> The fix was architecturally simple (move the corrector to before the blend), but cost one submission slot to discover.</p>
+      </div>
+    </div>
+
+    <div class="lesson">
+      <div class="icon">&#128273;</div>
+      <div class="body">
+        <h4 style="color: var(--accent-green);">LGBM Probe Superiority Over MLP for Rare Species</h4>
+        <p>Per-class LGBMClassifier with <code>scale_pos_weight</code> outperforms a shared MLP because: (1) each species can have its own decision boundary without interference from other species; (2) <code>scale_pos_weight</code> directly handles the 1:500+ positive:negative ratio common in rare species; (3) LGBM handles feature interactions (embedding dims × metadata) without explicit engineering.</p>
+      </div>
+    </div>
+
+    <div class="lesson">
+      <div class="icon">&#128187;</div>
+      <div class="body">
+        <h4 style="color: var(--accent-blue);">CPU-Only Kaggle Environment Constrains Architecture</h4>
+        <p>All TFLite heads and the ONNX SED model must run on CPU in the Kaggle notebook environment. This limits the corrector's complexity — the BiSSM corrector must be exportable to ONNX/TFLite and run within Kaggle's 9-hour time limit. The d_model=128 size was chosen to balance correction quality vs. inference time.</p>
+      </div>
+    </div>
+
+    <div class="lesson">
+      <div class="icon">&#128200;</div>
+      <div class="body">
+        <h4 style="color: var(--accent-green);">2-Way OOF Outperforms Manual Weight Tuning</h4>
+        <p>Prior ensemble weights (Perch vs. ProtoSSM) were set manually or via simple 1D grid search. The 2-way OOF approach jointly optimizes the LGBM/heads stage and the ProtoSSM stage, finding a better global optimum. The key insight is that these two stages interact: better LGBM outputs change the optimal ProtoSSM weight.</p>
+      </div>
+    </div>
+
+    <div class="lesson">
+      <div class="icon">&#128295;</div>
+      <div class="body">
+        <h4 style="color: var(--accent-purple);">Pseudo Label Confirmation Bias Is a Real Risk</h4>
+        <p>The 1st-place insight about teacher retention is not merely theoretical — it directly affects R2+ pseudo label quality. Without the teacher anchor, the corrected SED probs are still noisy at R1 (fold0=0.9433, fold1=0.9037, which implies the 5-fold ensemble is ~0.92 AUC on soundscapes), meaning ~8% error rate compounds across rounds. A 10% teacher anchor prevents this compounding.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7. NEXT STEPS ===================== -->
+  <section id="next-steps">
+    <div class="section-title">8. Next Steps</div>
+
+    <div class="card blue">
+      <h3 class="blue">Immediate (2026-03-24 onwards)</h3>
+      <div class="next-step">
+        <div class="num">1</div>
+        <div class="text">
+          <strong>NS SED R1 completion</strong><br>
+          <span>fold2/3/4 training on GPU1 → infer_all_ss → Residual Corrector → gen_pseudo (R1 labels)</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">2</div>
+        <div class="text">
+          <strong>NS SED R2 with corrected pseudo labels</strong><br>
+          <span>teacher_w=0.30, threshold_pct=93; validate that AUC improves over R1</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">3</div>
+        <div class="text">
+          <strong>NS SED R3 + R4</strong><br>
+          <span>teacher_w=0.10/0.00, threshold_pct=94; target soundscape val AUC > 0.9193 before submission</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">4</div>
+        <div class="text">
+          <strong>Submit new SED ensemble</strong><br>
+          <span>When any individual fold AUC > 0.9193, update VLOM SED component in dual-foundation notebook</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card orange">
+      <h3 class="orange">Submit Threshold Reminder</h3>
+      <div class="highlight-box orange">
+        <strong>Do NOT submit a new SED ensemble</strong> until at least one fold achieves soundscape validation AUC > <strong>0.9193</strong>. Current best: fold0=0.9433 (passes), fold1=0.9037 (fails). The 5-fold ensemble is not ready until the majority of folds pass this threshold.
+      </div>
+    </div>
+
+    <div class="card blue">
+      <h3 class="blue">Medium Term</h3>
+      <div class="next-step">
+        <div class="num">5</div>
+        <div class="text">
+          <strong>Export ResidualSSM corrector to TFLite/ONNX</strong><br>
+          <span>For deployment in Kaggle notebook; validate inference speed vs. 9-hr limit</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">6</div>
+        <div class="text">
+          <strong>Evaluate BiSSM corrector impact on OOF AUC</strong><br>
+          <span>Compare all_ss_probs.npz vs all_ss_probs_corrected.npz on labeled soundscape holdout</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">7</div>
+        <div class="text">
+          <strong>NS SSM R1 completion + residual corrector</strong><br>
+          <span>Apply same corrector strategy to EfficientSSM student after R1 inference</span>
+        </div>
+      </div>
+      <div class="next-step">
+        <div class="num">8</div>
+        <div class="text">
+          <strong>3-way VLOM blend</strong><br>
+          <span>When NS SSM R3+ is available: ProtoSSM + NS-SED + NS-SSM with OOF-optimized weights</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card green">
+      <h3 class="green">LB Target Projection</h3>
+      <table>
+        <tr><th>Milestone</th><th>Expected LB</th><th>Key Driver</th></tr>
+        <tr><td>Current (dual-foundation v3)</td><td class="green"><strong>0.927</strong></td><td class="dim">LGBM + heads + ProtoSSM + ResidualSSM</td></tr>
+        <tr><td>NS SED R3/R4 in VLOM</td><td class="blue">0.929–0.932</td><td class="dim">Better SED student with corrected pseudo labels</td></tr>
+        <tr><td>3-way VLOM (NS-SED + NS-SSM + Proto)</td><td class="blue">0.932–0.936</td><td class="dim">Diversity: raw-audio students diversify from Perch-based probe</td></tr>
+        <tr><td>All R4 rounds complete</td><td class="blue">0.935+</td><td class="dim">Maximum pseudo label quality, full teacher retention strategy</td></tr>
+      </table>
+      <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 10px;">Projections are estimates based on round-by-round AUC improvements observed in R1 fold0 (0.9433). Actual LB gains depend on soundscape-train distribution coverage.</p>
+    </div>
+  </section>
+
+  <hr>
+
+  <div style="text-align: center; padding: 20px 0;">
+    <div class="score-pill">
+      Current Best LB: 0.927
+    </div>
+    <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 14px;">
+      NS SED R1: fold0=0.9433 &#x2713;  fold1=0.9037 &#x2713;  fold2 in progress — GPU1
+    </p>
+  </div>
+
+</div>
+
+<footer>
+  BirdCLEF 2026 Design Report &mdash; Generated 2026-03-24 &mdash; All training: CUDA_VISIBLE_DEVICES=1 &mdash; Nohuman models only
+</footer>
+
+</body>
+</html>

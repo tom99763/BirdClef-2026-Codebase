@@ -5,11 +5,12 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ---
 
-## Current Best Results (2026-03-22)
+## Current Best Results (2026-03-24)
 
 | Model / Ensemble | Holdout AUC | LB | Notes |
 |-----------------|-------------|-----|-------|
-| **LGBM + R46.08 event smooth** | 0.8140 OOF | **0.926** ⭐ | Current best |
+| **dual-foundation-protossm-v3-sed-fusion** | — | **0.927** ⭐ | Current best; LGBM + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
+| LGBM + R46.08 event smooth | 0.8140 OOF | **0.926** | lmax_pre_aves→SoftRich→cSEBBs |
 | LGBM probe (ptmap-lgbm) | — | **0.925** | LGBM per-class probe, no post-proc |
 | v3-ensemble (Perch 70/30 + SED VLOM) | — | **0.921** | Bayes PCA64+LogReg + SED 50/50 |
 
@@ -22,7 +23,8 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 | Date | Submission | LB | Notes |
 |------|-----------|-----|-------|
-| 2026-03-22 | LGBM + R46.08 event smooth | **0.926** ⭐ | lmax_pre_aves→SoftRich→cSEBBs OOF=0.8140 |
+| 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** ⭐ | LGBM probe + TFLite heads blend + 2-way OOF + ProtoSSM + ResidualSSM (before VLOM) + VLOM 50/50 |
+| 2026-03-22 | LGBM + R46.08 event smooth | **0.926** | lmax_pre_aves→SoftRich→cSEBBs OOF=0.8140 |
 | 2026-03-21 | lgbm-infer / ptmap-lgbm | **0.925** | LGBM probe breakthrough |
 | 2026-03-21 | lgbm-4fold (our SED only) | 0.908 | Replaced competitor SED → -0.013 |
 | 2026-03-20 | v3-ensemble | 0.921 | Perch 70% Bayes + SED 50/50 VLOM |
@@ -32,15 +34,28 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ## Architecture Overview
 
-### 1. Perch Embedding Probe (current best: LB 0.926)
+### 1. Dual-Foundation Architecture (current best: LB 0.927)
+
+Full pipeline for `dual-foundation-protossm-v3-sed-fusion.ipynb`:
 
 ```
-Audio (60s) → 12×5s clips → Perch v2 TFLite →
-  ├── 14795-dim logits → gather 234 → Bayesian prior fusion
-  └── 1536-dim embedding → PCA(64) → LGBM probe (74-dim features)
-  → (1-α)×base + α×lgbm_pred  [α=0.40]
-  → lmax_pre_aves(α=0.1) → SoftRich(α=0.40) → cSEBBs → submission
+Audio (60s soundscape) → 12 × 5s clips → Perch v2 TFLite
+  ├── 14795-dim logits → gather 234 → Bayesian prior fusion (site/hour priors)
+  └── 1536-dim embedding → PCA(64) → LGBM probe (74-dim features, per-class LGBMClassifier, scale_pos_weight)
+  → (1-α)×base_probs + α×lgbm_pred  [α = OOF-optimized]
+  → TFLite heads blend (HEAD_BLEND_ALPHA=0.30):
+      label_head_pseudo × 0.30
+    + label_head_soundscape_train × 0.30
+    + embedding_head_nohuman × 0.30
+  → 2-way OOF grid search → ENSEMBLE_WEIGHT_PROTO (ProtoSSM optimal weight)
+  → ProtoSSM v2 (BiSSM, d_model=128, d_state=16; prototypes + metadata)
+  → ResidualSSM correction applied to first_pass (ProtoSSM+probe, BEFORE VLOM blend)
+  → VLOM blend: ProtoSSM(0.50) + SED ONNX(0.50)
+  → final_test_scores_blended → submission
 ```
+
+**Key design decision — ResidualSSM position**: Corrector targets `first_pass` (ProtoSSM+probe),
+not the final VLOM output. Applying it after VLOM caused distribution mismatch (LB 0.923 regression).
 
 ### 2. Noisy Student Pipeline (20s clips, 1st-place inspired, 2026-03-23)
 
@@ -58,7 +73,7 @@ Audio (60s) → 12×5s clips → Perch v2 TFLite →
 | **Cross-domain MixUp (lam=0.5)** | labeled + pseudo in same batch, fixed λ=0.5 | Both students |
 | **Max-of-labels** | `label = max(label_a, label_b)` — union of species | Both students |
 | **Stochastic Depth** | `drop_path_rate=0.1` in EfficientNet-B0 backbone | Both students |
-| **Power transform (γ=2.0) + 95th-pct threshold** | Controls pseudo label confidence | `gen_pseudo_ns.py` |
+| **Power transform (γ=2.0) + threshold** | Controls pseudo label confidence; percentile rises R1→R3 | `gen_pseudo_ns.py` |
 | **LR warmup (SSM)** | 5-epoch linear warmup → stabilizes SSM state matrices | `train_ssm_ns.py` |
 
 ---
@@ -88,7 +103,7 @@ Run the fine-tuned Perch head over all training soundscapes to generate 5s-windo
 
 ```bash
 python3 scripts/extract_perch_teacher_all_ss.py \
-    --output outputs/perch_teacher_all_ss.csv
+    --output outputs/perch_teacher_aug_all_ss.csv
 # Output: CSV with columns [row_id, species_1, ..., species_234]
 # row_ids are in 5s format: <filename>_5, _10, ..., _60
 ```
@@ -101,7 +116,7 @@ Merge 5s Perch windows into 20s-aligned pseudo labels for student training:
 python3 scripts/gen_pseudo_ns.py \
     --round    0 \
     --clip_sec 20 \
-    --perch_csv outputs/perch_teacher_all_ss.csv \
+    --perch_csv outputs/perch_teacher_aug_all_ss.csv \
     --perch_w  1.0 \
     --out      pseudo_labels/ns_r0.csv
 # Output: pseudo_labels/ns_r0.csv
@@ -159,12 +174,63 @@ For R in 1 2 3 4:
      Skip logic: checkpoint exists → skip fold
   2. Infer all soundscapes: train_{sed,ssm}_ns.py --infer_all_ss
      → outputs/{sed,ssm}-ns-b0-20s-r{R}/all_ss_probs.npz
-  3. Generate pseudo labels (R < 4 only):
-     gen_pseudo_ns.py --round R --clip_sec 20 --{sed,ssm}_dir ... --out pseudo_labels/{sed,ssm}_20s_r{R}.csv
-  4. Update next round config: sed -i pseudo_labels_csv → new CSV
+  3. [NEW 2026-03-24] Run Residual Corrector on SED inferences:
+     python3 scripts/train_sed_residual_corrector.py
+         --sed_dir outputs/sed-ns-b0-20s-r{R}
+         --teacher outputs/perch_teacher_aug_all_ss.csv
+         --round R
+     → outputs/sed-ns-b0-20s-r{R}/all_ss_probs_corrected.npz
+  4. Generate pseudo labels (R < 4 only) using corrected SED + Perch teacher:
+     gen_pseudo_ns.py --round R --clip_sec 20
+         --sed_dir ... (corrected)  --perch_csv ... --perch_w {teacher_weight}
+         --threshold_pct {threshold}
+         --out pseudo_labels/{sed,ssm}_20s_r{R}.csv
+     Teacher weight schedule: R1=0.50, R2=0.30, R3=0.10
+     Threshold percentile:    R1=92,   R2=93,   R3=94
+  5. Update next round config: sed -i pseudo_labels_csv → new CSV
 ```
 
-### Step 4 — Monitor Training
+**Pseudo label strategy (2026-03-24 update)**:
+
+| Round | Teacher Weight | Threshold Pct | Rationale |
+|-------|---------------|---------------|-----------|
+| R0 | 1.00 (Perch only) | 95 | Pure teacher; no student yet |
+| R1 | 0.50 | 92 | Student bootstrapping; 50/50 blend |
+| R2 | 0.30 | 93 | Student more capable; reduce teacher |
+| R3 | 0.10 | 94 | Student dominant; teacher as anchor only |
+| R4 | — (inference only) | — | Final round; no next pseudo labels needed |
+
+> **Key insight (1st-place)**: Keep Perch teacher in the ensemble throughout all rounds.
+> Dropping the teacher causes confirmation bias — the student self-reinforces its own errors.
+> Even at R3, teacher_w=0.10 prevents runaway label drift.
+
+### Step 4 — Residual Corrector (2026-03-24)
+
+After `infer_all_ss` for each SED round, train and apply a **BiSSM Temporal Residual Corrector**:
+
+```bash
+# Train and apply corrector for round R
+python3 scripts/train_sed_residual_corrector.py \
+    --sed_dir  outputs/sed-ns-b0-20s-r{R} \
+    --teacher  outputs/perch_teacher_aug_all_ss.csv \
+    --round    {R}
+# Reads:   all_ss_probs.npz + perch_teacher (ground truth for residuals)
+# Trains:  BiSSM(input=234, d_model=128, d_state=16) on teacher_probs - SED_probs residuals
+# Outputs: all_ss_probs_corrected.npz (same format as all_ss_probs.npz)
+```
+
+**Architecture**:
+```
+SED probs (234-d per frame)
+  → input_proj: Linear(234→128) + LayerNorm + GELU
+  → BiSSM(d_model=128, d_state=16)   [forward + backward passes]
+  → output_proj: Linear(128→234)     [residual delta]
+  → corrected = SED_probs + delta    [additive correction in probability space]
+```
+
+**Training target**: `teacher_probs - SED_R_probs` (learn the gap between Perch teacher and SED student).
+
+### Step 5 — Monitor Training
 
 ```bash
 # Tail individual fold logs
@@ -178,7 +244,7 @@ tail -f outputs/logs/master_ns_chain.log
 python3 scripts/monitor_experiments.py --excel
 ```
 
-### Step 5 — Inference / Submission
+### Step 6 — Inference / Submission
 
 After round 4 completes (or latest available round), use the submission notebook:
 
@@ -245,19 +311,19 @@ train_audio/ (T=1) + pseudo soundscape sequences (T=12)
 
 ```
 Perch head fine-tune (train.py)
-  → extract_perch_teacher_all_ss.py → outputs/perch_teacher_all_ss.csv (5s format)
+  → extract_perch_teacher_all_ss.py → outputs/perch_teacher_aug_all_ss.csv (5s format)
   → gen_pseudo_ns.py --clip_sec 20  → pseudo_labels/ns_r0.csv (20s format)
      Power transform p[i]^2.0 → 95th-percentile threshold per species
 ```
 
 ---
 
-## Currently Running (2026-03-23)
+## Currently Running (2026-03-24)
 
 | Process | Status | Notes |
 |---------|--------|-------|
-| `auto_sed_ns_20s_full.sh` | 🔄 r1 fold0 training | GPU1, 20s clips, SumixFreq |
-| `auto_ssm_ns_20s_full.sh` | 🔄 r1 fold0 training | GPU1, 20s clips, SumixFreq |
+| `auto_sed_ns_20s_full.sh` | R1 fold2 training | GPU1, 20s clips; fold0=0.9433, fold1=0.9037 done |
+| `auto_ssm_ns_20s_full.sh` | R1 fold training | GPU1, 20s clips, SumixFreq |
 
 Monitor: `python3 scripts/monitor_experiments.py --excel`
 
@@ -283,16 +349,17 @@ BirdClef-2026-Codebase/
 ├── train_ssm_ns.py         # EfficientSSM NS — linear head, 5-ep warmup, SumixFreq
 │
 ├── scripts/
-│   ├── master_ns_chain.sh              # Full pipeline: wait Perch → ns_r0 → launch SED+SSM
-│   ├── auto_sed_ns_20s_full.sh         # SED chain r1→r4 (20s clips)
-│   ├── auto_ssm_ns_20s_full.sh         # SSM chain r1→r4 (20s clips)
-│   ├── extract_perch_teacher_all_ss.py # Perch teacher predictions for all soundscapes
-│   ├── gen_pseudo_ns.py                # Power transform (γ=2.0) + 95th-pct → pseudo CSV
-│   └── monitor_experiments.py         # Status print + Excel update (15-min cron)
+│   ├── master_ns_chain.sh                  # Full pipeline: wait Perch → ns_r0 → launch SED+SSM
+│   ├── auto_sed_ns_20s_full.sh             # SED chain r1→r4 (20s clips) + Residual Corrector
+│   ├── auto_ssm_ns_20s_full.sh             # SSM chain r1→r4 (20s clips)
+│   ├── train_sed_residual_corrector.py     # BiSSM Temporal Residual Corrector for SED outputs
+│   ├── extract_perch_teacher_all_ss.py     # Perch teacher predictions for all soundscapes
+│   ├── gen_pseudo_ns.py                    # Power transform (γ=2.0) + threshold → pseudo CSV
+│   └── monitor_experiments.py             # Status print + Excel update (15-min cron)
 │
 ├── pseudo_labels/
 │   ├── ns_r0.csv              # Round 0: Perch teacher, 20s format (_20, _25, ..., _65)
-│   ├── sed_20s_r{1-3}.csv     # SED-only pseudo labels (generated per round)
+│   ├── sed_20s_r{1-3}.csv     # SED pseudo labels (corrected SED + teacher blend)
 │   └── ssm_20s_r{1-3}.csv     # SSM-only pseudo labels (generated per round)
 │
 ├── outputs/
@@ -301,14 +368,19 @@ BirdClef-2026-Codebase/
 │   │   ├── auto_ssm_ns_20s_full.log
 │   │   ├── sed_ns_20s_r{N}_fold{F}.log
 │   │   └── ssm_ns_20s_r{N}_fold{F}.log
-│   ├── sed-ns-b0-20s-r{1-4}/   # SED NS checkpoints + all_ss_probs.npz
+│   ├── sed-ns-b0-20s-r{1-4}/
+│   │   ├── fold{F}_best.pt
+│   │   ├── all_ss_probs.npz           # Raw SED inference on all soundscapes
+│   │   └── all_ss_probs_corrected.npz # After BiSSM Residual Corrector
 │   └── ssm-ns-b0-20s-r{1-4}/   # SSM NS checkpoints + all_ss_probs.npz
 │
 ├── birdclef-2026/notebook resource/current_subs/
-│   └── ns_perch_sed_ssm_submission.ipynb   # Submission: TFLite Perch + NS-SED + NS-SSM
+│   ├── dual-foundation-protossm-v3-sed-fusion.ipynb  # Current best submission (LB 0.927)
+│   └── ns_perch_sed_ssm_submission.ipynb             # Submission: TFLite Perch + NS-SED + NS-SSM
 │
 └── reports/
-    └── ns_chain_progress.xlsx   # Auto-updated every 15min (latest + history sheets)
+    ├── design_report_20260324.html      # Architecture decisions 2026-03-24
+    └── ns_chain_progress.xlsx          # Auto-updated every 15min (latest + history sheets)
 ```
 
 ---
@@ -321,6 +393,12 @@ BirdClef-2026-Codebase/
 |-----------|--------|----------|
 | Human voice removal (Silero VAD) | +0.039 LB | Ablation confirmed |
 | LGBM probe (vs LogReg) | LB 0.925 | Better than LogReg; 74-dim with interaction features |
+| Per-class LGBMClassifier + scale_pos_weight | LB +0.001 | Handles class imbalance; replaces MLP probe |
+| TFLite heads blend (3 heads, alpha=0.30) | Part of LB 0.927 | label_head_pseudo + soundscape_train + embedding_nohuman |
+| 2-way OOF optimization | Robust weight search | Grid search LGBM+heads → find best ProtoSSM weight |
+| ResidualSSM on first_pass (before VLOM) | LB 0.927 | Must target pre-VLOM distribution; after-VLOM causes mismatch |
+| Global seed fixing (SEED=42) | Reproducibility | random/np/torch + torch.use_deterministic_algorithms |
+| Perch teacher retention in pseudo pipeline | Prevents confirmation bias | Even at R3, teacher_w=0.10 anchors label quality |
 | Bayesian prior fusion | ~+0.02 LB | Site/hour priors on Perch logits |
 | SoftRich (α=0.40) | OOF 0.8164 | Cross-file richness normalization |
 | cSEBBs (cp_blend=0.60) | OOF 0.8164 | Change-point segment boosting |
@@ -333,6 +411,8 @@ BirdClef-2026-Codebase/
 
 | Technique | Result | Notes |
 |-----------|--------|-------|
+| ResidualSSM applied after VLOM blend | LB 0.923 (-0.004) | Distribution mismatch: VLOM output has different statistics than pure ProtoSSM |
+| MLP probe | Lower than LGBM | Replaced by per-class LGBMClassifier |
 | Cosine/prototypical head (SSM) | AUC 0.9→0.6 oscillation | EMA prototype drift + temperature divergence |
 | Old SED approach | -0.013 LB | Wrong data, wrong mel, no SumixFreq |
 | ASL + secondary_weight=1.0 | Noisy gradients | Unreliable XC secondary labels |
@@ -363,4 +443,4 @@ export CUDA_VISIBLE_DEVICES=1
 - Only **nohuman models** evaluated/submitted
 - **No competitor model weights** — only models trained ourselves
 - Submit only when SED soundscape val AUC > **0.9193**
-- Current LB anchor: **0.926**
+- Current LB anchor: **0.927**
