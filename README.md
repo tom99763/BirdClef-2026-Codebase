@@ -9,7 +9,8 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 | Model / Ensemble | Holdout AUC | LB | Notes |
 |-----------------|-------------|-----|-------|
-| **dual-foundation-protossm-v3-sed-fusion** | — | **0.927** ⭐ | Current best; MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
+| **dual-foundation + KNN Embedding Prior** | — | **0.929** ⭐ | Plan C KNN prior (lambda=0.25, k=5, cosine) on 66 labeled soundscapes. NEW BEST. |
+| dual-foundation-protossm-v3-sed-fusion | — | **0.927** | MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
 | dual-foundation (LGBM replaces MLP) | — | **0.926** | LGBM probe → -0.001 vs MLP; MLP is better |
 | LGBM + R46.08 event smooth | 0.8140 OOF | **0.926** | lmax_pre_aves→SoftRich→cSEBBs |
 | LGBM probe (ptmap-lgbm) | — | **0.925** | LGBM per-class probe, no post-proc |
@@ -24,6 +25,7 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 | Date | Submission | LB | Notes |
 |------|-----------|-----|-------|
+| 2026-03-25 | dual-foundation + KNN Embedding Prior (Plan C) | **0.929** ⭐ | cosine-KNN on 66 labeled ss, lambda=0.25, +0.002 over 0.927. NEW BEST |
 | 2026-03-25 | dual-foundation (LGBM replaces MLP probe) | **0.926** | MLP probe 優於 LGBM；MLP 版本仍是最佳 |
 | 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** ⭐ | MLP probe + TFLite heads blend + 2-way OOF + ProtoSSM + ResidualSSM (before VLOM) + VLOM 50/50 |
 | 2026-03-22 | LGBM + R46.08 event smooth | **0.926** | lmax_pre_aves→SoftRich→cSEBBs OOF=0.8140 |
