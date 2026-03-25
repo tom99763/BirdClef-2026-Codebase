@@ -594,10 +594,13 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                 pseudo_waves  = pseudo_waves.to(device)
                 pseudo_labels = pseudo_labels.to(device)
 
-                # Concatenate → audio-level MixUp with fixed lam=0.5 (1st place)
-                combined_audio  = torch.cat([audio_waves, pseudo_waves], dim=0)
-                combined_labels = torch.cat([audio_labels, pseudo_labels], dim=0)
-                combined_audio, combined_labels = audio_mixup(combined_audio, combined_labels)
+                # 1st place ratio=1.0: every labeled sample mixed with exactly one pseudo sample.
+                # Truncate pseudo batch to match labeled batch size, then mix 1-to-1.
+                B = audio_waves.shape[0]
+                pseudo_waves  = pseudo_waves[:B]
+                pseudo_labels = pseudo_labels[:B]
+                combined_audio  = 0.5 * audio_waves + 0.5 * pseudo_waves
+                combined_labels = torch.max(audio_labels, pseudo_labels)
             else:
                 combined_audio, combined_labels = audio_mixup(audio_waves, audio_labels)
 
@@ -730,13 +733,26 @@ def infer_all_soundscapes(cfg: dict, device: torch.device):
             continue
 
         STRIDE = SR * 5   # always 5s stride → 12 rows per 60s soundscape
-        n_clips = min(len(audio) // STRIDE, 12)
-        if n_clips == 0:
+        n_orig_windows = min(len(audio) // STRIDE, 12)
+        if n_orig_windows == 0:
             continue
 
-        for ci in range(n_clips):
+        # 1st place sliding window: pad left+right so every window is covered by
+        # WINDOWS_PER_CHUNK overlapping chunks, then average their predictions.
+        WINDOWS_PER_CHUNK = clip_dur // 5  # 4 for 20s clips, 2 for 10s clips
+        pad_samples_sw = (WINDOWS_PER_CHUNK - 1) * STRIDE
+        audio_padded = np.concatenate([
+            np.zeros(pad_samples_sw, dtype=np.float32),
+            audio,
+            np.zeros(pad_samples_sw, dtype=np.float32),
+        ])
+        n_chunks = n_orig_windows + (WINDOWS_PER_CHUNK - 1)
+
+        # Forward pass for each chunk on padded audio
+        chunk_probs = []
+        for ci in range(n_chunks):
             start = ci * STRIDE
-            clip  = audio[start:start + CLIP_SAMPLES]
+            clip  = audio_padded[start:start + CLIP_SAMPLES]
             if len(clip) < CLIP_SAMPLES:
                 clip = np.pad(clip, (0, CLIP_SAMPLES - len(clip)))
             wav  = torch.from_numpy(clip[None]).to(device)
@@ -747,10 +763,15 @@ def infer_all_soundscapes(cfg: dict, device: torch.device):
                     out = mdl(mel)
                     probs_acc += torch.sigmoid(out['clipwise_logit']).cpu().numpy()[0]
                 probs_acc /= len(fold_models)
+            chunk_probs.append(probs_acc)
 
-            offset = (ci + 1) * 5
+        # Each original window wi is covered by exactly WINDOWS_PER_CHUNK chunks:
+        # chunks[wi], chunks[wi+1], ..., chunks[wi + WINDOWS_PER_CHUNK - 1]
+        for wi in range(n_orig_windows):
+            avg_probs = np.mean(chunk_probs[wi:wi + WINDOWS_PER_CHUNK], axis=0)
+            offset = (wi + 1) * 5
             all_row_ids.append(f"{ss_id}_{offset}")
-            all_probs.append(probs_acc)
+            all_probs.append(avg_probs)
 
     all_probs = np.stack(all_probs, axis=0)
     out_path  = out_dir / 'all_ss_probs.npz'

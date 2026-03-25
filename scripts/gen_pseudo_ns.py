@@ -252,16 +252,17 @@ def main():
 
     # ── Keep windows with at least one species above threshold ────────────────
     above = (probs_pt >= thr[None, :]).any(axis=1)
-    probs_keep = probs_unlab[above]   # use ORIGINAL probs (before power transform) as soft labels
+    probs_keep = probs_pt[above]   # save power-transformed probs as soft labels (1st place)
     rids_keep  = [r for r, a in zip(rids_unlab, above) if a]
     print(f"Windows above threshold: {above.sum():,} / {len(rids_unlab):,} "
           f"({100*above.mean():.1f}%)")
 
-    # ── Assign primary and secondary labels ───────────────────────────────────
+    # ── Assign primary and secondary labels (on power-transformed probs) ──────
     primary_labels = [species_cols[i] for i in probs_keep.argmax(axis=1)]
     secondary_labels = []
+    thr_kept = dynamic_threshold(probs_keep, args.percentile, args.min_thr, args.max_thr)
     for i, row_probs in enumerate(probs_keep):
-        above_thr = np.where(row_probs >= thr)[0]
+        above_thr = np.where(row_probs >= thr_kept)[0]
         sec = [species_cols[j] for j in above_thr if species_cols[j] != primary_labels[i]]
         secondary_labels.append(';'.join(sec))
 

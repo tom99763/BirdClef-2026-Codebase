@@ -23,11 +23,12 @@ LOG="outputs/logs"
 TEACHER_CSV="outputs/perch_teacher_aug_all_ss.csv"
 CORRECTOR_ALPHA="0.40"
 
-# Per-round pseudo label config: "perch_w sed_w threshold_pct"
+# Per-round pseudo label config: "perch_w sed_w threshold_pct gamma"
+# gamma per 1st place BirdCLEF 2025: R1=1.0 (raw), R2=1/0.65≈1.54, R3=1/0.55≈1.82
 declare -A PSEUDO_CFG
-PSEUDO_CFG[1]="0.50 0.50 92"
-PSEUDO_CFG[2]="0.30 0.70 93"
-PSEUDO_CFG[3]="0.10 0.90 94"
+PSEUDO_CFG[1]="0.50 0.50 92 1.00"
+PSEUDO_CFG[2]="0.30 0.70 93 1.54"
+PSEUDO_CFG[3]="0.10 0.90 94 1.82"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] [SED-20s] $*"; }
 mkdir -p "$LOG" checkpoints
@@ -85,10 +86,10 @@ gen_pseudo() {
 
     # Parse per-round config
     local CFG="${PSEUDO_CFG[$R]}"
-    local PERCH_W SED_W THR_PCT
-    read -r PERCH_W SED_W THR_PCT <<< "$CFG"
+    local PERCH_W SED_W THR_PCT GAMMA
+    read -r PERCH_W SED_W THR_PCT GAMMA <<< "$CFG"
 
-    log "R${R}: pseudo config — perch_w=${PERCH_W} sed_w=${SED_W} threshold_pct=${THR_PCT}"
+    log "R${R}: pseudo config — perch_w=${PERCH_W} sed_w=${SED_W} threshold_pct=${THR_PCT} gamma=${GAMMA}"
 
     # Swap corrected probs in if available
     local SWAPPED=0
@@ -116,6 +117,7 @@ gen_pseudo() {
         --perch_w    "$PERCH_W" \
         --sed_w      "$SED_W" \
         --percentile "$THR_PCT" \
+        --gamma      "$GAMMA" \
         $PERCH_ARG \
         --out        "$PSEUDO_OUT" \
         > "${LOG}/gen_pseudo_sed_20s_r${R}.log" 2>&1
@@ -146,13 +148,18 @@ for R in 1 2 3 4; do
     log "R${R}: all folds done"
 
     # 5-fold ensemble inference on all soundscapes
-    log "R${R}: running infer_all_ss"
-    python3 train_sed_ns.py \
-        --config       configs/sed_ns_b0_20s_r${R}.yaml \
-        --infer_all_ss \
-        --device       "$DEVICE" \
-        > "${LOG}/sed_ns_20s_r${R}_infer.log" 2>&1
-    log "R${R}: infer done"
+    INFER_NPZ="outputs/sed-ns-b0-20s-r${R}/all_ss_probs.npz"
+    if [ -f "$INFER_NPZ" ]; then
+        log "R${R}: all_ss_probs.npz exists, skipping infer_all_ss"
+    else
+        log "R${R}: running infer_all_ss"
+        python3 train_sed_ns.py \
+            --config       configs/sed_ns_b0_20s_r${R}.yaml \
+            --infer_all_ss \
+            --device       "$DEVICE" \
+            > "${LOG}/sed_ns_20s_r${R}_infer.log" 2>&1
+        log "R${R}: infer done"
+    fi
 
     # Train Residual Corrector → all_ss_probs_corrected.npz
     train_residual_corrector "$R"

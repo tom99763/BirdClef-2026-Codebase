@@ -5,11 +5,12 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ---
 
-## Current Best Results (2026-03-24)
+## Current Best Results (2026-03-25)
 
 | Model / Ensemble | Holdout AUC | LB | Notes |
 |-----------------|-------------|-----|-------|
-| **dual-foundation-protossm-v3-sed-fusion** | — | **0.927** ⭐ | Current best; LGBM + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
+| **dual-foundation-protossm-v3-sed-fusion** | — | **0.927** ⭐ | Current best; MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
+| dual-foundation (LGBM replaces MLP) | — | **0.926** | LGBM probe → -0.001 vs MLP; MLP is better |
 | LGBM + R46.08 event smooth | 0.8140 OOF | **0.926** | lmax_pre_aves→SoftRich→cSEBBs |
 | LGBM probe (ptmap-lgbm) | — | **0.925** | LGBM per-class probe, no post-proc |
 | v3-ensemble (Perch 70/30 + SED VLOM) | — | **0.921** | Bayes PCA64+LogReg + SED 50/50 |
@@ -23,7 +24,8 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 | Date | Submission | LB | Notes |
 |------|-----------|-----|-------|
-| 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** ⭐ | LGBM probe + TFLite heads blend + 2-way OOF + ProtoSSM + ResidualSSM (before VLOM) + VLOM 50/50 |
+| 2026-03-25 | dual-foundation (LGBM replaces MLP probe) | **0.926** | MLP probe 優於 LGBM；MLP 版本仍是最佳 |
+| 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** ⭐ | MLP probe + TFLite heads blend + 2-way OOF + ProtoSSM + ResidualSSM (before VLOM) + VLOM 50/50 |
 | 2026-03-22 | LGBM + R46.08 event smooth | **0.926** | lmax_pre_aves→SoftRich→cSEBBs OOF=0.8140 |
 | 2026-03-21 | lgbm-infer / ptmap-lgbm | **0.925** | LGBM probe breakthrough |
 | 2026-03-21 | lgbm-4fold (our SED only) | 0.908 | Replaced competitor SED → -0.013 |
@@ -67,13 +69,14 @@ not the final VLOM output. Applying it after VLOM caused distribution mismatch (
 |-----------|---------------|-------|
 | **20s clip duration** | `clip_duration: 20` in configs; covers 4 Perch 5s windows | All NS configs |
 | **SumixFreq** | Per-freq-bin random selection between two mel spectrograms | `train_sed_ns.py`, `train_ssm_ns.py` |
-| **Overlapping window inference** | 20s window, 5s stride; each 5s frame averaged from multiple windows | Submission notebook |
+| **Sliding window inference** | Pad audio ±15s; each 5s window averaged from 4 overlapping 20s chunks | `infer_all_soundscapes()` in `train_sed_ns.py` |
 | **Babych smoothing kernel** | `[0.1, 0.2, 0.4, 0.2, 0.1]` temporal smoothing | Submission notebook |
 | **absmax normalization** | Normalize each clip to `[-1, 1]` before mel | `load_audio_clip`, `load_ss_clip` |
-| **Cross-domain MixUp (lam=0.5)** | labeled + pseudo in same batch, fixed λ=0.5 | Both students |
+| **Cross-domain MixUp (lam=0.5, ratio=1.0)** | Every labeled sample 1-to-1 mixed with one pseudo sample, fixed λ=0.5 | `train_sed_ns.py` |
 | **Max-of-labels** | `label = max(label_a, label_b)` — union of species | Both students |
-| **Stochastic Depth** | `drop_path_rate=0.1` in EfficientNet-B0 backbone | Both students |
-| **Power transform (γ=2.0) + threshold** | Controls pseudo label confidence; percentile rises R1→R3 | `gen_pseudo_ns.py` |
+| **Stochastic Depth** | `drop_path_rate=0.15` in EfficientNet-B0 backbone | R2-R4 configs |
+| **WeightedRandomSampler** | Pseudo soundscapes weighted by sum of max label probs | `train_sed_ns.py` |
+| **Power transform (per-round γ) → soft labels** | Saves γ-transformed probs as training targets; γ: R1=1.0, R2=1.54, R3=1.82 | `gen_pseudo_ns.py` |
 | **LR warmup (SSM)** | 5-epoch linear warmup → stabilizes SSM state matrices | `train_ssm_ns.py` |
 
 ---
@@ -183,26 +186,31 @@ For R in 1 2 3 4:
   4. Generate pseudo labels (R < 4 only) using corrected SED + Perch teacher:
      gen_pseudo_ns.py --round R --clip_sec 20
          --sed_dir ... (corrected)  --perch_csv ... --perch_w {teacher_weight}
-         --threshold_pct {threshold}
-         --out pseudo_labels/{sed,ssm}_20s_r{R}.csv
+         --percentile {threshold} --gamma {gamma}
+         --out pseudo_labels/sed_20s_r{R}.csv
      Teacher weight schedule: R1=0.50, R2=0.30, R3=0.10
      Threshold percentile:    R1=92,   R2=93,   R3=94
+     Power gamma schedule:    R1=1.00, R2=1.54, R3=1.82  ← 1st place per-round schedule
   5. Update next round config: sed -i pseudo_labels_csv → new CSV
 ```
 
-**Pseudo label strategy (2026-03-24 update)**:
+**Pseudo label strategy (2026-03-25 update)**:
 
-| Round | Teacher Weight | Threshold Pct | Rationale |
-|-------|---------------|---------------|-----------|
-| R0 | 1.00 (Perch only) | 95 | Pure teacher; no student yet |
-| R1 | 0.50 | 92 | Student bootstrapping; 50/50 blend |
-| R2 | 0.30 | 93 | Student more capable; reduce teacher |
-| R3 | 0.10 | 94 | Student dominant; teacher as anchor only |
-| R4 | — (inference only) | — | Final round; no next pseudo labels needed |
+| Round | Teacher Weight | Threshold Pct | Gamma (γ) | Rationale |
+|-------|---------------|---------------|-----------|-----------|
+| R0 | 1.00 (Perch only) | 95 | 2.0 | Pure teacher; no student yet |
+| R1 | 0.50 | 92 | **1.00** | Raw probs saved as soft labels; student bootstrapping |
+| R2 | 0.30 | 93 | **1.54** | Moderate sharpening; reduce teacher weight |
+| R3 | 0.10 | 94 | **1.82** | Strong sharpening; student dominant |
+| R4 | — (inference only) | — | — | Final round; no next pseudo labels needed |
 
-> **Key insight (1st-place)**: Keep Perch teacher in the ensemble throughout all rounds.
-> Dropping the teacher causes confirmation bias — the student self-reinforces its own errors.
-> Even at R3, teacher_w=0.10 prevents runaway label drift.
+> **Key insight (1st-place power transform)**: Apply γ>1 to probabilities before saving as soft labels.
+> Compresses low-confidence values toward 0 while preserving high-confidence signals.
+> γ increases each round as the student becomes more reliable.
+>
+> **Key insight (Perch teacher retention)**: Keep teacher blend throughout all rounds.
+> Dropping it causes confirmation bias — student self-reinforces its own errors.
+> Even at R3, teacher_w=0.10 anchors label quality.
 
 ### Step 4 — Residual Corrector (2026-03-24)
 
@@ -267,7 +275,7 @@ Upload weights folder to Kaggle dataset and submit.
 
 | Config | Rounds | Clip | Batch | Notes |
 |--------|--------|------|-------|-------|
-| `sed_ns_b0_20s_r{1-4}.yaml` | 4 | 20s | 16 | SED, SumixFreq, early_stop=7 |
+| `sed_ns_b0_20s_r{1-4}.yaml` | 4 | 20s | 16 | SED, SumixFreq, drop_path=0.15, early_stop=3 |
 | `ssm_ns_b0_20s_r{1-4}.yaml` | 4 | 20s | 8 (pseudo=2) | SSM, 5-ep warmup, SumixFreq |
 
 Round 1 configs use `pseudo_labels/ns_r0.csv`. Rounds 2-4 are auto-updated by the chain scripts.
@@ -282,9 +290,9 @@ train_audio/ clips + pseudo_labels/*_r{N}.csv
   → MelSpec(n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000, power=2, slaney/htk)
   → SpecAugment (freq_mask=24, time_mask=64)
   → SumixFreq: per-freq-bin random selection between two labeled mels  ← 1st place
-  → Cross-domain MixUp (λ=0.5): concat(labeled, pseudo) → single forward pass
-  → EfficientNet-B0 → GEMFreqPool(p=3) → AttentionSEDHead
-  → Focal BCE (γ=2.0), lr=1e-3, CosineAnnealing, 30 epochs, early_stop=7
+  → Cross-domain MixUp (λ=0.5, ratio=1.0): every labeled sample 1-to-1 with one pseudo sample
+  → EfficientNet-B0 (drop_path_rate=0.15) → GEMFreqPool(p=3) → AttentionSEDHead
+  → Focal BCE (γ=2.0), lr=1e-3, CosineAnnealing, 30 epochs, early_stop=3
   → Validation: soundscape OOF macro ROC-AUC
 ```
 
@@ -318,18 +326,19 @@ Perch head fine-tune (train.py)
 
 ---
 
-## Currently Running (2026-03-24)
+## Currently Running (2026-03-25)
 
 | Process | Status | Notes |
 |---------|--------|-------|
-| `auto_sed_ns_20s_full.sh` | R1 fold2 training | GPU1, 20s clips; fold0=0.9433, fold1=0.9037 done |
-| `auto_ssm_ns_20s_full.sh` | R1 fold training | GPU1, 20s clips, SumixFreq |
+| `auto_sed_ns_20s_full.sh` | R1 infer_all_ss (sliding window) | GPU1; R1 fold0-4 done (AUC: 0.9433/0.9037/0.9420/0.9478/0.9152) |
+
+R1 inference (~2h) → Residual Corrector → gen_pseudo R1 (γ=1.00) → R2-R4 training
 
 Monitor: `python3 scripts/monitor_experiments.py --excel`
 
 ```bash
 tail -f outputs/logs/auto_sed_ns_20s_full.log
-tail -f outputs/logs/auto_ssm_ns_20s_full.log
+tail -f outputs/logs/sed_ns_20s_r1_infer.log
 ```
 
 ---

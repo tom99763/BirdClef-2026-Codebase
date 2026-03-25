@@ -9,7 +9,7 @@ data:
   taxonomy_csv:           birdclef-2026/taxonomy.csv
   audio_dir:              birdclef-2026/train_audio
   soundscape_dir:         birdclef-2026/train_soundscapes
-  pseudo_labels_csv:      pseudo_labels/ns_r1.csv   # Round 1 pseudo (20s format)
+  pseudo_labels_csv:      pseudo_labels/sed_20s_r1.csv
   n_folds:                5
 
 model:
@@ -26,12 +26,13 @@ model:
   mel_scale:        htk
   peak_norm:        false
   dropout:          0.1
-  drop_path_rate:   0.1
+  drop_path_rate:   0.15
   gem_p_init:       3.0
   freq_mask:        24
   time_mask:        64   # wider time mask for 20s clips
 
 training:
+  early_stopping_patience: 3
   epochs:             30
   batch_size:         16   # smaller batch: 20s clips use 2× memory
   learning_rate:      1.0e-3
