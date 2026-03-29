@@ -120,7 +120,7 @@ gen_pseudo() {
         --percentile "$THR_PCT" \
         --gamma      "$GAMMA" \
         $PERCH_ARG \
-        --aves_only \
+        --nonaves_perch_only \
         --out        "$PSEUDO_OUT" \
         > "${LOG}/gen_pseudo_sed_20s_r${R}.log" 2>&1
 

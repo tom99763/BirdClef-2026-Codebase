@@ -184,8 +184,12 @@ def main():
     parser.add_argument('--aves_only', action='store_true', default=False,
                         help='Only keep Aves species as pseudo labels (recommended: non-Aves '
                              'have too few training clips for reliable pseudo labeling)')
+    parser.add_argument('--nonaves_perch_only', action='store_true', default=False,
+                        help='For non-Aves species, override ensemble with pure Perch teacher '
+                             'probs (SED has poor discriminability for Amphibia/Insecta). '
+                             'Aves columns keep the full SED+Perch ensemble.')
     parser.add_argument('--taxonomy_csv', default='birdclef-2026/taxonomy.csv',
-                        help='Taxonomy CSV for Aves-only filtering')
+                        help='Taxonomy CSV for Aves-only / non-Aves-perch-only filtering')
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.out) if os.path.dirname(args.out) else '.', exist_ok=True)
@@ -240,15 +244,23 @@ def main():
     print(f"Ensemble weights: perch={args.perch_w/w_total:.2f}, "
           f"sed={sed_share:.2f}, ssm={ssm_share:.2f}")
 
-    # ── Aves-only filter: zero out non-Aves columns ──────────────────────────
-    if args.aves_only:
+    # ── Aves/non-Aves split handling ─────────────────────────────────────────
+    if args.aves_only or args.nonaves_perch_only:
         tax_df = pd.read_csv(args.taxonomy_csv)
         aves_sp = set(tax_df[tax_df['class_name'] == 'Aves']['primary_label'].astype(str))
         aves_mask = np.array([c in aves_sp for c in species_cols], dtype=bool)
-        non_aves_count = (~aves_mask).sum()
-        ensemble[:, ~aves_mask] = 0.0
-        print(f"Aves-only filter: zeroed out {non_aves_count} non-Aves columns "
-              f"(kept {aves_mask.sum()} Aves species)")
+
+        if args.aves_only:
+            # Zero out all non-Aves columns
+            ensemble[:, ~aves_mask] = 0.0
+            print(f"Aves-only filter: zeroed out {(~aves_mask).sum()} non-Aves columns "
+                  f"(kept {aves_mask.sum()} Aves species)")
+        elif args.nonaves_perch_only:
+            # non-Aves: replace ensemble with pure Perch teacher probs
+            # Aves: keep SED+Perch ensemble (already computed above)
+            ensemble[:, ~aves_mask] = perch_probs[:, ~aves_mask]
+            print(f"non-Aves Perch-only: {(~aves_mask).sum()} non-Aves columns → pure Perch "
+                  f"({aves_mask.sum()} Aves columns keep SED+Perch ensemble)")
 
     # ── Filter to unlabeled only ──────────────────────────────────────────────
     probs_unlab  = ensemble[mask_unlabeled]
