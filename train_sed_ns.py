@@ -50,6 +50,25 @@ except ImportError:
 torch.backends.cudnn.benchmark = True
 
 
+# ── EMA ───────────────────────────────────────────────────────────────────────
+
+class ModelEMA:
+    """Exponential Moving Average of model weights.
+    Stored on CPU to avoid GPU memory overhead.
+    """
+    def __init__(self, model: nn.Module, decay: float = 0.999):
+        self.decay = decay
+        self.shadow = {k: v.float().cpu().clone() for k, v in model.state_dict().items()}
+
+    @torch.no_grad()
+    def update(self, model: nn.Module):
+        for k, v in model.state_dict().items():
+            self.shadow[k].mul_(self.decay).add_(v.float().cpu(), alpha=1.0 - self.decay)
+
+    def state_dict(self):
+        return self.shadow
+
+
 # ── Model ─────────────────────────────────────────────────────────────────────
 
 class GEMFreqPool(nn.Module):
@@ -527,6 +546,20 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
         gem_p_init     = m_cfg.get('gem_p_init', 3.0),
     ).to(device)
 
+    # ── Inherit weights from previous round (EMA checkpoint) ──────────────────
+    prev_round_dir = t_cfg.get('prev_round_dir', None)
+    if prev_round_dir:
+        ema_ckpt = Path(prev_round_dir) / f'fold{fold}_ema.pt'
+        best_ckpt = Path(prev_round_dir) / f'fold{fold}_best.pt'
+        init_ckpt = ema_ckpt if ema_ckpt.exists() else (best_ckpt if best_ckpt.exists() else None)
+        if init_ckpt:
+            ckpt = torch.load(init_ckpt, map_location='cpu')
+            sd = ckpt['state_dict']
+            model.load_state_dict({k: v.to(device) for k, v in sd.items()}, strict=True)
+            print(f"  ✓ Initialized from {init_ckpt.name} (prev round weights)")
+        else:
+            print(f"  ⚠ prev_round_dir set but no checkpoint found for fold {fold}")
+
     mel_tf   = MelTransform(**{k: v for k, v in m_cfg.items()
                                 if k in ('sr', 'n_mels', 'n_fft', 'hop_length',
                                          'fmin', 'fmax', 'top_db', 'power',
@@ -552,6 +585,9 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     pseudo_w        = t_cfg.get('pseudo_weight', 1.0)         # 1st place: equal weight
     use_sumix_freq  = t_cfg.get('use_sumix_freq', False)      # 1st place: SumixFreq
     criterion       = FocalBCE(gamma=gamma)
+
+    ema_decay = t_cfg.get('ema_decay', 0.999)
+    ema = ModelEMA(model, decay=ema_decay)
 
     best_auc        = 0.0
     best_state      = None
@@ -579,7 +615,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
         ep_loss = 0.0
         n_steps = 0
 
-        # 1st place: combine labeled + pseudo, MixUp on RAW AUDIO with fixed lam=0.5
+        # Labeled + pseudo: concat batch then MixUp (random pairing, random lambda)
         pseudo_iter = iter(pseudo_loader) if pseudo_loader else None
         for audio_waves, audio_labels in audio_loader:
             audio_waves  = audio_waves.to(device)
@@ -594,13 +630,17 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                 pseudo_waves  = pseudo_waves.to(device)
                 pseudo_labels = pseudo_labels.to(device)
 
-                # 1st place ratio=1.0: every labeled sample mixed with exactly one pseudo sample.
-                # Truncate pseudo batch to match labeled batch size, then mix 1-to-1.
+                # pseudo_w controls how many pseudo samples per labeled batch.
+                # e.g. pseudo_w=0.5 → keep only half the pseudo batch → less noise exposure.
                 B = audio_waves.shape[0]
-                pseudo_waves  = pseudo_waves[:B]
-                pseudo_labels = pseudo_labels[:B]
-                combined_audio  = 0.5 * audio_waves + 0.5 * pseudo_waves
-                combined_labels = torch.max(audio_labels, pseudo_labels)
+                n_pseudo = max(1, int(B * pseudo_w))
+                pseudo_waves  = pseudo_waves[:n_pseudo]
+                pseudo_labels = pseudo_labels[:n_pseudo]
+
+                # Concat labeled + pseudo, then apply MixUp randomly across the combined batch
+                combined_audio  = torch.cat([audio_waves, pseudo_waves], dim=0)
+                combined_labels = torch.cat([audio_labels, pseudo_labels], dim=0)
+                combined_audio, combined_labels = audio_mixup(combined_audio, combined_labels)
             else:
                 combined_audio, combined_labels = audio_mixup(audio_waves, audio_labels)
 
@@ -622,6 +662,7 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
+            ema.update(model)
 
             ep_loss += loss.item()
             n_steps += 1
@@ -673,6 +714,12 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
             if no_improve_cnt >= patience:
                 print(f"  Early stopping at epoch {ep} (no improvement for {patience} epochs)")
                 break
+
+    # Save EMA checkpoint for next round to inherit
+    torch.save({'state_dict': ema.state_dict(), 'fold': fold,
+                'best_val_auc': best_auc},
+               out_dir / f'fold{fold}_ema.pt')
+    print(f"  EMA checkpoint saved → {out_dir}/fold{fold}_ema.pt")
 
     if run is not None:
         run.finish()

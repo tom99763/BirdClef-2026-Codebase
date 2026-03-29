@@ -42,6 +42,8 @@ training:
   pseudo_weight:      1.0
   pseudo_mixup_alpha: 0.15
   use_sumix_freq:     true   # 1st place: SumixFreq
+  ema_decay:          0.999
+  prev_round_dir:     outputs/sed-ns-b0-20s-r1   # inherit EMA weights from R1
 
 output:
   dir:          outputs/sed-ns-b0-20s-r2
