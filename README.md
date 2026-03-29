@@ -5,16 +5,18 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ---
 
-## Current Best Results (2026-03-25)
+## Current Best Results (2026-03-29)
 
 | Model / Ensemble | Holdout AUC | LB | Notes |
 |-----------------|-------------|-----|-------|
-| **dual-foundation + KNN Embedding Prior** | — | **0.929** ⭐ | Plan C KNN prior (lambda=0.25, k=5, cosine) on 66 labeled soundscapes. NEW BEST. |
+| **dual-foundation + KNN Embedding Prior** | — | **0.929** ⭐ | Plan C KNN prior (lambda=0.25, k=5, cosine) on 66 labeled soundscapes. CURRENT BEST. |
 | dual-foundation-protossm-v3-sed-fusion | — | **0.927** | MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
 | dual-foundation (LGBM replaces MLP) | — | **0.926** | LGBM probe → -0.001 vs MLP; MLP is better |
 | LGBM + R46.08 event smooth | 0.8140 OOF | **0.926** | lmax_pre_aves→SoftRich→cSEBBs |
 | LGBM probe (ptmap-lgbm) | — | **0.925** | LGBM per-class probe, no post-proc |
 | v3-ensemble (Perch 70/30 + SED VLOM) | — | **0.921** | Bayes PCA64+LogReg + SED 50/50 |
+
+**Embed Prior best**: `wk4d_ab19_ia31_sa33` LOO=0.995956 (4-comp wKNN+3way, batch=168) — ready to integrate into next submission.
 
 > **Only nohuman models evaluated from 2026-03-15 onwards.**
 > **Submit threshold**: individual SED soundscape val AUC > 0.9193 before new SED ensemble submission.
@@ -328,19 +330,20 @@ Perch head fine-tune (train.py)
 
 ---
 
-## Currently Running (2026-03-25)
+## Currently Running (2026-03-29)
 
 | Process | Status | Notes |
 |---------|--------|-------|
-| `auto_sed_ns_20s_full.sh` | R1 infer_all_ss (sliding window) | GPU1; R1 fold0-4 done (AUC: 0.9433/0.9037/0.9420/0.9478/0.9152) |
+| `auto_sed_ns_20s_full.sh` | **R2 fold0 training** | GPU1; R1 all done; R2 uses Aves-only pseudo labels |
 
-R1 inference (~2h) → Residual Corrector → gen_pseudo R1 (γ=1.00) → R2-R4 training
+R1 complete → Residual Corrector → gen_pseudo R1 (γ=1.00, Aves-only, 94,258 rows) → R2-R4 training
 
-Monitor: `python3 scripts/monitor_experiments.py --excel`
+**R1 fold AUCs**: fold0=0.9433, fold1=0.9037, fold2=0.9420, fold3=0.9478, fold4=0.9152
 
+Monitor:
 ```bash
 tail -f outputs/logs/auto_sed_ns_20s_full.log
-tail -f outputs/logs/sed_ns_20s_r1_infer.log
+tail -f outputs/logs/sed_ns_20s_r2_fold0.log
 ```
 
 ---
@@ -410,6 +413,7 @@ BirdClef-2026-Codebase/
 | ResidualSSM on first_pass (before VLOM) | LB 0.927 | Must target pre-VLOM distribution; after-VLOM causes mismatch |
 | Global seed fixing (SEED=42) | Reproducibility | random/np/torch + torch.use_deterministic_algorithms |
 | Perch teacher retention in pseudo pipeline | Prevents confirmation bias | Even at R3, teacher_w=0.10 anchors label quality |
+| **Aves-only pseudo labels** (`--aves_only`) | Removes 73% Amphibia contamination | Non-Aves species have insufficient training data (~12.9 clips/class) for reliable SED pseudo labeling; zeroing non-Aves columns in gen_pseudo_ns.py fixes pipeline |
 | Bayesian prior fusion | ~+0.02 LB | Site/hour priors on Perch logits |
 | SoftRich (α=0.40) | OOF 0.8164 | Cross-file richness normalization |
 | cSEBBs (cp_blend=0.60) | OOF 0.8164 | Change-point segment boosting |
@@ -427,6 +431,9 @@ BirdClef-2026-Codebase/
 | Cosine/prototypical head (SSM) | AUC 0.9→0.6 oscillation | EMA prototype drift + temperature divergence |
 | Old SED approach | -0.013 LB | Wrong data, wrong mel, no SumixFreq |
 | ASL + secondary_weight=1.0 | Noisy gradients | Unreliable XC secondary labels |
+| Embedding-space LoRA fine-tuning | AUC 0.4933→0.4914 (↓ from baseline 0.5209) | Domain mismatch: train_audio (point recordings, 97.9% Aves) vs soundscape (66.8% Amphibia). Perch has no discriminative power for non-Aves taxa. |
+| MLP head on Perch embeddings (train_audio) | Best AUC=0.4998 | Same domain mismatch. ProtoHead (0.9585) is Perch's ceiling for this task — uses labeled soundscape embeddings directly. |
+| Non-Aves pseudo labels in NS pipeline | Contaminated R1 labels | sed_20s_r1 had 73.6% Amphibia (73,178/99,487 rows), but SED has only ~12.9 clips/species for Amphibia → unreliable labels. Fixed with `--aves_only` flag: 94,258 rows, 100% Aves. |
 
 ---
 

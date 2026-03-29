@@ -181,6 +181,11 @@ def main():
     # Filter to unlabeled only (exclude 66 labeled soundscapes from pseudo set)
     parser.add_argument('--labeled_csv', default='birdclef-2026/train_soundscapes_labels.csv',
                         help='Path to soundscape labels CSV (to exclude labeled files)')
+    parser.add_argument('--aves_only', action='store_true', default=False,
+                        help='Only keep Aves species as pseudo labels (recommended: non-Aves '
+                             'have too few training clips for reliable pseudo labeling)')
+    parser.add_argument('--taxonomy_csv', default='birdclef-2026/taxonomy.csv',
+                        help='Taxonomy CSV for Aves-only filtering')
     args = parser.parse_args()
 
     os.makedirs(os.path.dirname(args.out) if os.path.dirname(args.out) else '.', exist_ok=True)
@@ -235,29 +240,34 @@ def main():
     print(f"Ensemble weights: perch={args.perch_w/w_total:.2f}, "
           f"sed={sed_share:.2f}, ssm={ssm_share:.2f}")
 
+    # ── Aves-only filter: zero out non-Aves columns ──────────────────────────
+    if args.aves_only:
+        tax_df = pd.read_csv(args.taxonomy_csv)
+        aves_sp = set(tax_df[tax_df['class_name'] == 'Aves']['primary_label'].astype(str))
+        aves_mask = np.array([c in aves_sp for c in species_cols], dtype=bool)
+        non_aves_count = (~aves_mask).sum()
+        ensemble[:, ~aves_mask] = 0.0
+        print(f"Aves-only filter: zeroed out {non_aves_count} non-Aves columns "
+              f"(kept {aves_mask.sum()} Aves species)")
+
     # ── Filter to unlabeled only ──────────────────────────────────────────────
     probs_unlab  = ensemble[mask_unlabeled]
     rids_unlab   = [r for r, m in zip(row_ids, mask_unlabeled) if m]
     print(f"Working with {len(rids_unlab):,} unlabeled windows")
 
-    # ── Power transform ───────────────────────────────────────────────────────
-    probs_pt = power_transform(probs_unlab, gamma=args.gamma)
-    print(f"Power transform (gamma={args.gamma}): "
-          f"mean={probs_pt.mean():.4f}, max={probs_pt.max():.4f}")
-
-    # ── Dynamic threshold ─────────────────────────────────────────────────────
-    thr = dynamic_threshold(probs_pt, args.percentile, args.min_thr, args.max_thr)
+    # ── Dynamic threshold (on original probs — no power transform) ───────────
+    thr = dynamic_threshold(probs_unlab, args.percentile, args.min_thr, args.max_thr)
     print(f"Threshold (p{args.percentile}): "
           f"mean={thr.mean():.4f}, min={thr.min():.4f}, max={thr.max():.4f}")
 
     # ── Keep windows with at least one species above threshold ────────────────
-    above = (probs_pt >= thr[None, :]).any(axis=1)
-    probs_keep = probs_pt[above]   # save power-transformed probs as soft labels (1st place)
+    above = (probs_unlab >= thr[None, :]).any(axis=1)
+    probs_keep = probs_unlab[above]   # save original probs (clean, no distortion)
     rids_keep  = [r for r, a in zip(rids_unlab, above) if a]
     print(f"Windows above threshold: {above.sum():,} / {len(rids_unlab):,} "
           f"({100*above.mean():.1f}%)")
 
-    # ── Assign primary and secondary labels (on power-transformed probs) ──────
+    # ── Assign primary and secondary labels ───────────────────────────────────
     primary_labels = [species_cols[i] for i in probs_keep.argmax(axis=1)]
     secondary_labels = []
     thr_kept = dynamic_threshold(probs_keep, args.percentile, args.min_thr, args.max_thr)

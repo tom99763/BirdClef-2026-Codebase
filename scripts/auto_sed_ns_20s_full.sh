@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # SED noisy-student chain (20s clips): rounds 1→4.
+PYTHON=/home/lab/miniconda3/envs/tom/bin/python3
 # Folds run SEQUENTIALLY (0→1→2→3→4) to avoid GPU memory contention.
 #
 # Pseudo label strategy (1st-place inspired):
@@ -43,7 +44,7 @@ train_fold() {
         return 0
     fi
     log "R${R} fold${F}: starting"
-    python3 train_sed_ns.py \
+    $PYTHON train_sed_ns.py \
         --config configs/sed_ns_b0_20s_r${R}.yaml \
         --fold   "$F" \
         --device "$DEVICE" \
@@ -66,7 +67,7 @@ train_residual_corrector() {
     fi
 
     log "R${R}: training Temporal Residual Corrector ..."
-    python3 scripts/train_sed_residual_corrector.py \
+    $PYTHON scripts/train_sed_residual_corrector.py \
         --sed_dir   "outputs/sed-ns-b0-20s-r${R}" \
         --teacher   "$TEACHER_CSV" \
         --round     "$R" \
@@ -110,7 +111,7 @@ gen_pseudo() {
         SED_W="1.0"
     fi
 
-    python3 scripts/gen_pseudo_ns.py \
+    $PYTHON scripts/gen_pseudo_ns.py \
         --round      "$R" \
         --clip_sec   20 \
         --sed_dir    "outputs/sed-ns-b0-20s-r${R}" \
@@ -119,6 +120,7 @@ gen_pseudo() {
         --percentile "$THR_PCT" \
         --gamma      "$GAMMA" \
         $PERCH_ARG \
+        --aves_only \
         --out        "$PSEUDO_OUT" \
         > "${LOG}/gen_pseudo_sed_20s_r${R}.log" 2>&1
 
@@ -153,7 +155,7 @@ for R in 1 2 3 4; do
         log "R${R}: all_ss_probs.npz exists, skipping infer_all_ss"
     else
         log "R${R}: running infer_all_ss"
-        python3 train_sed_ns.py \
+        $PYTHON train_sed_ns.py \
             --config       configs/sed_ns_b0_20s_r${R}.yaml \
             --infer_all_ss \
             --device       "$DEVICE" \
