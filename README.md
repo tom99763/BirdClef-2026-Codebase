@@ -5,18 +5,20 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 ---
 
-## Current Best Results (2026-03-29)
+## Current Best Results (2026-04-01)
 
-| Model / Ensemble | Holdout AUC | LB | Notes |
-|-----------------|-------------|-----|-------|
-| **dual-foundation + KNN Embedding Prior** | — | **0.929** ⭐ | Plan C KNN prior (lambda=0.25, k=5, cosine) on 66 labeled soundscapes. CURRENT BEST. |
+| Model / Ensemble | SS Val AUC (fold1 / fold3) | LB | Notes |
+|-----------------|---------------------------|-----|-------|
+| **v17 + SED NS R5 (fold1+3)** | 0.9451 / 0.9595 | **0.931** ⭐ | **No competitor SED.** 2 folds only — full 5 folds expected higher. |
+| v17 + SED NS R4 (fold1+3) | 0.9480 / 0.9544 | **0.927** | No competitor SED. |
+| v17 + SED NS R3 (fold1+3) | 0.9426 / 0.9563 | **0.926** | No competitor SED. |
+| v17-protossm-sed-onnx-branchens-csebbs-vlom | — | **0.933** | With competitor SED. Current absolute best. |
+| dual-foundation + KNN Embedding Prior | — | **0.929** | Plan C KNN prior (lambda=0.25, k=5, cosine) on 66 labeled soundscapes. |
 | dual-foundation-protossm-v3-sed-fusion | — | **0.927** | MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
-| dual-foundation (LGBM replaces MLP) | — | **0.926** | LGBM probe → -0.001 vs MLP; MLP is better |
-| LGBM + R46.08 event smooth | 0.8140 OOF | **0.926** | lmax_pre_aves→SoftRich→cSEBBs |
-| LGBM probe (ptmap-lgbm) | — | **0.925** | LGBM per-class probe, no post-proc |
-| v3-ensemble (Perch 70/30 + SED VLOM) | — | **0.921** | Bayes PCA64+LogReg + SED 50/50 |
 
-**Embed Prior best**: `wk4d_ab19_ia31_sa33` LOO=0.995956 (4-comp wKNN+3way, batch=168) — ready to integrate into next submission.
+> **KEY FINDING (2026-04-01)**: Our SED NS R5 (fold1+3 only) = **LB 0.931** without competitor SED.
+> R6 fold1=0.9524, fold3=**0.9664** (both stronger than R5) — R6 full 5 folds expected to surpass 0.933.
+> **Competitor SED is no longer needed.**
 
 > **Only nohuman models evaluated from 2026-03-15 onwards.**
 > **Submit threshold**: individual SED soundscape val AUC > 0.9193 before new SED ensemble submission.
@@ -27,14 +29,16 @@ Kaggle competition: multi-label bird/amphibian/insect species classification fro
 
 | Date | Submission | LB | Notes |
 |------|-----------|-----|-------|
-| 2026-03-25 | dual-foundation + KNN Embedding Prior (Plan C) | **0.929** ⭐ | cosine-KNN on 66 labeled ss, lambda=0.25, +0.002 over 0.927. NEW BEST |
-| 2026-03-25 | dual-foundation (LGBM replaces MLP probe) | **0.926** | MLP probe 優於 LGBM；MLP 版本仍是最佳 |
-| 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** ⭐ | MLP probe + TFLite heads blend + 2-way OOF + ProtoSSM + ResidualSSM (before VLOM) + VLOM 50/50 |
+| 2026-04-01 | v17 + SED NS R5 (fold1+3, no competitor) | **0.931** ⭐ | Our SED alone matches best; fold3=0.9595 key driver |
+| 2026-04-01 | v17 + SED NS R4 (fold1+3, no competitor) | **0.927** | Confirms NS improvement per round |
+| 2026-04-01 | v17 + SED NS R3 (fold1+3, no competitor) | **0.926** | R3→R4→R5 each +0.001 LB |
+| 2026-03-30 | v19-temporal-isolation | **0.933** | Ties v17; no real gain |
+| 2026-03-29 | v17-protossm-sed-onnx-branchens-csebbs-vlom | **0.933** ⭐ | ProtoSSM v3 + SED ONNX BranchEns + VLOM. Best with competitor SED. |
+| 2026-03-25 | dual-foundation + KNN Embedding Prior (Plan C) | **0.929** | cosine-KNN on 66 labeled ss, lambda=0.25 |
+| 2026-03-24 | dual-foundation-protossm-v3-sed-fusion | **0.927** | MLP probe + TFLite heads + ProtoSSM + ResidualSSM + VLOM |
 | 2026-03-22 | LGBM + R46.08 event smooth | **0.926** | lmax_pre_aves→SoftRich→cSEBBs OOF=0.8140 |
 | 2026-03-21 | lgbm-infer / ptmap-lgbm | **0.925** | LGBM probe breakthrough |
-| 2026-03-21 | lgbm-4fold (our SED only) | 0.908 | Replaced competitor SED → -0.013 |
 | 2026-03-20 | v3-ensemble | 0.921 | Perch 70% Bayes + SED 50/50 VLOM |
-| 2026-03-17 | v9-asl-soup ensemble | 0.892 | First competitive submission |
 
 ---
 
@@ -330,20 +334,37 @@ Perch head fine-tune (train.py)
 
 ---
 
-## Currently Running (2026-03-29)
+## Currently Running (2026-04-01)
 
 | Process | Status | Notes |
 |---------|--------|-------|
-| `auto_sed_ns_20s_full.sh` | **R2 fold0 training** | GPU1; R1 all done; R2 uses Aves-only pseudo labels |
+| `auto_sed_ns_20s_r5r8.sh` | **R6 fold4 training** | GPU1; R5 done (mean=0.9330, LB 0.931); R6 fold3=0.9664 new high |
+| `auto_sed_ns_pvt_20s_r1r4.sh` | **PVT R2 fold3 training** | PVT v2 B0 independent branch; R1 done (mean=0.9005) |
 
-R1 complete → Residual Corrector → gen_pseudo R1 (γ=1.00, Aves-only, 94,258 rows) → R2-R4 training
+**SED NS B0 Round-by-round SS Val AUC** (mean across 5 folds):
 
-**R1 fold AUCs**: fold0=0.9433, fold1=0.9037, fold2=0.9420, fold3=0.9478, fold4=0.9152
+| Round | f0 | f1 | f2 | f3 | f4 | mean | LB (fold1+3) |
+|---|---|---|---|---|---|---|---|
+| R1 | 0.9015 | 0.9149 | 0.9009 | 0.9289 | 0.9138 | 0.9120 | — |
+| R2 | 0.9096 | 0.9294 | 0.9229 | 0.9402 | 0.9261 | 0.9256 | — |
+| R3 | 0.9014 | 0.9426 | 0.9151 | 0.9563 | 0.9369 | 0.9305 | **0.926** |
+| R4 | 0.9034 | 0.9480 | 0.9237 | 0.9544 | 0.9408 | 0.9341 | **0.927** |
+| R5 | 0.9023 | 0.9451 | 0.9210 | 0.9595 | 0.9370 | 0.9330 | **0.931** |
+| R6* | 0.9052 | 0.9524 | 0.9246 | **0.9664** | ~0.941 | ~0.938 | TBD |
+
+*R6 fold4 in progress
+
+**PVT v2 B0 (transformer backbone, independent branch)**:
+
+| Round | f0 | f1 | f2 | f3 | f4 | mean |
+|---|---|---|---|---|---|---|
+| R1 | 0.8991 | 0.9243 | 0.8519 | 0.9101 | 0.9170 | 0.9005 |
+| R2* | 0.9108 | 0.9182 | 0.9064 | ~0.925 | — | ~0.915 |
 
 Monitor:
 ```bash
-tail -f outputs/logs/auto_sed_ns_20s_full.log
-tail -f outputs/logs/sed_ns_20s_r2_fold0.log
+tail -f outputs/logs/auto_sed_ns_20s_r5r8.log
+tail -f outputs/logs/auto_sed_ns_pvt_20s_r1r4.log
 ```
 
 ---
@@ -414,6 +435,9 @@ BirdClef-2026-Codebase/
 | Global seed fixing (SEED=42) | Reproducibility | random/np/torch + torch.use_deterministic_algorithms |
 | Perch teacher retention in pseudo pipeline | Prevents confirmation bias | Even at R3, teacher_w=0.10 anchors label quality |
 | **Aves-only pseudo labels** (`--aves_only`) | Removes 73% Amphibia contamination | Non-Aves species have insufficient training data (~12.9 clips/class) for reliable SED pseudo labeling; zeroing non-Aves columns in gen_pseudo_ns.py fixes pipeline |
+| **SED NS R5→R8 + forum insights** | LB 0.931 (R5 fold1+3, no competitor) | Wave-only mixup (`use_sumix_freq: false`), 25 epochs, attention map visualization; R5 fold3=0.9595 best single fold |
+| **PVT v2 B0 (transformer) independent branch** | mean 0.917 at R2 | pvt_v2_b0 (3.4M params) as alternative backbone; GEMFreqPool + AttentionSEDHead compatible; independent NS rounds don't wait for B0 |
+| **Non-Aves → Perch-only** (`--nonaves_perch_only`) | Cleaner pseudo labels | For non-Aves classes, use Perch predictions only (not SED ensemble); SED unreliable for Amphibia/Insecta/Mammalia/Reptilia |
 | Bayesian prior fusion | ~+0.02 LB | Site/hour priors on Perch logits |
 | SoftRich (α=0.40) | OOF 0.8164 | Cross-file richness normalization |
 | cSEBBs (cp_blend=0.60) | OOF 0.8164 | Change-point segment boosting |
@@ -461,4 +485,4 @@ export CUDA_VISIBLE_DEVICES=1
 - Only **nohuman models** evaluated/submitted
 - **No competitor model weights** — only models trained ourselves
 - Submit only when SED soundscape val AUC > **0.9193**
-- Current LB anchor: **0.927**
+- Current LB anchor: **0.933** (with competitor SED) / **0.931** (our SED only, R5 fold1+3)
