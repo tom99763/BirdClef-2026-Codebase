@@ -1,0 +1,8 @@
+{
+  "best_method": "R52.lmax_pre->lscale(0.9)->SoftRich->cSEBBs",
+  "best_auc": 0.8164673462439995,
+  "gaussian_auc": 0.774867085642855,
+  "delta_vs_gaussian": 0.04160026060114452,
+  "timestamp": "2026-03-22 10:10",
+  "results_source": "outputs/smooth_experiments_results.json"
+}

@@ -14,7 +14,7 @@ data:
 
 model:
   backbone:         tf_efficientnet_b0.ns_jft_in1k
-  clip_duration:    10
+  clip_duration:   5
   n_mels:           224
   n_fft:            2048
   hop_length:       512
@@ -26,13 +26,14 @@ model:
   mel_scale:        htk
   peak_norm:        false
   dropout:          0.1
-  drop_path_rate:   0.1
+  drop_path_rate:   0.15
   gem_p_init:       3.0
   freq_mask:        24
   time_mask:        32
 
 training:
   epochs:         30
+  early_stopping_patience: 5
   batch_size:     32
   learning_rate:  1.0e-3
   weight_decay:   1.0e-4
@@ -40,6 +41,7 @@ training:
   mixup_alpha:    0.15
   pseudo_weight:  1.0
   pseudo_mixup_alpha: 0.15
+  use_sumix_freq:     true
 
 output:
   dir:          outputs/sed-ns-b0-10s-r3

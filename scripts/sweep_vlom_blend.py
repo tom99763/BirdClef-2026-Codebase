@@ -34,6 +34,8 @@ SS_DIR       = BASE / "train_soundscapes"
 CACHE_EXT    = Path("outputs/perch_cache_extended.npz")
 META_PARQUET = Path("birdclef-2026/notebook resource/best perch/perch meta/full_perch_meta.parquet")
 OOF_NPZ      = Path("birdclef-2026/notebook resource/best perch/perch meta/full_oof_meta_features.npz")
+PROBE_PKL    = Path("submissions_v3/weights/lgbm_probe_models.pkl")
+FOLDS_DIR    = Path("configs/ss_folds")
 
 SR           = 32_000
 CLIP_SAMPLES = SR * 5
@@ -86,7 +88,7 @@ class MelTransform(nn.Module):
         mn = flat.min(1, keepdim=True)[0].unsqueeze(-1)
         mx = flat.max(1, keepdim=True)[0].unsqueeze(-1)
         mel = (mel - mn) / (mx - mn + 1e-7)
-        return mel.unsqueeze(1).repeat(1, in_chans, 1, 1)
+        return mel.unsqueeze(1).repeat(1, self.in_chans, 1, 1)
 
     @property
     def in_chans(self):
@@ -98,13 +100,12 @@ def load_sed_model(ckpt_path, config_path, device):
     n_classes = 234
     model = SEDModel(
         backbone=cfg.model.backbone,
-        n_classes=n_classes,
+        num_classes=n_classes,
         pretrained=False,
-        dropout=cfg.model.get("dropout", 0.1),
+        drop_rate=cfg.model.get("dropout", 0.1),
         in_chans=cfg.model.get("in_chans", 3),
         use_gem=cfg.model.get("use_gem", True),
         gem_p_init=cfg.model.get("gem_p_init", 3.0),
-        use_gpu_mel=False,
     ).to(device)
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     state = ckpt.get("model_state_dict", ckpt)
@@ -219,77 +220,94 @@ def macro_auc(Y, preds, fold_mask=None):
 
 
 def build_perch_oof(sc_df, full_files_sorted, Y, n_classes=234):
-    """Rebuild Perch OOF (LGBM probe) using same logic as eval_smooth_experiments.py."""
-    # Load from cache
+    """Rebuild Perch OOF (LGBM probe) matching eval_smooth_experiments.py exactly.
+
+    Key fixes vs previous broken version:
+    1. Fold splits loaded from configs/ss_folds/ text files (not np.array_split)
+    2. Scaler + PCA loaded from PROBE_PKL (not re-fit on 59-file subset)
+    3. LGBM hyperparams match eval_smooth (n_est=100, max_depth=4, num_leaves=15)
+    """
+    import pickle
+    import lightgbm as lgb
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
+
+    # ── Load cache ────────────────────────────────────────────────────────────
     cache = np.load(str(CACHE_EXT))
-    scores_raw = cache["scores_full_raw"]   # (N_windows, 234)
+    scores_raw = cache["scores_full_raw"]   # (N_windows, 234) — Perch logits
     emb_full   = cache["emb_full"]          # (N_windows, 1536)
-    filenames  = cache["filenames"]         # (N_windows,)
     row_ids    = cache["row_ids"]           # (N_windows,)
 
-    # Match ordering to sc_df
+    # Match ordering to sc_df (preserves sc_df row order → aligned with Y)
     row_id_to_idx = {rid: i for i, rid in enumerate(row_ids)}
     sel = [row_id_to_idx[rid] for rid in sc_df["row_id"] if rid in row_id_to_idx]
     if len(sel) != len(sc_df):
         print(f"Warning: matched {len(sel)}/{len(sc_df)} row_ids in Perch cache")
+    scores_raw_sel = scores_raw[sel]   # (N_windows, 234)
+    emb_sel        = emb_full[sel]     # (N_windows, 1536)
 
-    scores_raw_sel = scores_raw[sel]   # (N_windows_matched, 234)
-    emb_sel        = emb_full[sel]
-
-    # LGBM probe OOF — minimal rebuild using LightGBM
-    try:
-        import lightgbm as lgb
-        from sklearn.decomposition import PCA
-        from sklearn.preprocessing import StandardScaler
-    except ImportError:
-        print("lightgbm not available, using raw Perch scores as Perch OOF")
-        return scores_raw_sel, np.arange(len(scores_raw_sel))
-
-    # Fold assignment (same as eval_smooth_experiments.py — 4 folds by file)
-    files_arr = np.array([sc_df["filename"].iloc[i] for i in range(len(sc_df))])
-    unique_files = sorted(set(files_arr))
-    fold_id = np.full(len(files_arr), -1, dtype=np.int32)
-    for k, fnames_k in enumerate(np.array_split(unique_files, 4)):
-        for fn in fnames_k:
-            fold_id[files_arr == fn] = k
-
-    PCA_DIM = 64
-    ALPHA   = 0.40
-    MIN_POS = 8
-
-    pca = PCA(n_components=PCA_DIM, random_state=42)
+    # ── Load hyperparams from PROBE_PKL; fit fresh PCA on soundscape embs ────
+    # IMPORTANT: do NOT use probe_w["emb_scaler"/"emb_pca"] — those were fitted
+    # on train_audio data, applying them to soundscape embeddings causes domain
+    # shift and anti-correlated LGBM predictions. Fit fresh on emb_sel instead,
+    # exactly as eval_smooth_experiments.py does.
+    probe_w = pickle.load(open(str(PROBE_PKL), "rb"))
+    FROZEN  = probe_w["frozen_probe"]
+    PCA_DIM = int(FROZEN.get("pca_dim", 64))
+    ALPHA   = float(FROZEN.get("alpha", 0.40))
+    MIN_POS = int(FROZEN.get("min_pos", 8))
+    from sklearn.decomposition import PCA
+    from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    Z_all = pca.fit_transform(scaler.fit_transform(emb_sel))
+    pca    = PCA(n_components=PCA_DIM, whiten=True, random_state=42)
+    Z_all  = pca.fit_transform(scaler.fit_transform(emb_sel)).astype(np.float32)
+    print(f"  PCA fit+transform: emb (N,1536) → Z (N,{Z_all.shape[1]})  [fresh on soundscape, alpha={ALPHA}]")
+
+    # ── Fold assignment from text files (same as eval_smooth_experiments.py) ──
+    files_arr  = np.array([sc_df["filename"].iloc[i] for i in range(len(sc_df))])
+    fold_id    = np.full(len(files_arr), -1, dtype=np.int32)
+    for k in range(4):
+        fold_file = FOLDS_DIR / f"ss_fold{k}_val.txt"
+        val_files = set(fold_file.read_text().splitlines()) if fold_file.exists() else set()
+        mask = np.array([f in val_files for f in files_arr])
+        fold_id[mask] = k
+    n_assigned = (fold_id >= 0).sum()
+    print(f"  Fold assignment: {n_assigned}/{len(files_arr)} windows assigned to folds 0-3")
+
+    # ── OOF LGBM probe (same params as eval_smooth_experiments.py) ────────────
+    lgbm_params = dict(n_estimators=100, max_depth=4, num_leaves=15,
+                       learning_rate=0.05, min_child_samples=5,
+                       subsample=0.8, colsample_bytree=0.8,
+                       random_state=42, n_jobs=4, verbose=-1)
 
     oof_base  = scores_raw_sel.copy()
     oof_final = oof_base.copy()
+    active    = np.where(Y.sum(axis=0) >= MIN_POS)[0]
+    print(f"  Training OOF LGBM probe: {len(active)} active classes (≥{MIN_POS} positives)...")
 
-    for cls_idx in range(n_classes):
-        y_cls = Y[:, cls_idx]
-        if y_cls.sum() < MIN_POS:
-            continue
-        preds_lgbm = np.zeros(len(oof_base), dtype=np.float32)
+    for cls_idx in tqdm(active, desc="OOF LGBM", leave=False):
+        y_cls         = Y[:, cls_idx]
+        prior         = oof_base[:, cls_idx]
+        X_all         = np.column_stack([Z_all, prior])
+        oof_pred_logit = np.zeros(len(y_cls), dtype=np.float32)
+
         for k in range(4):
             val_mask   = fold_id == k
             train_mask = (fold_id >= 0) & (~val_mask)
-            if train_mask.sum() == 0 or val_mask.sum() == 0:
+            # Skip if too few training examples or not enough positives to learn from
+            if train_mask.sum() < 5 or val_mask.sum() == 0:
                 continue
-            prior = oof_base[:, cls_idx]
-            X_tr = np.column_stack([Z_all[train_mask], prior[train_mask]])
-            X_va = np.column_stack([Z_all[val_mask],   prior[val_mask]])
-            y_tr = y_cls[train_mask]
-            if y_tr.sum() < 2:
+            if y_cls[train_mask].sum() < 2:
+                # Not enough positives to train — leave oof_pred_logit=0 for this fold
+                # (blending with 0 scales oof_base by (1-ALPHA), preserving rank)
                 continue
-            clf = lgb.LGBMClassifier(n_estimators=200, learning_rate=0.05,
-                                      num_leaves=31, random_state=42, n_jobs=2,
-                                      verbose=-1)
-            clf.fit(X_tr, y_tr)
-            preds_lgbm[val_mask] = clf.predict_proba(X_va)[:, 1]
+            clf = lgb.LGBMClassifier(**lgbm_params)
+            clf.fit(X_all[train_mask], y_cls[train_mask])
+            proba = np.clip(clf.predict_proba(X_all[val_mask])[:, 1], 1e-7, 1 - 1e-7)
+            oof_pred_logit[val_mask] = np.log(proba / (1 - proba))
 
         val_windows = fold_id >= 0
-        pred_logit  = np.log(np.clip(preds_lgbm, 1e-7, 1-1e-7) /
-                             np.clip(1-preds_lgbm, 1e-7, 1-1e-7))
-        blended     = (1 - ALPHA) * oof_base[:, cls_idx] + ALPHA * pred_logit
+        blended     = (1 - ALPHA) * oof_base[:, cls_idx] + ALPHA * oof_pred_logit
         oof_final[val_windows, cls_idx] = blended[val_windows]
 
     return oof_final, fold_id

@@ -6925,11 +6925,15 @@ def main():
                                              richness_thr=richness_thr, temp=temp,
                                              base_nw=base_nw, max_boost=max_boost,
                                              alpha=alpha, cp_blend=0.0)  # no cSEBBs inside
-        # Apply per-timestep adaptive cSEBBs blend
+        # Apply per-file adaptive cSEBBs blend (file-level mean PCR)
+        # change_point_segment_mean requires (N_WINDOWS, C) input per file
+        n_files_a = _sr_out.shape[0] // N_WINDOWS
+        adapt_blend_per_file = adapt_blend.reshape(n_files_a, N_WINDOWS).mean(axis=1)
         _cpd_out = np.zeros_like(_sr_out)
-        for t in range(probs.shape[0]):
-            _cpd_out[t] = change_point_segment_mean(
-                _sr_out[t], threshold=cp_thr, blend=float(adapt_blend[t]))
+        for f in range(n_files_a):
+            sl = slice(f * N_WINDOWS, (f + 1) * N_WINDOWS)
+            _cpd_out[sl] = change_point_segment_mean(
+                _sr_out[sl], threshold=cp_thr, blend=float(adapt_blend_per_file[f]))
         return _cpd_out
 
     for _bb, _bst in [(0.50, 0.20), (0.45, 0.30), (0.40, 0.35), (0.55, 0.15)]:
@@ -7007,16 +7011,22 @@ def main():
         # High PCR → class has strong signal → lower threshold (detect more events)
         cp_thr_c = thr_base - pcr_norm * thr_range  # (234,)
         cp_thr_c = np.clip(cp_thr_c, 0.02, 0.12)
-        # Apply per-class adaptive cSEBBs
-        out = np.zeros_like(probs_sr)
+        # Apply per-class adaptive cSEBBs inline (can't call change_point_segment_mean
+        # with 1D per-class input — implement change-point logic directly)
+        out = probs_sr.copy()
         for c in range(NUM_CLASSES):
-            seq = probs_sr[:, c]
-            smoothed = []
+            thr = float(cp_thr_c[c])
             for f in range(n_files):
-                seg = seq[f * N_WINDOWS: (f + 1) * N_WINDOWS]
-                smoothed.append(change_point_segment_mean(seg, threshold=float(cp_thr_c[c]),
-                                                          blend=0.60))
-            out[:, c] = np.concatenate(smoothed)
+                sl = slice(f * N_WINDOWS, (f + 1) * N_WINDOWS)
+                seg = probs_sr[sl, c].copy()
+                diffs_c = np.abs(np.diff(seg))
+                boundaries = ([0] + [t + 1 for t in range(N_WINDOWS - 1)
+                                     if diffs_c[t] > thr] + [N_WINDOWS])
+                for i in range(len(boundaries) - 1):
+                    s, e = boundaries[i], boundaries[i + 1]
+                    seg_mean = seg[s:e].mean()
+                    seg[s:e] = 0.60 * seg_mean + 0.40 * seg[s:e]
+                out[sl, c] = seg
         return out
 
     # Compute SoftRich output (before cSEBBs) for nSEBBs input

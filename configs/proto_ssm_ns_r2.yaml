@@ -1,0 +1,51 @@
+experiment:
+  name: proto-ssm-ns-r2
+  seed: 42
+  round: 2
+
+data:
+  labeled_npz:       outputs/perch_labeled_ss.npz
+  labels_csv:        birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:      birdclef-2026/taxonomy.csv
+  n_folds:           5
+  windows_per_seq:   12
+  # Soft pseudo labels for labeled soundscapes (from Perch teacher via gen_pseudo_ns.py)
+  # This enables soft-label distillation even without new unlabeled data
+  perch_teacher_csv: outputs/perch_teacher_all_ss.csv
+  # Unlabeled soundscape embeddings (available after extract_perch_all_ss_emb.py finishes)
+  pseudo_emb_npz:    null   # set to outputs/perch_all_ss_emb.npz when ready
+  pseudo_labels_csv: pseudo_labels/ns_r1.csv   # soft labels for unlabeled soundscapes
+
+teacher_temperature: 1.0
+
+model:
+  n_classes:    234
+  d_input:      1536
+  d_model:      128
+  d_state:      16
+  n_ssm_layers: 2
+  n_windows:    12
+  dropout:      0.25
+
+training:
+  epochs:                  100
+  learning_rate:           0.002
+  weight_decay:            0.005
+  early_stopping_patience: 0     # disabled
+  pos_weight_cap:          30.0
+  loss_distill_weight:     0.3
+  loss_family_weight:      0.1
+  grad_clip:               1.0
+  init_prototypes:         true
+  batch_size:              8
+  aug_noise_std:           0.05
+  aug_time_mask_p:         0.10
+  aug_mixup_alpha:         0.0
+  label_smoothing:         0.0
+  soft_label_weight:       0.5   # blend ratio: 0.5 * hard_label + 0.5 * Perch_soft_label
+  pseudo_weight:           0.3   # weight for pseudo-unlabeled loss (when pseudo_emb_npz is set)
+
+output:
+  dir:        outputs/proto-ssm-ns-r2
+  save_oof:   true
+  save_model: true

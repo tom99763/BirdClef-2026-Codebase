@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Experiment Plan</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; line-height: 1.6; }
+  .header { background: linear-gradient(135deg, #1a1f35 0%, #0f2027 100%); padding: 36px 48px; border-bottom: 2px solid #2d3748; }
+  .header h1 { font-size: 2rem; color: #63b3ed; letter-spacing: -0.5px; }
+  .header p { color: #a0aec0; margin-top: 6px; font-size: 0.95rem; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-left: 10px; vertical-align: middle; }
+  .badge-live { background: #276749; color: #9ae6b4; }
+  .badge-best { background: #744210; color: #fbd38d; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 32px 48px; }
+  section { margin-bottom: 48px; }
+  h2 { font-size: 1.25rem; color: #90cdf4; border-bottom: 1px solid #2d3748; padding-bottom: 10px; margin-bottom: 20px; }
+  h3 { font-size: 1rem; color: #76e4f7; margin-bottom: 12px; }
+
+  /* Status cards */
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: #1a2035; border: 1px solid #2d3748; border-radius: 10px; padding: 20px; }
+  .card.running { border-color: #276749; }
+  .card.waiting { border-color: #553c9a; }
+  .card.done { border-color: #2d3748; opacity: 0.7; }
+  .card-title { font-size: 0.85rem; color: #a0aec0; margin-bottom: 4px; }
+  .card-name { font-size: 1.05rem; font-weight: 600; color: #e2e8f0; }
+  .card-metric { font-size: 1.5rem; font-weight: 700; color: #68d391; margin: 8px 0 4px; }
+  .card-sub { font-size: 0.8rem; color: #718096; }
+  .progress-bar { background: #2d3748; border-radius: 4px; height: 6px; margin: 10px 0; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #38a169, #68d391); transition: width 0.3s; }
+
+  /* Gantt */
+  .gantt { overflow-x: auto; padding-bottom: 12px; }
+  .gantt-grid { min-width: 900px; }
+  .gantt-header { display: grid; grid-template-columns: 200px 1fr; gap: 0; margin-bottom: 4px; }
+  .gantt-header-dates { display: flex; justify-content: space-between; padding: 0 0 4px 0; }
+  .gantt-header-dates span { font-size: 0.72rem; color: #718096; }
+  .gantt-row { display: grid; grid-template-columns: 200px 1fr; gap: 8px; align-items: center; margin-bottom: 5px; min-height: 28px; }
+  .gantt-label { font-size: 0.78rem; color: #a0aec0; text-align: right; padding-right: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gantt-track { background: #1a2035; border-radius: 4px; position: relative; height: 22px; }
+  .gantt-bar { position: absolute; top: 3px; height: 16px; border-radius: 3px; display: flex; align-items: center; padding: 0 6px; font-size: 0.65rem; font-weight: 600; white-space: nowrap; overflow: hidden; color: #fff; }
+  .gpu0  { background: linear-gradient(90deg, #2b6cb0, #3182ce); }
+  .gpu1  { background: linear-gradient(90deg, #276749, #38a169); }
+  .joint { background: linear-gradient(90deg, #553c9a, #805ad5); }
+  .new-exp { background: linear-gradient(90deg, #744210, #d69e2e); }
+  .bar-running { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.7; } }
+  .gantt-now { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #fc8181; z-index: 10; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  thead tr { background: #1a2035; }
+  th { padding: 10px 14px; text-align: left; color: #90cdf4; font-weight: 600; border-bottom: 2px solid #2d3748; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { padding: 9px 14px; border-bottom: 1px solid #1e2a3a; }
+  tr:hover td { background: #1a2035; }
+  .status-pill { display: inline-block; padding: 2px 9px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+  .pill-running { background: #1c4532; color: #9ae6b4; }
+  .pill-waiting { background: #322659; color: #d6bcfa; }
+  .pill-done    { background: #1a202c; color: #718096; }
+  .pill-new     { background: #744210; color: #fbd38d; }
+  .pill-planned { background: #1a365d; color: #90cdf4; }
+  .auc-high { color: #68d391; font-weight: 700; }
+  .auc-mid  { color: #f6e05e; }
+  .auc-low  { color: #fc8181; }
+  .gpu-tag  { font-size: 0.72rem; font-weight: 700; padding: 1px 7px; border-radius: 8px; }
+  .g0 { background:#2b6cb0; color:#bee3f8; }
+  .g1 { background:#276749; color:#c6f6d5; }
+  .g01 { background:#553c9a; color:#e9d8fd; }
+
+  /* Leaderboard */
+  .lb-table td:nth-child(3) { font-weight: 700; font-size: 1.05em; }
+  .rank-1 { color: #f6c90e; }
+  .rank-2 { color: #c0c0c0; }
+  .rank-3 { color: #cd7f32; }
+
+  /* Priority boxes */
+  .priority-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .priority-card { background: #1a2035; border-radius: 10px; padding: 20px; border-left: 4px solid; }
+  .p1 { border-color: #e53e3e; }
+  .p2 { border-color: #d69e2e; }
+  .p3 { border-color: #38a169; }
+  .p4 { border-color: #3182ce; }
+  .priority-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .p1 .priority-label { color: #fc8181; }
+  .p2 .priority-label { color: #f6e05e; }
+  .p3 .priority-label { color: #68d391; }
+  .p4 .priority-label { color: #90cdf4; }
+  .priority-title { font-size: 1rem; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; }
+  .priority-desc { font-size: 0.82rem; color: #a0aec0; }
+  .priority-eta { margin-top: 10px; font-size: 0.78rem; color: #718096; }
+
+  footer { text-align: center; padding: 32px; color: #4a5568; font-size: 0.8rem; border-top: 1px solid #2d3748; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🐦 BirdCLEF 2026 — Experiment Plan
+    <span class="badge badge-live">LIVE</span>
+    <span class="badge badge-best">Best LB: 0.893</span>
+  </h1>
+  <p>Generated: 2026-03-17 23:45 &nbsp;|&nbsp; Target: LB &gt; 0.893 &nbsp;|&nbsp; Metric: Macro ROC-AUC (234 species)</p>
+</div>
+
+<div class="container">
+
+<!-- ── Current Status ──────────────────────────────────────────────────── -->
+<section>
+<h2>⚡ Current Status</h2>
+<div class="status-grid">
+
+  <div class="card running">
+    <div class="card-title">GPU0 — SEDP Training</div>
+    <div class="card-name">sedp-b0-v2-fusion</div>
+    <div class="card-metric">0.7191</div>
+    <div class="card-sub">best ss_val_auc @ ep6 | ↑ trending</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:20%"></div></div>
+    <div class="card-sub">Epoch 6 / 30 &nbsp;·&nbsp; t/ep ≈ 1728s &nbsp;·&nbsp; ETA ~03-18 11:11</div>
+  </div>
+
+  <div class="card running">
+    <div class="card-title">GPU1 — SED Training</div>
+    <div class="card-name">sed-b0-v11-soft-sec</div>
+    <div class="card-metric">0.7098</div>
+    <div class="card-sub">best @ ep3 | ↓ declining (soft labels hurt)</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:47%; background: linear-gradient(90deg, #c53030, #fc8181);"></div></div>
+    <div class="card-sub">Epoch 14 / 30 &nbsp;·&nbsp; t/ep ≈ 1307s &nbsp;·&nbsp; ETA ~03-18 05:28</div>
+  </div>
+
+  <div class="card waiting">
+    <div class="card-title">Master Chain</div>
+    <div class="card-name">PID 2456429</div>
+    <div class="card-metric" style="font-size:1rem; color:#d6bcfa">ACTIVE</div>
+    <div class="card-sub">GPU1 stream: waiting for run_continue (~05:28)</div>
+    <div class="card-sub" style="margin-top:4px">GPU0 stream: waiting for v2-fusion (~11:11)</div>
+  </div>
+
+  <div class="card done">
+    <div class="card-title">Best Holdout AUC</div>
+    <div class="card-name">sed-b0-v9-asl-soup</div>
+    <div class="card-metric" style="color:#fbd38d">0.9532</div>
+    <div class="card-sub">Model soup (top-3) · ASL loss · ep20 best</div>
+    <div class="card-sub" style="margin-top:4px">Teacher CSV ready: 127,896 clips ✓</div>
+  </div>
+
+</div>
+</section>
+
+<!-- ── Gantt Chart ──────────────────────────────────────────────────────── -->
+<section>
+<h2>📅 Timeline (Gantt)</h2>
+<div class="gantt">
+<div class="gantt-grid">
+
+  <div class="gantt-header">
+    <div></div>
+    <div class="gantt-header-dates">
+      <span>03-18 00:00</span>
+      <span>03-18 12:00</span>
+      <span>03-19 00:00</span>
+      <span>03-19 12:00</span>
+      <span>03-20 00:00</span>
+      <span>03-20 12:00</span>
+      <span>03-21 00:00</span>
+      <span>03-21 12:00</span>
+      <span>03-22 00:00</span>
+    </div>
+  </div>
+
+  <!-- Total span: 03-17 23:40 to 03-22 04:00 = ~100.3h = 100% -->
+  <!-- 1% = ~1h, reference: 03-18 00:00 = 0.33% from start -->
+  <!-- Helper: offset% = (hours_from_now) / 100 * 100 -->
+  <!-- 03-18 05:28 = 5.8h from now = 5.8% -->
+  <!-- 03-18 11:11 = 11.5h from now = 11.5% -->
+
+  <style>
+  /* Gantt math: total window = 03-17 23:40 to 03-22 06:00 = 102.3h */
+  /* Each percent = 1.023h; offset from window start -->
+  /* t(h) = hours after 03-17 23:40 -->
+  </style>
+
+  <!-- GPU0: sedp-v2-fusion running now → done 11:11 -->
+  <div class="gantt-row">
+    <div class="gantt-label">sedp-v2-fusion</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0 bar-running" style="left:0%;width:11.3%">ep6→30</div>
+    </div>
+  </div>
+
+  <!-- GPU1: v11 running now → done 05:28 -->
+  <div class="gantt-row">
+    <div class="gantt-label">v11-soft-sec</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1 bar-running" style="left:0%;width:5.7%">ep14→30</div>
+    </div>
+  </div>
+
+  <!-- GPU1: Round2 v12→v13→v14→v15→v16 starting ~05:28 -->
+  <div class="gantt-row">
+    <div class="gantt-label">v12-bce (GPU1)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:5.7%;width:9.8%">30ep</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">v13-asl-cutmix (GPU1)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:15.5%;width:9.8%">30ep</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">v14-50ep (GPU1)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:25.3%;width:16.3%">50ep</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">v15-no-sec (GPU1)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:41.6%;width:9.8%">30ep</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">v16-rating3 (GPU1)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:51.4%;width:9.8%">30ep</div>
+    </div>
+  </div>
+
+  <!-- GPU0: sedp-v1 starting ~11:41 (11.5+0.5h holdout) -->
+  <div class="gantt-row">
+    <div class="gantt-label">sedp-v1 (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0" style="left:12%;width:13.7%">30ep</div>
+    </div>
+  </div>
+  <!-- GPU0: sedp-v3 after v1 ~01:21 03-19 -->
+  <div class="gantt-row">
+    <div class="gantt-label">sedp-v3-no-pcen (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0" style="left:25.7%;width:13.7%">30ep</div>
+    </div>
+  </div>
+
+  <!-- GPU0: geo ~15:21 03-19 -->
+  <div class="gantt-row">
+    <div class="gantt-label">Geo Filter (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar joint" style="left:39.4%;width:1.0%">eval</div>
+    </div>
+  </div>
+
+  <!-- GPU0: distill-v1 ~16:21, v2-full after -->
+  <div class="gantt-row">
+    <div class="gantt-label">distill-v1 (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0" style="left:40.4%;width:14.6%">30ep</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">distill-v2-full (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0" style="left:55%;width:14.6%">30ep</div>
+    </div>
+  </div>
+
+  <!-- GPU1: Round3-F after Round2 ~03-20 14:08 -->
+  <div class="gantt-row">
+    <div class="gantt-label">v18,v20,v22 (GPU1) ⭐</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu1" style="left:61.2%;width:29.4%">Round3-F · 3×30ep</div>
+    </div>
+  </div>
+
+  <!-- GPU0: Round6 PL gen + v23 ~03-20 21:51 -->
+  <div class="gantt-row">
+    <div class="gantt-label">round6-pseudo-gen ⭐</div>
+    <div class="gantt-track">
+      <div class="gantt-bar new-exp" style="left:69.9%;width:0.5%">fast</div>
+    </div>
+  </div>
+  <div class="gantt-row">
+    <div class="gantt-label">v23-r6-asl (GPU0) ⭐</div>
+    <div class="gantt-track">
+      <div class="gantt-bar new-exp" style="left:70.4%;width:10.6%">30ep NEW</div>
+    </div>
+  </div>
+
+  <!-- GPU0: Round3-E v17,v19,v21 -->
+  <div class="gantt-row">
+    <div class="gantt-label">v17,v19,v21 (GPU0)</div>
+    <div class="gantt-track">
+      <div class="gantt-bar gpu0" style="left:81%;width:19%">Round3-E · 3×30ep</div>
+    </div>
+  </div>
+
+</div>
+</div>
+<p style="font-size:0.75rem;color:#4a5568;margin-top:8px">⭐ = new post-distillation experiments &nbsp;|&nbsp; 🔴 = now (03-17 23:40)</p>
+</section>
+
+<!-- ── Priority Experiments ─────────────────────────────────────────────── -->
+<section>
+<h2>🎯 Post-Distillation Priorities</h2>
+<div class="priority-grid">
+
+  <div class="priority-card p1">
+    <div class="priority-label">Priority 1 — Highest Impact</div>
+    <div class="priority-title">New Ensemble Submission</div>
+    <div class="priority-desc">
+      After sedp-v2-fusion holdout: if &gt; 0.9532, replace v9-asl-soup in ensemble.
+      Combine sedp-v2-fusion-soup + distill-v2-full-soup for multi-SED ensemble.
+      Perch ×3 + best-2-SED + competitor + Tricks T1/T2/T3.
+    </div>
+    <div class="priority-eta">⏱ ~03-18 12:00 (after holdout eval) &nbsp;·&nbsp; GPU0</div>
+  </div>
+
+  <div class="priority-card p1">
+    <div class="priority-label">Priority 1 — Free Gain</div>
+    <div class="priority-title">Zero-Signal Species Prior (26 species)</div>
+    <div class="priority-desc">
+      26 insect sonotype + Chiasmocleis mehelyi have ZERO training data.
+      Injecting small positive prior (~0.02) in ensemble predictions can lift
+      macro AUC from 0.5 → &gt;0.5 for those classes. Estimated +0.01–0.02 LB.
+      Implement as Trick T4 in submission notebook.
+    </div>
+    <div class="priority-eta">⏱ Implement now (no GPU needed) &nbsp;·&nbsp; Low effort</div>
+  </div>
+
+  <div class="priority-card p2">
+    <div class="priority-label">Priority 2 — New Data Source</div>
+    <div class="priority-title">Round 6 Pseudo-Labels (distill model)</div>
+    <div class="priority-desc">
+      Use distill-v2-full (Pantanal-domain trained) to pseudo-label all 10,658
+      soundscapes. Higher quality than Perch teacher since it was trained on the
+      same domain. Train sed-b0-v23-r6-asl on these labels + ASL loss.
+    </div>
+    <div class="priority-eta">⏱ ~03-20 22:00 (after distill-v2-full) &nbsp;·&nbsp; GPU0</div>
+  </div>
+
+  <div class="priority-card p2">
+    <div class="priority-label">Priority 2 — Domain Adaptation</div>
+    <div class="priority-title">Geo Filter Evaluation</div>
+    <div class="priority-desc">
+      3 mask modes: ss_hard (75/234 species), ss_soft (factor=0.1), sa_weighted
+      (continuous SA fraction). Applied to v5, v9-asl, all sedp checkpoints.
+      If ss_soft helps: integrate into training labels for later experiments.
+    </div>
+    <div class="priority-eta">⏱ ~03-19 15:21 (after sedp-v3) &nbsp;·&nbsp; GPU0 (fast)</div>
+  </div>
+
+  <div class="priority-card p3">
+    <div class="priority-label">Priority 3 — Ablation Series</div>
+    <div class="priority-title">Round 2: v12–v16 (BCE, CutMix+ASL, 50ep, no-sec, rating3)</div>
+    <div class="priority-desc">
+      v12: plain BCE (how much does ASL help?)<br>
+      v13: ASL + CutMix combo (address v10-cutmix failure with better loss)<br>
+      v14: 50-epoch extended training (v9-asl peaked at ep20)<br>
+      v15: no secondary labels (are they hurting?)<br>
+      v16: min_rating=3 quality filter (60% of data kept)
+    </div>
+    <div class="priority-eta">⏱ 03-18 05:28 → 03-20 14:08 (GPU1, sequential)</div>
+  </div>
+
+  <div class="priority-card p3">
+    <div class="priority-label">Priority 3 — Dual Loss Variants</div>
+    <div class="priority-title">Round 3: v17–v22 (Dual BCE series)</div>
+    <div class="priority-desc">
+      v17: dual-loss 30ep (v5 was 15ep, find true peak)<br>
+      v18: dual-loss + ss_oversample=10 (more soundscape weight)<br>
+      v19: dual-loss + stronger freq masking<br>
+      v20: dual-loss + mixup α=0.8<br>
+      v21: dual-loss + rating3 quality filter<br>
+      v22: dual-loss no mixup (is mixup helping?)
+    </div>
+    <div class="priority-eta">⏱ 03-20 14:08 → 03-22 02:00 (both GPUs parallel)</div>
+  </div>
+
+  <div class="priority-card p4">
+    <div class="priority-label">Priority 4 — Knowledge Transfer</div>
+    <div class="priority-title">Perch Distillation (v1 + v2-full)</div>
+    <div class="priority-desc">
+      v1: Perch teacher on 1,176 labeled clips (round5_pseudo.csv)<br>
+      v2-full: Perch teacher on ALL 10,658 soundscapes (127,896 clips ✓)<br>
+      Expected: soundscape domain adaptation → better LB proxy.
+      Teacher CSV already extracted (GPU1, 20min, done ✓).
+    </div>
+    <div class="priority-eta">⏱ 03-19 15:21 → 03-20 21:21 (GPU0)</div>
+  </div>
+
+  <div class="priority-card p4">
+    <div class="priority-label">Priority 4 — Architecture</div>
+    <div class="priority-title">SEDP Ablation: v1 (PCEN only) vs v3 (no PCEN)</div>
+    <div class="priority-desc">
+      v1: PCEN + MaskedBCE + LLRD + AMP (isolate PCEN effect)<br>
+      v3: Same as v2-fusion but without PCEN (ablation)<br>
+      Quantifies exactly how much PCEN contributes to holdout AUC gain.
+      Critical for future architecture decisions.
+    </div>
+    <div class="priority-eta">⏱ 03-18 11:41 → 03-19 14:21 (GPU0, sequential)</div>
+  </div>
+
+</div>
+</section>
+
+<!-- ── Full Experiment Table ─────────────────────────────────────────────── -->
+<section>
+<h2>📋 Complete Experiment Catalogue</h2>
+<table>
+<thead>
+  <tr>
+    <th>Phase</th><th>Name</th><th>GPU</th><th>Key Techniques</th>
+    <th>Epochs</th><th>ETA Start</th><th>ETA Done</th><th>Status</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>0-Ensemble</td><td><strong>ensemble-v5-public-trick</strong></td><td>—</td>
+    <td>Perch×3 + v5 + competitor + T1/T2/T3</td>
+    <td>—</td><td>—</td><td>submitted</td>
+    <td><span class="status-pill pill-done">✓ LB 0.893</span></td>
+  </tr>
+  <tr>
+    <td>0-Ensemble</td><td>ensemble-v9-asl-soup</td><td>—</td>
+    <td>Perch×3 + v9-asl-soup + competitor + T1/T2/T3</td>
+    <td>—</td><td>—</td><td>submitted</td>
+    <td><span class="status-pill pill-done">✓ LB 0.892</span></td>
+  </tr>
+  <tr>
+    <td>2-Ablations</td><td>sed-b0-v9-asl</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>ASL (γ−=4, γ+=0), soundscape train, pseudo r5</td>
+    <td>30</td><td>—</td><td>done</td>
+    <td><span class="status-pill pill-done">holdout 0.9467</span></td>
+  </tr>
+  <tr>
+    <td>2-Ablations</td><td>sed-b0-v9-asl-soup</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>Model soup (top-3)</td>
+    <td>—</td><td>—</td><td>done</td>
+    <td><span class="status-pill pill-done">🥇 0.9532</span></td>
+  </tr>
+  <tr>
+    <td>2-Ablations</td><td>sed-b0-v10-cutmix</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>CutMix aug, mixup=0</td>
+    <td>30</td><td>—</td><td>done</td>
+    <td><span class="status-pill pill-done">0.9391 (best@ep2!)</span></td>
+  </tr>
+  <tr>
+    <td>3-SEDP</td><td style="color:#fbd38d"><strong>sedp-b0-v2-fusion</strong></td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>PCEN (trainable) + ASL + dual loss + LLRD + AMP fp16</td>
+    <td>30</td><td>running</td><td>03-18 11:11</td>
+    <td><span class="status-pill pill-running">ep6 · 0.7191↑</span></td>
+  </tr>
+  <tr>
+    <td>3-SEDP</td><td>sedp-b0-v1</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>PCEN + MaskedBCE + LLRD + AMP (no ASL)</td>
+    <td>30</td><td>03-18 11:41</td><td>03-19 01:01</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>3-SEDP</td><td>sedp-b0-v3-abl-no-pcen</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>v2-fusion without PCEN (ablation)</td>
+    <td>30</td><td>03-19 01:31</td><td>03-19 14:21</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>4-Geo</td><td>geo-ss_hard / ss_soft / sa_weighted</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Post-proc mask: soundscape species priority</td>
+    <td>—</td><td>03-19 14:51</td><td>03-19 15:51</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>5-Distill</td><td>distill-b0-v1</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Perch teacher · 1,176 clips (round5_pseudo.csv)</td>
+    <td>30</td><td>03-19 15:51</td><td>03-20 06:21</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>5-Distill</td><td>distill-b0-v2-full</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Perch teacher · 127,896 clips (all 10,658 soundscapes ✓)</td>
+    <td>30</td><td>03-20 06:51</td><td>03-20 21:21</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr style="background:#1c1810">
+    <td>6-PostDistill</td><td style="color:#fbd38d"><strong>round6-pseudo-gen ⭐</strong></td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Use distill-v2-full → pseudo_labels/round6_pseudo.csv (fast)</td>
+    <td>—</td><td>03-20 21:21</td><td>03-20 21:51</td>
+    <td><span class="status-pill pill-new">NEW</span></td>
+  </tr>
+  <tr style="background:#1c1810">
+    <td>6-PostDistill</td><td style="color:#fbd38d"><strong>sed-b0-v23-r6-asl ⭐</strong></td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>ASL + round6 pseudo-labels (Pantanal-domain distill teacher)</td>
+    <td>30</td><td>03-20 21:51</td><td>03-21 08:41</td>
+    <td><span class="status-pill pill-new">NEW</span></td>
+  </tr>
+  <tr style="background:#1c1810">
+    <td>6-PostDistill</td><td style="color:#fbd38d"><strong>zero-signal-prior ⭐</strong></td><td>—</td>
+    <td>Inject prior=0.02 for 26 zero-signal species in ensemble notebook</td>
+    <td>—</td><td>implement now</td><td>—</td>
+    <td><span class="status-pill pill-new">NEW · quick</span></td>
+  </tr>
+  <tr>
+    <td>6-Round2</td><td>sed-b0-v12-bce</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>Plain BCE loss (vs ASL ablation)</td>
+    <td>30</td><td>03-18 05:28</td><td>03-18 15:28</td>
+    <td><span class="status-pill pill-waiting">waiting v11</span></td>
+  </tr>
+  <tr>
+    <td>6-Round2</td><td>sed-b0-v13-asl-cutmix</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>ASL + CutMix (fix v10 with better loss)</td>
+    <td>30</td><td>03-18 15:28</td><td>03-19 01:28</td>
+    <td><span class="status-pill pill-waiting">queued</span></td>
+  </tr>
+  <tr>
+    <td>6-Round2</td><td>sed-b0-v14-50ep</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>50 epoch extended training (v9 peaked ep20)</td>
+    <td>50</td><td>03-19 01:28</td><td>03-19 18:08</td>
+    <td><span class="status-pill pill-waiting">queued</span></td>
+  </tr>
+  <tr>
+    <td>6-Round2</td><td>sed-b0-v15-no-sec</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>No secondary labels (are they hurting?)</td>
+    <td>30</td><td>03-19 18:08</td><td>03-20 04:08</td>
+    <td><span class="status-pill pill-waiting">queued</span></td>
+  </tr>
+  <tr>
+    <td>6-Round2</td><td>sed-b0-v16-rating3</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>min_rating=3 quality filter (60% data)</td>
+    <td>30</td><td>03-20 04:08</td><td>03-20 14:08</td>
+    <td><span class="status-pill pill-waiting">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v17-dual30</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Dual-loss BCE 30ep (v5 formula extended)</td>
+    <td>30</td><td>03-21 09:11</td><td>03-21 19:41</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v18-dual-ss10</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>Dual-loss + soundscape oversample=10</td>
+    <td>30</td><td>03-20 14:08</td><td>03-21 00:08</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v19-dual-freqmask</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Dual-loss + stronger freq masking</td>
+    <td>30</td><td>03-21 19:41</td><td>03-22 06:11</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v20-dual-mixup08</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>Dual-loss + mixup α=0.8</td>
+    <td>30</td><td>03-21 00:08</td><td>03-21 10:08</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v21-dual-rating3</td><td><span class="gpu-tag g0">GPU0</span></td>
+    <td>Dual-loss + rating3 quality filter</td>
+    <td>30</td><td>03-22 06:11</td><td>03-22 16:41</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+  <tr>
+    <td>7-Round3</td><td>sed-b0-v22-dual-noclipmix</td><td><span class="gpu-tag g1">GPU1</span></td>
+    <td>Dual-loss, no mixup</td>
+    <td>30</td><td>03-21 10:08</td><td>03-21 20:08</td>
+    <td><span class="status-pill pill-planned">queued</span></td>
+  </tr>
+</tbody>
+</table>
+</section>
+
+<!-- ── Holdout Leaderboard ──────────────────────────────────────────────── -->
+<section>
+<h2>🏆 Holdout AUC Leaderboard (Current)</h2>
+<table class="lb-table">
+<thead>
+  <tr><th>#</th><th>Model</th><th>Holdout AUC</th><th>Key Difference vs v5</th><th>LB Score</th></tr>
+</thead>
+<tbody>
+  <tr>
+    <td class="rank-1">🥇 1</td>
+    <td><strong>sed-b0-v9-asl-soup</strong></td>
+    <td class="auc-high">0.9532</td>
+    <td>ASL loss + model soup (+0.034 vs v5)</td>
+    <td><span class="badge" style="background:#553c9a;color:#e9d8fd">ensemble 0.892</span></td>
+  </tr>
+  <tr>
+    <td class="rank-2">🥈 2</td>
+    <td>sed-b0-v10-cutmix-soup</td>
+    <td class="auc-high">0.9457</td>
+    <td>CutMix augmentation + soup (best@ep2!)</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td class="rank-3">🥉 3</td>
+    <td>sed-b0-v9-asl</td>
+    <td class="auc-high">0.9467</td>
+    <td>ASL loss (no soup)</td>
+    <td>—</td>
+  </tr>
+  <tr>
+    <td>4</td><td>sed-b0-v10-cutmix</td>
+    <td class="auc-mid">0.9391</td>
+    <td>CutMix (no soup)</td><td>—</td>
+  </tr>
+  <tr>
+    <td>5</td><td>sed-b0-v5</td>
+    <td class="auc-mid">0.9192</td>
+    <td>Baseline (LB anchor)</td>
+    <td><span class="badge" style="background:#276749;color:#9ae6b4">ensemble 0.893 ★BEST</span></td>
+  </tr>
+  <tr>
+    <td>6–9</td><td>v2s / v6 series</td>
+    <td class="auc-low">0.75–0.80</td>
+    <td>Older architecture / less data</td><td>—</td>
+  </tr>
+</tbody>
+</table>
+<p style="margin-top:12px;font-size:0.8rem;color:#718096">
+  ⚠️ Holdout AUC ≠ LB proxy: v9-asl-soup holdout +0.034 but LB −0.001 vs v5 ensemble.
+  Soundscape val AUC may be a better LB indicator.
+</p>
+</section>
+
+<!-- ── Key Insights ────────────────────────────────────────────────────── -->
+<section>
+<h2>💡 Key Insights &amp; Hypotheses</h2>
+<table>
+<thead><tr><th>Finding</th><th>Evidence</th><th>Action</th></tr></thead>
+<tbody>
+  <tr>
+    <td><strong>ASL loss is the biggest single gain</strong></td>
+    <td>v9-asl: 0.9467 vs v5: 0.9192 (+0.027)</td>
+    <td>All new experiments use ASL (γ−=4, γ+=0)</td>
+  </tr>
+  <tr>
+    <td><strong>Model soup consistently helps</strong></td>
+    <td>soup: +0.003–0.007 over single best in all tested</td>
+    <td>Always do soup + holdout after training</td>
+  </tr>
+  <tr>
+    <td><strong>CutMix hurts ss_val but helps holdout</strong></td>
+    <td>v10 best@ep2 (ss_val=0.706), holdout=0.9391</td>
+    <td>v13: ASL+CutMix combo — may fix this</td>
+  </tr>
+  <tr>
+    <td><strong>Soft secondary labels hurt</strong></td>
+    <td>v11 declining ep3→ep14: 0.710→0.607</td>
+    <td>Test v15 (no secondary labels)</td>
+  </tr>
+  <tr>
+    <td><strong>Holdout ≠ LB proxy</strong></td>
+    <td>v9-soup: +0.034 holdout but −0.001 LB vs v5</td>
+    <td>Soundscape val AUC as primary metric</td>
+  </tr>
+  <tr>
+    <td><strong>26 zero-signal species = 11% of macro AUC</strong></td>
+    <td>25 insect sonotypes + 1 frog with NO data</td>
+    <td>T4 trick: inject prior=0.02 → free gain</td>
+  </tr>
+  <tr>
+    <td><strong>Pantanal domain shift is real</strong></td>
+    <td>Only 66/10,658 soundscapes labeled (0.6%)</td>
+    <td>Distillation on all 10,658 soundscapes</td>
+  </tr>
+</tbody>
+</table>
+</section>
+
+</div><!-- /container -->
+
+<footer>
+  BirdCLEF 2026 · Generated 2026-03-17 23:45 · Master Chain PID 2456429
+  · GPU0: sedp-v1→v3→geo→distill→round6→v23→Round3-E
+  · GPU1: Round2(v12-v16)→Round3-F(v18,v20,v22)
+</footer>
+</body>
+</html>

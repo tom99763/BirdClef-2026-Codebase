@@ -1,0 +1,53 @@
+experiment:
+  name: embed-distill-b0-v1
+  seed: 42
+
+# ── Perch Embedding Distillation v1 ─────────────────────────────────────────
+#
+# The CORRECT distillation approach: train EfficientNet-B0 to MATCH Perch's
+# 1536-dim embedding space (NOT classify species).
+#
+# "throw in a bunch of wave files, extract their embeddings and make a database,
+#  distill to your favourite pytorch models and enjoy!"
+#
+# Teacher: Perch (Google) → 1536-dim acoustic embeddings
+# Student: EfficientNet-B0 + GEMFreqPool + ProjectionHead(1280→1536)
+# Loss:    cosine similarity loss (L2-normalised embeddings)
+# Data:    107k pre-extracted embedding pairs (train_audio + soundscapes)
+#          outputs/embeddings_cache/manifest.csv
+#
+# After training, best_backbone.pt can be used to initialise SEDModel:
+#   train_sed.py --pretrained_backbone checkpoints/embed-distill-b0-v1/best_backbone.pt
+
+run_name: embed-distill-b0-v1
+
+data:
+  manifest_path: outputs/embeddings_cache/manifest.csv
+  train_audio_dir: birdclef-2026/train_audio
+  soundscapes_dir: birdclef-2026/train_soundscapes
+  mel_cache_dir: outputs/mel_cache   # pre-computed mels (cache_mel_for_distill.py)
+
+audio:
+  sample_rate: 32000
+  clip_seconds: 5
+
+mel:
+  n_fft: 2048
+  hop_length: 512
+  n_mels: 224
+  fmin: 0.0
+  fmax: 16000.0
+
+model:
+  backbone: tf_efficientnet_b0.ns_jft_in1k
+  teacher_dim: 1536
+  pretrained: true
+  drop_rate: 0.1
+
+training:
+  epochs: 30
+  batch_size: 64
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  warmup_epochs: 2
+  early_stopping_patience: 5

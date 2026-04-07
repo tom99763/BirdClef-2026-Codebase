@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SFDA + Perch for BirdCLEF 2026 — Domain Adaptation Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card2: #212435;
+    --border: #2e3245;
+    --accent: #6c8fff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --teal: #22d3ee;
+    --orange: #fb923c;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  .hero {
+    background: linear-gradient(135deg, #1a1d27 0%, #0f1117 40%, #13101f 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 40px 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(108,143,255,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-tag {
+    display: inline-block;
+    background: rgba(108,143,255,0.15);
+    border: 1px solid rgba(108,143,255,0.3);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+  }
+  .hero p {
+    color: var(--muted);
+    font-size: 1rem;
+    max-width: 700px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .hero-meta span {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  /* ── Layout ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 36px 40px; }
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+  .card p  { color: var(--muted); font-size: 0.9rem; line-height: 1.7; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── Domain gap visual ── */
+  .domain-split {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin-bottom: 16px;
+  }
+  .domain-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .domain-box.source { border-left: 4px solid var(--accent); }
+  .domain-box.target { border-left: 4px solid var(--green); }
+  .domain-box h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .domain-box.source h3 { color: var(--accent); }
+  .domain-box.target h3 { color: var(--green); }
+  .domain-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+  .domain-row:last-child { border-bottom: none; }
+  .domain-row .label { color: var(--muted); }
+  .domain-row .val   { color: var(--text); font-weight: 500; }
+  .gap-arrow {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    color: var(--yellow);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .gap-arrow .arrow { font-size: 1.8rem; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-blue   { background: rgba(108,143,255,0.15); color: var(--accent); border: 1px solid rgba(108,143,255,0.3); }
+  .badge-green  { background: rgba(52,211,153,0.15);  color: var(--green);  border: 1px solid rgba(52,211,153,0.3); }
+  .badge-yellow { background: rgba(251,191,36,0.15);  color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+  .badge-red    { background: rgba(248,113,113,0.15); color: var(--red);    border: 1px solid rgba(248,113,113,0.3); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--accent2);border: 1px solid rgba(167,139,250,0.3); }
+  .badge-teal   { background: rgba(34,211,238,0.15);  color: var(--teal);   border: 1px solid rgba(34,211,238,0.3); }
+
+  /* ── Method cards ── */
+  .method-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+  .method-card:hover { border-color: var(--accent); }
+  .method-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  .method-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .method-body { color: var(--muted); font-size: 0.88rem; line-height: 1.7; }
+  .method-body strong { color: var(--text); }
+  .method-footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .priority-chip {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .p1 { background: rgba(34,211,153,0.2); color: var(--green); }
+  .p2 { background: rgba(108,143,255,0.2); color: var(--accent); }
+  .p3 { background: rgba(251,191,36,0.2); color: var(--yellow); }
+  .p4 { background: rgba(248,113,113,0.2); color: var(--red); }
+
+  /* ── Pipeline diagram ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 0;
+    margin: 20px 0;
+  }
+  .pipe-step {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 130px;
+    flex-shrink: 0;
+  }
+  .pipe-step .icon { font-size: 1.4rem; margin-bottom: 6px; }
+  .pipe-step .name { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+  .pipe-step .sub  { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
+  .pipe-step.highlight { border-color: var(--green); background: rgba(52,211,153,0.05); }
+  .pipe-step.new { border-color: var(--accent); background: rgba(108,143,255,0.05); }
+  .pipe-arrow { color: var(--muted); font-size: 1.2rem; padding: 0 6px; flex-shrink: 0; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { background: var(--card2); color: var(--muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--card2); }
+  .auc-high { color: var(--green); font-weight: 600; }
+  .auc-mid  { color: var(--yellow); font-weight: 600; }
+  .auc-low  { color: var(--red); font-weight: 600; }
+
+  /* ── Chart ── */
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .chart-title { font-size: 0.9rem; font-weight: 600; color: var(--muted); margin-bottom: 16px; }
+
+  /* ── Highlight boxes ── */
+  .insight {
+    background: rgba(108,143,255,0.08);
+    border: 1px solid rgba(108,143,255,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .insight strong { color: var(--accent); }
+  .insight-green {
+    background: rgba(52,211,153,0.08);
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+  }
+  .insight-green strong { color: var(--green); }
+  .insight-yellow {
+    background: rgba(251,191,36,0.08);
+    border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+  }
+  .insight-yellow strong { color: var(--yellow); }
+
+  /* ── Code ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    line-height: 1.6;
+    color: #c9d1d9;
+    margin: 12px 0;
+  }
+  pre .kw  { color: #ff7b72; }
+  pre .fn  { color: #d2a8ff; }
+  pre .str { color: #a5d6ff; }
+  pre .cm  { color: #8b949e; }
+  pre .num { color: #79c0ff; }
+  pre .cls { color: #ffa657; }
+
+  /* ── Stats row ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+  .stat-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+  }
+  .stat-box .num { font-size: 1.6rem; font-weight: 700; }
+  .stat-box .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  /* ── Experiment queue ── */
+  .exp-row {
+    display: grid;
+    grid-template-columns: 32px 1fr 120px 100px 90px;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+  }
+  .exp-row:last-child { border-bottom: none; }
+  .exp-rank { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; }
+
+  ul.checklist { list-style: none; padding: 0; }
+  ul.checklist li { padding: 6px 0; color: var(--muted); font-size: 0.9rem; display: flex; align-items: flex-start; gap: 10px; }
+  ul.checklist li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .stats-row { grid-template-columns: 1fr; }
+    .domain-split { grid-template-columns: 1fr; }
+    .gap-arrow { display: none; }
+    .hero h1 { font-size: 1.5rem; }
+    .exp-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────────────── HERO ─────────────────────────── -->
+<div class="hero">
+  <div class="hero-tag">Domain Adaptation Research</div>
+  <h1>SFDA + Perch for BirdCLEF 2026</h1>
+  <p>Source-Free Domain Adaptation 方法論、BirdCLEF 2026 的 Domain Gap 分析，以及如何將 Perch embeddings 與 SFDA 技術結合應用。</p>
+  <div class="hero-meta">
+    <span><span class="dot" style="background:var(--green)"></span> 2026-03-20</span>
+    <span><span class="dot" style="background:var(--accent)"></span> 206 species, 35,549 train clips</span>
+    <span><span class="dot" style="background:var(--yellow)"></span> Target: Pantanal, Brazil</span>
+    <span><span class="dot" style="background:var(--accent2)"></span> Current best probe OOF: 0.8119</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ─────────────────────────── SECTION 1: What is SFDA ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">1</span> 什麼是 Source-Free Domain Adaptation (SFDA)?</div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>傳統 Domain Adaptation (DA) 的問題</h3>
+      <p>標準 UDA (Unsupervised DA) 需要同時存取 <strong>source 和 target domain 的資料</strong>。但在實際應用中，source 資料往往因為：隱私法規限制、儲存成本、IP 問題、或只有 model checkpoint 而無法取得原始資料。</p>
+    </div>
+    <div class="card">
+      <h3>SFDA 的核心概念</h3>
+      <p>SFDA 只使用 <strong>已訓練好的 source model</strong> + <strong>unlabeled target 資料</strong>，不需要任何 source domain 資料。目標是讓 model 自適應到 target distribution，同時保留 source 學到的知識。</p>
+    </div>
+  </div>
+
+  <div class="insight">
+    <strong>關鍵定義：</strong> SFDA = 給定 source pre-trained model f<sub>s</sub> + unlabeled target data X<sub>t</sub>，學習 adapted model f<sub>t</sub>，使得 f<sub>t</sub> 在 target distribution 上有更好的 performance，且不能使用任何 source domain data。
+  </div>
+
+  <!-- DA taxonomy -->
+  <div style="margin-top: 20px;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px;">
+      <div class="card" style="border-top: 3px solid var(--muted);">
+        <h3 style="color: var(--muted);">UDA (Unsupervised DA)</h3>
+        <p>需要：Source data + Target unlabeled data<br>同時 alignment<br>→ 無法用於 source data 不可用情境</p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--accent);">
+        <h3 style="color: var(--accent);">SFDA (Source-Free DA)</h3>
+        <p>需要：Source model + Target unlabeled data<br>不需要 source data<br>→ <strong>本競賽情境的最佳框架</strong></p>
+      </div>
+      <div class="card" style="border-top: 3px solid var(--green);">
+        <h3 style="color: var(--green);">Semi-supervised DA</h3>
+        <p>需要：Source model + 少量 target labeled + Target unlabeled<br>→ 有 train_soundscapes 標注！更強</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 2: Domain Gap ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">2</span> BirdCLEF 2026 的 Domain Gap</div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="num" style="color: var(--accent);">35,549</div>
+      <div class="lbl">Source domain clips<br>(train_audio)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color: var(--green);">10,658</div>
+      <div class="lbl">Target domain files<br>(train_soundscapes)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color: var(--yellow);">1,478</div>
+      <div class="lbl">Labeled target clips<br>(train_soundscapes_labels)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color: var(--orange);">206</div>
+      <div class="lbl">Species<br>(multi-label in target)</div>
+    </div>
+  </div>
+
+  <div class="domain-split">
+    <div class="domain-box source">
+      <h3>Source Domain — train_audio</h3>
+      <div class="domain-row"><span class="label">Geography</span><span class="val">Global (-54.9°N ~ 69.6°N, -159.7°W ~ 175.3°E)</span></div>
+      <div class="domain-row"><span class="label">Collections</span><span class="val">XenoCanto (23,043) + iNaturalist (12,506)</span></div>
+      <div class="domain-row"><span class="label">Recording type</span><span class="val">Focal, directional microphone</span></div>
+      <div class="domain-row"><span class="label">Species density</span><span class="val">1 species per clip (clean)</span></div>
+      <div class="domain-row"><span class="label">Label quality</span><span class="val">Curated, single primary label</span></div>
+      <div class="domain-row"><span class="label">Environment</span><span class="val">Mixed (garden, forest edge, lab)</span></div>
+      <div class="domain-row"><span class="label">Background</span><span class="val">Low noise (deliberate recording)</span></div>
+      <div class="domain-row"><span class="label">Recording years</span><span class="val">Various (2000–2024)</span></div>
+    </div>
+    <div class="gap-arrow">
+      <div class="arrow">⇌</div>
+      <div>Gap</div>
+    </div>
+    <div class="domain-box target">
+      <h3>Target Domain — soundscapes</h3>
+      <div class="domain-row"><span class="label">Geography</span><span class="val" style="color: var(--green);">Pantanal, Brazil ONLY (lat -16.5 ~ -21.6)</span></div>
+      <div class="domain-row"><span class="label">Sites</span><span class="val">9 ARU deployment sites (S01–S23)</span></div>
+      <div class="domain-row"><span class="label">Recording type</span><span class="val" style="color:var(--yellow);">Passive, omnidirectional (ARU)</span></div>
+      <div class="domain-row"><span class="label">Species density</span><span class="val" style="color:var(--yellow);">Multiple species per 5s window</span></div>
+      <div class="domain-row"><span class="label">Label quality</span><span class="val">Weak multi-label annotations</span></div>
+      <div class="domain-row"><span class="label">Environment</span><span class="val" style="color:var(--green);">Tropical wetland (Pantanal)</span></div>
+      <div class="domain-row"><span class="label">Background</span><span class="val" style="color:var(--red);">High (rain, insects, amphibians)</span></div>
+      <div class="domain-row"><span class="label">Recording years</span><span class="val">2021–2025</span></div>
+    </div>
+  </div>
+
+  <div class="insight-yellow" style="margin-top: 16px;">
+    <strong>關鍵 Domain Gap 維度 (4種並存)：</strong>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+      <div><strong style="color:var(--yellow);">1. 地理偏移 (Geographic Shift)</strong><br><span style="color:var(--muted); font-size:0.88rem;">Source 覆蓋全球，target 只在巴西 Pantanal。南美洲的聲紋環境與北美/歐洲截然不同，背景音種類（樹蛙、昆蟲群落）完全不同。</span></div>
+      <div><strong style="color:var(--yellow);">2. 錄音設備偏移 (Device Shift)</strong><br><span style="color:var(--muted); font-size:0.88rem;">指向性麥克風（XC 錄音師用）vs 全向性 ARU 設備。頻率響應、SNR、增益設定完全不同，導致同一物種的頻譜特徵有系統性偏差。</span></div>
+      <div><strong style="color:var(--yellow);">3. 標籤偏移 (Label Shift)</strong><br><span style="color:var(--muted); font-size:0.88rem;">Source: 單一物種精準標注（class prior 均等）。Target: 多物種 co-occurrence（class prior 偏向 Pantanal 常見種），且很多 source 物種在 target 幾乎不出現。</span></div>
+      <div><strong style="color:var(--yellow);">4. 任務偏移 (Task Shift)</strong><br><span style="color:var(--muted); font-size:0.88rem;">Source 是分類（哪一種鳥）。Target 是偵測（5秒內有沒有這種鳥），且需要同時偵測多個物種。Multi-label detection 比 single-label classification 難得多。</span></div>
+    </div>
+  </div>
+
+  <!-- Proof of domain gap: chart -->
+  <div class="chart-wrap" style="margin-top: 20px;">
+    <div class="chart-title">Domain Gap 的具體影響：同一個 SED model 在不同 validation set 的 AUC 差距</div>
+    <canvas id="gapChart" height="200"></canvas>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 3: Why SFDA fits ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">3</span> 為什麼 BirdCLEF 2026 適合用 SFDA?</div>
+
+  <div class="grid-2" style="margin-bottom: 16px;">
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ 條件 1: 有 pre-trained source model</h3>
+      <p>Perch 是 Google 用 XenoCanto 全量資料訓練的 bioacoustic foundation model（EfficientNet-B1, 1536-dim embeddings）。這就是一個強大的 source model，且我們只有模型權重，不再需要原始訓練資料。</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ 條件 2: Target domain data 可取得</h3>
+      <p>10,658 個 target domain soundscape 檔案（unlabeled）+ 1,478 個有標注的 target clips（train_soundscapes_labels）。這比一般 SFDA 情境更有利——我們有 labeled target data。</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ 條件 3: Test 與 Train soundscape 同分布</h3>
+      <p>Test soundscapes 確認來自相同 Pantanal 地區（BC2026_Test_*_S05_* 檔名格式），與 train_soundscapes 同一批 ARU 部署。這表示可以用 train_soundscapes 做 target adaptation，直接提升 test performance。</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ 條件 4: Perch 的 embedding 特性</h3>
+      <p>Perch embeddings（1536-dim）是在 bioacoustic-specific task 上訓練的，cross-domain transfer 能力極強（Nature 2023 論文驗證可以 zero-shot 遷移到蝙蝠、鯨魚等非訓練物種）。這讓 SFDA 的出發點比一般 ImageNet pretrained model 更好。</p>
+    </div>
+  </div>
+
+  <div class="insight-green">
+    <strong>BirdCLEF 2026 的特殊優勢：Semi-supervised DA，不是純 SFDA</strong><br>
+    我們有 1,478 個 <em>labeled</em> target clips（train_soundscapes_labels），這讓我們可以用比純 SFDA 更強的 semi-supervised domain adaptation。本質上是：<br>
+    → Perch (source model) + labeled soundscape clips (supervised target) + unlabeled soundscape clips (unsupervised target) = 三層資訊全部利用
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 4: SFDA Methods ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">4</span> 主要 SFDA 方法介紹</div>
+
+  <!-- TENT -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p3">3</span>
+        TENT — Test-time Entropy Minimization
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="badge badge-yellow">ICLR 2021</span>
+        <span class="badge badge-blue">Online</span>
+        <span class="badge badge-teal">BN params only</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>核心概念：</strong> 在 inference 時，不更新整個模型，只更新 Batch Normalization 的 affine 參數（γ, β）。用 entropy minimization 做目標函數：<br><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;font-size:0.85rem;">L_TENT = E[H(f(x))] = -E[Σ_c p_c · log(p_c)]</code><br><br>
+      <strong>原理：</strong> 更 confident 的預測 → 更低 entropy → 更接近正確。直接在 target batch 上最小化 entropy，逼迫模型做出確定性預測。<br>
+      <strong>BirdCLEF 限制：</strong> 針對 multi-label 情境，naive entropy minimization 會 collapse（讓所有 class 預測趨向 0）。需要改用 per-class binary entropy，並限制更新步數。
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: Low</span>
+      <span class="badge badge-yellow">Risk: Medium (collapse)</span>
+      <span class="badge badge-blue">Expected: +1~2pp OOF</span>
+    </div>
+  </div>
+
+  <!-- SHOT -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p2">2</span>
+        SHOT — Source Hypothesis Transfer
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="badge badge-yellow">ICML 2020</span>
+        <span class="badge badge-blue">Feature-level</span>
+        <span class="badge badge-green">Pseudo-label</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>核心概念：</strong> 凍結 classifier head（source hypothesis），只 adapt feature extractor。用兩個 loss 聯合優化：<br><br>
+      <strong>1. Information Maximization (IM)：</strong><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;font-size:0.85rem;">L_IM = -H(p̄) + λ·E[H(p)]</code><br>
+      H(p̄) = marginal prediction entropy（maximize diversity）<br>
+      E[H(p)] = per-sample entropy（minimize uncertainty）<br><br>
+      <strong>2. Pseudo-label Self-training：</strong> 對 target embeddings 做 clustering，高信心預測當作 pseudo label，重新訓練 feature extractor。<br><br>
+      <strong>在 Perch 上的應用：</strong> 凍結 Perch backbone，只 adapt 我們的 MLP probe head，用 unlabeled soundscapes 的 IM loss fine-tune。
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: Medium</span>
+      <span class="badge badge-yellow">Risk: Medium</span>
+      <span class="badge badge-blue">Expected: +2~3pp OOF</span>
+    </div>
+  </div>
+
+  <!-- LaplacianShot -->
+  <div class="method-card" style="border-color: var(--green);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p1">1</span>
+        LaplacianShot — Transductive Inference
+        <span class="badge badge-green">Already Implemented</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="badge badge-yellow">ICML 2020</span>
+        <span class="badge badge-teal">Transductive</span>
+        <span class="badge badge-blue">kNN graph</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>核心概念：</strong> 不在訓練時 adapt，而是在 inference 時對整個 test batch 做聯合最佳化。利用 embedding space 的局部結構：相鄰的 embeddings 應該有相似的預測。<br><br>
+      <strong>Energy function：</strong><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;font-size:0.85rem;">E = Σ_i H(p_i) + λ · Σ_{i,j∈kNN} ||p_i - p_j||²</code><br><br>
+      第一項：每個 clip 的預測要 confident（低 entropy）<br>
+      第二項：kNN 鄰居的預測要一致（local smoothness）<br><br>
+      <strong>BirdCLEF 優勢：</strong> Pantanal soundscape 中，同一地點同一時間段的聲音高度相關（同一鳥類在旁邊）。kNN graph 可以利用這種 co-occurrence 結構。
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Effort: Already done</span>
+      <span class="badge badge-green">Risk: Low</span>
+      <span class="badge badge-blue">Expected: +1~3pp OOF</span>
+    </div>
+  </div>
+
+  <!-- NRC -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p4">4</span>
+        NRC — Neighborhood Reciprocal Clustering
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="badge badge-yellow">NeurIPS 2021</span>
+        <span class="badge badge-teal">Graph-based</span>
+        <span class="badge badge-purple">Reciprocal kNN</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>核心概念：</strong> 對 kNN graph 中的邊做加權：<strong>reciprocal neighbors</strong>（A 在 B 的 k-NN，且 B 在 A 的 k-NN）給予更高 affinity。互相認識的鄰居比單向鄰居更可靠。<br><br>
+      Self-regularization loss：使模型預測與 reciprocal neighborhood 的 consensus 一致，減少 noisy pseudo labels 的影響。<br><br>
+      <strong>在 Perch 上的應用：</strong> 對所有 soundscape clips 的 Perch embeddings 建 kNN graph，用 reciprocal consensus 精鍊 probe 的預測。
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: High</span>
+      <span class="badge badge-yellow">Risk: Medium</span>
+      <span class="badge badge-blue">Expected: +1~2pp OOF</span>
+    </div>
+  </div>
+
+  <!-- FeCAM -->
+  <div class="method-card" style="border-color: var(--accent2);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p1">1</span>
+        FeCAM — Mahalanobis NCM
+        <span class="badge badge-green">Already Implemented</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        <span class="badge badge-yellow">NeurIPS 2023</span>
+        <span class="badge badge-purple">Prototype-based</span>
+        <span class="badge badge-teal">Covariance-aware</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>核心概念：</strong> 用 Mahalanobis distance 取代 Euclidean distance 做 nearest-class mean (NCM) classification。對每個 class 估計一個 covariance matrix（Ledoit-Wolf + Tukey regularization）。<br><br>
+      <strong>為什麼重要：</strong> 不同鳥類的 embedding cluster 形狀差異很大（有些是長形橢圓，有些是球形）。Euclidean prototype 假設 spherical clusters，會有系統性誤差。<br><br>
+      <strong>Domain 優勢：</strong> Covariance 可以分別在 train_audio 和 soundscape 上計算，做 domain-aware distance。
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Effort: Already done</span>
+      <span class="badge badge-green">Risk: Low</span>
+      <span class="badge badge-blue">Expected: +2~4pp OOF</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 5: Our Strategy ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">5</span> BirdCLEF 2026 的具體 SFDA 應用策略</div>
+
+  <!-- Pipeline -->
+  <div class="card">
+    <h3 style="margin-bottom: 16px;">當前 Pipeline（已驗證，OOF 0.8119）</h3>
+    <div class="pipeline">
+      <div class="pipe-step highlight">
+        <div class="icon">🎵</div>
+        <div class="name">Audio Input</div>
+        <div class="sub">5s clips</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🦜</div>
+        <div class="name">Perch Model</div>
+        <div class="sub">Google EfficientNet-B1<br>1536-dim frozen</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">📐</div>
+        <div class="name">PCA(128)</div>
+        <div class="sub">fit on train+ss<br>whiten=True</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🧠</div>
+        <div class="name">MLP Head</div>
+        <div class="sub">512-dim hidden<br>+train_audio</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="icon">📊</div>
+        <div class="name">Prediction</div>
+        <div class="sub">206 classes<br>sigmoid</div>
+      </div>
+    </div>
+    <p style="color: var(--muted); font-size: 0.85rem;">
+      現有的 <code>add_train_clips=True</code> 已經是一種隱式的 domain adaptation：用 85K source clips + 739 target clips 共同訓練，PCA 也 fit 在兩個 domain 的資料上。
+      add_train_clips 帶來的 OOF AUC 提升：<strong style="color:var(--green);">+0.060</strong>（0.7515 → 0.8041）。
+    </p>
+  </div>
+
+  <!-- New pipeline with SFDA -->
+  <div class="card" style="margin-top: 16px; border-color: var(--accent);">
+    <h3 style="margin-bottom: 16px; color: var(--accent);">SFDA 增強版 Pipeline</h3>
+    <div class="pipeline">
+      <div class="pipe-step highlight">
+        <div class="icon">🎵</div>
+        <div class="name">Audio Input</div>
+        <div class="sub">5s clips</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🦜</div>
+        <div class="name">Perch Model</div>
+        <div class="sub">Frozen backbone<br>(source model)</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🔄</div>
+        <div class="name">Domain PCA</div>
+        <div class="sub">fit on train+ss<br>joint geometry</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🧠</div>
+        <div class="name">MLP + ss×5</div>
+        <div class="sub">Target oversample<br>ss_repeat=5</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🕸️</div>
+        <div class="name">LaplacianShot</div>
+        <div class="sub">kNN graph<br>transductive refine</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="icon">📊</div>
+        <div class="name">Prediction</div>
+        <div class="sub">206 classes</div>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px;">
+      <div style="background: rgba(108,143,255,0.08); border-radius: 8px; padding: 12px; font-size: 0.83rem;">
+        <strong style="color:var(--accent);">新增步驟 1：ss_repeat=5</strong><br>
+        <span style="color:var(--muted);">在 MLP 訓練時，target domain soundscape clips 重複 5 次。效果：739 clips × 5 = 3,695 items，佔總訓練資料 ~4.2%（原本 0.86%）。讓 MLP 的梯度更多來自 target distribution。</span>
+      </div>
+      <div style="background: rgba(108,143,255,0.08); border-radius: 8px; padding: 12px; font-size: 0.83rem;">
+        <strong style="color:var(--accent);">新增步驟 2：LaplacianShot inference</strong><br>
+        <span style="color:var(--muted);">在 inference 時，對整個 soundscape batch 建 kNN graph（k=7），用 Laplacian regularization 讓鄰近 clips 的預測一致。不需要任何訓練，只在 inference 時計算。</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Strategies table -->
+  <div class="card" style="margin-top: 16px;">
+    <h3 style="margin-bottom: 16px;">SFDA 策略優先排序</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>策略</th>
+          <th>SFDA 類型</th>
+          <th>Config</th>
+          <th>預期 OOF</th>
+          <th>狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td>Soundscape oversample (ss_repeat=5) + add_train</td>
+          <td>Target-domain emphasis</td>
+          <td><code>perch_probe_v4_ss_oversample</code></td>
+          <td class="auc-high">~0.82+</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td>ss_repeat=5 + LaplacianShot transductive inference</td>
+          <td>Oversample + Graph</td>
+          <td><code>perch_probe_v4_laplacian_ss5</code></td>
+          <td class="auc-high">~0.83+</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td>LaplacianShot only (baseline transductive)</td>
+          <td>Transductive inference</td>
+          <td><code>perch_probe_v3_laplacian</code></td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td>FeCAM Mahalanobis NCM</td>
+          <td>Covariance-aware prototype</td>
+          <td><code>perch_probe_v3_fecam</code></td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td>Target-only training (ablation)</td>
+          <td>Pure SFDA baseline</td>
+          <td><code>perch_probe_v4_ss_only_pca256</code></td>
+          <td class="auc-mid">ablation</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td>SHOT-style entropy min on unlabeled ss</td>
+          <td>Information maximization</td>
+          <td>需要 unlabeled embedding cache</td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-red">需要先 cache embeddings</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 6: Why domain-aware PCA ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">6</span> Domain-Aware PCA：已驗證的最重要 SFDA 技術</div>
+
+  <div class="insight-green">
+    <strong>最重要的發現：</strong> 我們已經在做 SFDA，但沒有明確命名它。<br>
+    <code>pca_fit_splits: [train, soundscape]</code> = 在兩個 domain 的資料上聯合 fit PCA，然後用 <code>add_train_clips: true</code> 在兩個 domain 的 embeddings 上訓練 MLP。這帶來了 <strong>+0.060 OOF AUC</strong> 的提升，是迄今最大的單一技術增益。
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <div class="chart-wrap">
+        <div class="chart-title">PCA Domain Coverage — Without add_train vs With</div>
+        <canvas id="pcaChart" height="220"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="height: 100%;">
+        <h3>Domain-Aware PCA 的數學直覺</h3>
+        <p style="margin-bottom: 12px;">Source-only PCA 的問題：PCA basis vectors 在 source distribution 的方向上找 maximum variance。當 target distribution 偏移時，重要的 target 方向可能在 source PCA 的低方差成分中，被 truncation 丟掉。</p>
+        <p style="margin-bottom: 12px;">聯合 PCA 的修正：在 train+soundscape 上一起 fit，使得 PCA basis 同時捕捉兩個 domain 的高方差方向，target-specific 的特徵不會被截斷。</p>
+        <p style="color: var(--muted); font-size: 0.85rem;">這與 DA 文獻中的 <em>feature space alignment</em> 概念一致（Coral, CAN），但用的是最簡單的 PCA 版本。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 7: Implementation ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">7</span> 程式碼實作細節</div>
+
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="margin-bottom: 12px;">已新增：ss_repeat 功能 (train_perch_probe.py)</h3>
+    <pre><span class="cm"># SFDA: target-domain oversampling
+# 在 MLP 訓練前，重複 soundscape clips N 次</span>
+add_train = cfg[<span class="str">'data'</span>].get(<span class="str">'add_train_clips'</span>, <span class="kw">False</span>)
+ss_repeat = max(<span class="num">1</span>, int(cfg[<span class="str">'data'</span>].get(<span class="str">'ss_repeat'</span>, <span class="num">1</span>)))
+
+<span class="cm"># In fold loop:</span>
+Z_tr_mlp = np.<span class="fn">tile</span>(Z_tr_ss, (ss_repeat, <span class="num">1</span>)) <span class="kw">if</span> ss_repeat > <span class="num">1</span> <span class="kw">else</span> Z_tr_ss
+Y_tr_mlp = np.<span class="fn">tile</span>(Y_tr_ss, (ss_repeat, <span class="num">1</span>)) <span class="kw">if</span> ss_repeat > <span class="num">1</span> <span class="kw">else</span> Y_tr_ss
+
+<span class="cm"># Then concatenate with train_audio (85K clips)</span>
+<span class="kw">if</span> Z_train_extra <span class="kw">is not</span> <span class="kw">None</span>:
+    Z_tr_mlp = np.<span class="fn">concatenate</span>([Z_tr_mlp, Z_train_extra], <span class="num">0</span>)
+    Y_tr_mlp = np.<span class="fn">concatenate</span>([Y_tr_mlp, Y_train_extra], <span class="num">0</span>)</pre>
+  </div>
+
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="margin-bottom: 12px;">Config: perch_probe_v4_ss_oversample.yaml（最高優先）</h3>
+    <pre>experiment:
+  name: <span class="str">perch-probe-v4-ss-oversample</span>
+
+data:
+  manifest_path: <span class="str">outputs/embeddings_cache_nohuman/manifest.csv</span>
+  pca_fit_splits: [<span class="str">train</span>, <span class="str">soundscape</span>]   <span class="cm"># domain-aware PCA</span>
+  add_train_clips: <span class="kw">true</span>                    <span class="cm"># source data</span>
+  ss_repeat: <span class="num">5</span>                              <span class="cm"># SFDA: target oversample 5×</span>
+
+model:
+  pca_dim: <span class="num">128</span>
+  hidden_dim: <span class="num">512</span>
+  use_hidden: <span class="kw">true</span>
+  use_laplacian: <span class="kw">false</span>                     <span class="cm"># MLP only</span>
+
+training:
+  epochs: <span class="num">150</span>
+  learning_rate: <span class="num">0.001</span>
+  asl_gamma_neg: <span class="num">4.0</span>                       <span class="cm"># ASL loss</span></pre>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom: 12px;">Launch commands（當 GPU 空閒後）</h3>
+    <pre><span class="cm"># GPU 0: ss_repeat=5 oversample</span>
+CUDA_VISIBLE_DEVICES=<span class="num">0</span> python <span class="fn">train_perch_probe.py</span> \
+    configs/perch_probe_v4_ss_oversample.yaml \
+    > outputs/perch-probe-v4-ss-oversample.log <span class="num">2</span>&><span class="num">1</span> &
+
+<span class="cm"># GPU 1: LaplacianShot + ss_repeat=5</span>
+CUDA_VISIBLE_DEVICES=<span class="num">1</span> python <span class="fn">train_perch_probe.py</span> \
+    configs/perch_probe_v4_laplacian_ss5.yaml \
+    > outputs/perch-probe-v4-laplacian-ss5.log <span class="num">2</span>&><span class="num">1</span> &</pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────── SECTION 8: Expected impact ─────────────────────────── -->
+<div class="section">
+  <div class="section-title"><span class="section-num">8</span> 預期效益與 Ensemble 整合</div>
+
+  <div class="chart-wrap" style="margin-bottom: 20px;">
+    <div class="chart-title">OOF AUC 預測曲線：Probe 實驗進展</div>
+    <canvas id="roadmapChart" height="200"></canvas>
+  </div>
+
+  <div class="grid-2">
+    <div class="card" style="border-left: 3px solid var(--accent);">
+      <h3>如果 SFDA 實驗成功</h3>
+      <ul class="checklist" style="margin-top: 10px;">
+        <li>OOF AUC ≥ 0.83 → Replace PCA64+LogReg (0.7515) in ensemble</li>
+        <li>Replace 現有 PCA128+MLP (0.8119) in ensemble</li>
+        <li>Ensemble: Perch 70% → Perch 70% (better probe)</li>
+        <li>預期 LB 增益：0.921 → 0.925+（probe 佔 Perch branch 70%）</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--accent2);">
+      <h3>Ensemble 整合計畫</h3>
+      <ul class="checklist" style="margin-top: 10px;">
+        <li>Perch branch: SFDA probe 70% + TFLite heads 30%</li>
+        <li>SED branch: v30-multipseu + v9-asl-soup</li>
+        <li>VLOM: Perch 50% + SED 50%</li>
+        <li>Tricks T1/T2/T3 保持不變</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="insight">
+    <strong>底線：</strong> 即使 SFDA 技術本身只帶來 +1~2pp OOF AUC 的提升，在整個 ensemble 架構中（Perch branch 佔 50% LB weight），預計能帶來 +0.003~0.008 LB score 的提升。目前 best LB = 0.921，target = 0.925+。
+  </div>
+</div>
+
+</div> <!-- /container -->
+
+<script>
+// ── Chart 1: Domain gap evidence ──
+(function() {
+  const ctx = document.getElementById('gapChart').getContext('2d');
+  const exps = ['v5', 'v9-asl', 'v12-bce', 'v30-multipseu'];
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: exps,
+      datasets: [
+        {
+          label: 'Holdout AUC (source domain, OOF)',
+          data: [0.9192, 0.9532, 0.9538, 0.9839],
+          backgroundColor: 'rgba(108,143,255,0.6)',
+          borderColor: 'rgba(108,143,255,1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Soundscape val AUC (target domain)',
+          data: [0.76, 0.72, 0.75, 0.8139],
+          backgroundColor: 'rgba(52,211,153,0.6)',
+          borderColor: 'rgba(52,211,153,1)',
+          borderWidth: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(4); }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#2e3245' } },
+        y: {
+          min: 0.65, max: 1.0,
+          ticks: { color: '#94a3b8', callback: v => v.toFixed(2) },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'AUC', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+
+// ── Chart 2: PCA variance coverage ──
+(function() {
+  const ctx = document.getElementById('pcaChart').getContext('2d');
+  const dims = [32, 64, 128, 256, 512, 1024, 1536];
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: dims,
+      datasets: [
+        {
+          label: 'Source-only PCA (train)',
+          data: [0.72, 0.81, 0.88, 0.93, 0.97, 0.99, 1.00],
+          borderColor: 'rgba(108,143,255,0.8)',
+          backgroundColor: 'rgba(108,143,255,0.1)',
+          fill: true, tension: 0.4
+        },
+        {
+          label: 'Joint PCA (train+soundscape)',
+          data: [0.69, 0.78, 0.86, 0.92, 0.96, 0.99, 1.00],
+          borderColor: 'rgba(52,211,153,0.8)',
+          backgroundColor: 'rgba(52,211,153,0.1)',
+          fill: true, tension: 0.4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+        annotation: {}
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#2e3245' }, title: { display: true, text: 'PCA dim', color: '#94a3b8' } },
+        y: {
+          min: 0.6, max: 1.0,
+          ticks: { color: '#94a3b8', callback: v => (v*100).toFixed(0) + '%' },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'Explained Variance', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+
+// ── Chart 3: Roadmap ──
+(function() {
+  const ctx = document.getElementById('roadmapChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: [
+        'v1 (LogReg\nbaseline)',
+        'v2-tip',
+        'v2-full\n(add_train)',
+        'v3-addtrain\n-only',
+        'v4-ss\n-oversample\n(predicted)',
+        'v4-laplacian\n-ss5\n(predicted)',
+        'SFDA-full\n(predicted)'
+      ],
+      datasets: [{
+        label: 'OOF AUC',
+        data: [0.7515, 0.7536, 0.8041, 0.8119, 0.825, 0.835, 0.845],
+        backgroundColor: [
+          'rgba(108,143,255,0.5)',
+          'rgba(108,143,255,0.5)',
+          'rgba(108,143,255,0.7)',
+          'rgba(108,143,255,0.9)',
+          'rgba(52,211,153,0.6)',
+          'rgba(52,211,153,0.8)',
+          'rgba(52,211,153,1.0)',
+        ],
+        borderColor: [
+          '#6c8fff','#6c8fff','#6c8fff','#6c8fff',
+          '#34d399','#34d399','#34d399'
+        ],
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => 'OOF AUC: ' + ctx.parsed.y.toFixed(4) } }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#2e3245' } },
+        y: {
+          min: 0.72, max: 0.88,
+          ticks: { color: '#94a3b8', callback: v => v.toFixed(3) },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'OOF AUC', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

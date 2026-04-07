@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Strategy Critique & Evidence Report</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #222533;
+    --border: #2e3147; --accent: #5c7cfa; --accent2: #74c0fc;
+    --green: #69db7c; --red: #ff6b6b; --yellow: #ffd43b;
+    --orange: #ff922b; --purple: #cc5de8; --teal: #20c997;
+    --text: #c9d1d9; --text-dim: #768390; --text-bright: #e6edf3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.7; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+  .header { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 36px; }
+  .header h1 { font-size: 26px; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; }
+  .header .sub { color: var(--text-dim); font-size: 13px; }
+  .section { margin-bottom: 48px; }
+  .section-title { font-size: 19px; font-weight: 700; color: var(--text-bright); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .section-title .num { background: var(--accent); color: #fff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+  .section-title .num.red { background: var(--red); }
+  .section-title .num.green { background: var(--green); color: #111; }
+  .section-title .num.yellow { background: var(--yellow); color: #111; }
+  .subsection { font-size: 14px; font-weight: 700; color: var(--accent2); margin: 20px 0 10px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 14px; }
+  .card-grid { display: grid; gap: 14px; }
+  .card-grid-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-title { font-size: 12px; font-weight: 700; color: var(--accent2); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--surface2); color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.4px; padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono { font-family: 'Cascadia Code','Fira Code',monospace; font-size: 12px; }
+  .val-good { color: var(--green); font-weight: 600; }
+  .val-bad  { color: var(--red);   font-weight: 600; }
+  .val-warn { color: var(--yellow);font-weight: 600; }
+  .val-dim  { color: var(--text-dim); }
+  .alert { border-radius: 8px; padding: 14px 18px; margin-bottom: 12px; font-size: 13px; border-left: 4px solid; }
+  .alert-red    { background: rgba(255,107,107,0.08); border-color: var(--red); }
+  .alert-green  { background: rgba(105,219,124,0.08); border-color: var(--green); }
+  .alert-yellow { background: rgba(255,212,59,0.08);  border-color: var(--yellow); }
+  .alert-blue   { background: rgba(92,124,250,0.08);  border-color: var(--accent); }
+  .alert-orange { background: rgba(255,146,43,0.08);  border-color: var(--orange); }
+  .alert strong { color: var(--text-bright); }
+  .stat-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 18px; text-align: center; flex: 1; min-width: 100px; }
+  .stat-val { font-size: 22px; font-weight: 700; color: var(--text-bright); }
+  .stat-val.red { color: var(--red); }
+  .stat-val.green { color: var(--green); }
+  .stat-val.yellow { color: var(--yellow); }
+  .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
+  code { font-family: 'Cascadia Code','Fira Code',monospace; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 12px; color: var(--accent2); }
+  .verdict { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+  .verdict-good    { background: rgba(105,219,124,0.15); color: var(--green);  border: 1px solid rgba(105,219,124,0.3); }
+  .verdict-bad     { background: rgba(255,107,107,0.15); color: var(--red);    border: 1px solid rgba(255,107,107,0.3); }
+  .verdict-neutral { background: rgba(255,212,59,0.15);  color: var(--yellow); border: 1px solid rgba(255,212,59,0.3); }
+  .verdict-open    { background: rgba(92,124,250,0.15);  color: var(--accent); border: 1px solid rgba(92,124,250,0.3); }
+  .bar-wrap { background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; margin-top: 4px; }
+  .bar { height: 100%; border-radius: 4px; }
+  .bar-green  { background: var(--green); }
+  .bar-red    { background: var(--red); }
+  .bar-yellow { background: var(--yellow); }
+  .bar-blue   { background: var(--accent); }
+  @media (max-width: 700px) { .card-grid-2,.card-grid-3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>BirdCLEF 2026 — Strategy Critique &amp; Evidence Report</h1>
+  <div class="sub">2026-03-18 &nbsp;|&nbsp; Honest analysis of what works, what doesn't, and why &nbsp;|&nbsp; <span style="color:var(--red); font-weight:700;">Includes self-critique of Phase 2 design</span></div>
+</div>
+
+<!-- ═══ §1 DATASET REALITY CHECK ═══════════════════════════════════════════ -->
+<div class="section" id="s1">
+  <div class="section-title"><span class="num">1</span>Dataset Reality Check — What Makes This Hard</div>
+
+  <div class="alert alert-red">
+    <strong>Core challenge:</strong> The test set is Pantanal field soundscapes (multi-label, multi-taxa, multi-species-per-clip).
+    The training set is mostly single-label curated recordings from iNaturalist. This domain gap is severe and most of our
+    experimental effort has underestimated it.
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="stat-val red">28</div><div class="stat-label">Species with ZERO train audio</div></div>
+    <div class="stat"><div class="stat-val red">25</div><div class="stat-label">Insect sonotypes (no audio)</div></div>
+    <div class="stat"><div class="stat-val yellow">159</div><div class="stat-label">Target species absent from soundscapes</div></div>
+    <div class="stat"><div class="stat-val yellow">4.22</div><div class="stat-label">Avg species per soundscape clip</div></div>
+    <div class="stat"><div class="stat-val red">50%</div><div class="stat-label">Soundscape clips lost to nohuman filter</div></div>
+    <div class="stat"><div class="stat-val green">75</div><div class="stat-label">Species observable in soundscapes (32%)</div></div>
+  </div>
+
+  <div class="subsection">1.1 The Zero-Audio Species Problem</div>
+  <div class="alert alert-red">
+    <strong>28 of 234 target species have absolutely no training audio.</strong> These are:
+    25 "Insect sonotype" categories (47158son01–son25) and 3 amphibians (species 1491113, 25073, 517063).
+    Any model trained only on train_audio will predict exactly 0 for these species.
+    The only way to learn them is through soundscape supervision — yet our soundscape validation set
+    includes these species and they contribute equally to the macro ROC-AUC metric.
+    <strong>This directly suppresses our true competitive ceiling.</strong>
+  </div>
+  <div class="card">
+    <div class="card-title">Zero-Audio Species Breakdown</div>
+    <table>
+      <tr><th>Category</th><th>Count</th><th>Examples</th><th>Impact on ROC-AUC</th></tr>
+      <tr><td>Insect sonotypes (47158son01–son25)</td><td class="val-bad">25</td><td>Insect sonotype01 … sonotype25</td><td class="val-bad">Model outputs 0.0 unless pseudo-labeled from soundscapes</td></tr>
+      <tr><td>Amphibia (no iNat recordings)</td><td class="val-bad">3</td><td>Guaraní leaf-litter frog, Chiasmocleis mehelyi, Southern Orange-legged Leaf Frog</td><td class="val-bad">Same — zero coverage from train_audio</td></tr>
+      <tr><td>All other Insecta with audio</td><td class="val-warn">3</td><td>Only 3 of 28 Insecta target species have any recordings</td><td class="val-warn">Minimal coverage</td></tr>
+    </table>
+    <div style="margin-top:10px; font-size:12px; color:var(--text-dim);">
+      Implication: Our soundscape pseudo labels (Perch r5, 1,176 clips) and soundscape training data are not just optional augmentation —
+      they are the <em>only possible signal</em> for 28/234 species (~12% of the metric). Without them, macro AUC is capped.
+    </div>
+  </div>
+
+  <div class="subsection">1.2 Rating Filter is Actively Harmful</div>
+  <div class="card-grid card-grid-2">
+    <div class="card">
+      <div class="card-title">Impact of min_rating ≥ 3.0</div>
+      <table>
+        <tr><td class="val-dim">All recordings</td><td>35,549 across <strong>206</strong> species</td></tr>
+        <tr><td class="val-dim">After rating≥3</td><td>21,295 across <strong>185 species</strong></td></tr>
+        <tr><td class="val-dim">Species lost entirely</td><td class="val-bad">21 species dropped to 0 recordings</td></tr>
+        <tr><td class="val-dim">Species with &lt;10 high-quality</td><td class="val-bad">26 species</td></tr>
+        <tr><td class="val-dim">Species with &lt;5 high-quality</td><td class="val-bad">23 species</td></tr>
+        <tr><td class="val-dim">Mean recordings/species</td><td>172.6 → 115.1 (−33%)</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">Evidence: Rating Filter Hurts Performance</div>
+      <table>
+        <tr><th>Experiment</th><th>Rating Filter</th><th>Holdout AUC</th></tr>
+        <tr><td class="mono">sed-b0-v5</td><td>None (all data)</td><td class="val-good">0.9192</td></tr>
+        <tr><td class="mono">sed-b0-v16-rating3</td><td>≥3.0 + distill warmup</td><td class="val-bad">0.8227</td></tr>
+        <tr><td class="mono">sed-b0-v21-dual-rating3</td><td>≥3.0 (running)</td><td class="val-warn">0.69 @ ep6 val</td></tr>
+      </table>
+      <div style="margin-top:10px; font-size:12px; color:var(--text-dim);">
+        <strong>Verdict:</strong> For a 234-class problem where tail species matter equally in macro AUC,
+        removing low-rated recordings hurts more than it helps. The "noise" in lower-rated recordings
+        is outweighed by the coverage loss for rare species.
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection">1.3 Val Set Covers Only 32% of Target Species</div>
+  <div class="alert alert-yellow">
+    <strong>Our soundscape validation set covers only 75 of 234 target species.</strong>
+    The remaining 159 species are invisible during validation. This means val_roc_auc and even holdout_roc_auc
+    measure performance on a biased subset — species that happen to appear in the Pantanal soundscapes
+    we have labels for. Species-level performance on the 159 invisible species is completely untracked.
+  </div>
+  <div class="card">
+    <div class="card-title">Validation Coverage by Class</div>
+    <table>
+      <tr><th>Class</th><th>Target Species</th><th>In Soundscapes</th><th>Coverage</th><th>Risk</th></tr>
+      <tr><td>Aves</td><td>162</td><td>~55</td><td>~34%</td><td class="val-warn">Partial — most birds only in clips</td></tr>
+      <tr><td>Amphibia</td><td>35</td><td>~15</td><td>~43%</td><td class="val-warn">Many frog species in soundscapes</td></tr>
+      <tr><td>Insecta</td><td>28</td><td>~5</td><td>~18%</td><td class="val-bad">25 sonotypes = zero training data</td></tr>
+      <tr><td>Mammalia</td><td>8</td><td>~0</td><td>0%</td><td class="val-bad">Never validated — score is pure noise</td></tr>
+      <tr><td>Reptilia</td><td>1</td><td>0</td><td>0%</td><td class="val-bad">Never validated</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ §2 EXPERIMENT EVIDENCE REVIEW ══════════════════════════════════════ -->
+<div class="section" id="s2">
+  <div class="section-title"><span class="num green">2</span>What Our Experiments Actually Proved</div>
+
+  <div class="alert alert-green">
+    <strong>These findings are based on real holdout AUC measurements — not theoretical claims.</strong>
+    Holdout AUC is evaluated on 7,037 held-out individual recordings, stratified by species.
+    Note: this is a clip-level holdout (individual recordings), not soundscape-domain holdout.
+  </div>
+
+  <div class="card">
+    <div class="card-title">Complete Holdout AUC Evidence Table (all experiments with results)</div>
+    <table>
+      <tr><th>Experiment</th><th>Val AUC</th><th>Holdout AUC</th><th>Δ vs v5 baseline</th><th>Verdict</th><th>Key Variable</th></tr>
+      <tr>
+        <td class="mono">sed-b0-v5</td><td>0.7527</td>
+        <td class="val-good">0.9192</td><td>—</td>
+        <td><span class="verdict verdict-good">✓ Baseline</span></td>
+        <td>BCE + dual loss + soundscape val</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v9-asl</td><td class="val-good">0.7755</td>
+        <td class="val-good">0.9467</td><td class="val-good">+0.027</td>
+        <td><span class="verdict verdict-good">✓ Best single improvement</span></td>
+        <td>ASL loss (γ⁻=4, γ⁺=0) — the ONLY change</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v12-bce</td><td>0.7263</td>
+        <td class="val-bad">0.9079</td><td class="val-bad">−0.011</td>
+        <td><span class="verdict verdict-bad">✗ No dual loss</span></td>
+        <td>Proves dual clip+frame loss is worth +0.011</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v10-cutmix</td><td>0.7060</td>
+        <td>0.9391</td><td>+0.020</td>
+        <td><span class="verdict verdict-neutral">⚠ Best at ep2, overfit</span></td>
+        <td>CutMix: early peak suggests overfitting, not generalization</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v13-asl-cutmix</td><td>0.7467</td>
+        <td class="val-bad">0.8972</td><td class="val-bad">−0.022</td>
+        <td><span class="verdict verdict-bad">✗ CutMix hurts ASL</span></td>
+        <td>CutMix incompatible with ASL — confirmed bad combo</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v15-no-sec</td><td>0.6842</td>
+        <td>0.9176</td><td>−0.002</td>
+        <td><span class="verdict verdict-neutral">≈ Neutral</span></td>
+        <td>Embed distill warmup: same as v5 with Perch-aligned backbone</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v16-rating3</td><td>0.6250</td>
+        <td class="val-bad">0.8227</td><td class="val-bad">−0.097</td>
+        <td><span class="verdict verdict-bad">✗ Rating filter is harmful</span></td>
+        <td>min_rating=3.0 removes 21 species entirely</td>
+      </tr>
+      <tr>
+        <td class="mono">sedp-b0-v2-fusion (PCEN)</td><td>0.7453</td>
+        <td class="val-bad">0.6737</td><td class="val-bad">−0.246</td>
+        <td><span class="verdict verdict-bad">✗ CATASTROPHIC</span></td>
+        <td>PCEN caused catastrophic holdout collapse. Root cause unknown.</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-v2s-v1</td><td>0.7012</td>
+        <td>0.7980</td><td class="val-bad">−0.121</td>
+        <td><span class="verdict verdict-bad">✗ Much worse than B0</span></td>
+        <td>V2S-v1 used BCE, no dual loss, no pseudo — unfair comparison</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="alert alert-red">
+    <strong>Critical finding on Embedding Distillation:</strong>
+    <br>v15 (embed-distill backbone warmup, otherwise identical to v5): holdout <strong>0.9176</strong>
+    vs v5 (ImageNet init): holdout <strong>0.9192</strong>.
+    <br>The Perch-aligned backbone is <strong>marginally worse</strong> than standard ImageNet pretraining for SED fine-tuning.
+    All four embed-distill variants confirmed this: cosine similarity maxed at 0.6283 (v2), far below Perch's
+    representation quality. <strong>The Phase 2 embed-distill-b0-v5 experiment should be CANCELLED.</strong>
+  </div>
+</div>
+
+<!-- ═══ §3 HONEST CRITIQUE OF PHASE 2 PLAN ═════════════════════════════════ -->
+<div class="section" id="s3">
+  <div class="section-title"><span class="num red">3</span>Honest Critique of Phase 2 Experiment Design</div>
+
+  <div class="card">
+    <table>
+      <tr><th>Experiment</th><th>Referenced 2025?</th><th>Evidence Base</th><th>Verdict</th><th>Action</th></tr>
+      <tr>
+        <td class="mono">embed-distill-b0-v5</td>
+        <td>No — 2025 used KD on <em>labeled output</em>, not embedding space</td>
+        <td class="val-bad">Contradicts v15 result: distill init ≤ ImageNet init</td>
+        <td><span class="verdict verdict-bad">✗ REMOVE</span></td>
+        <td>Cancel — GPU0 time better spent on V2S or v28</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v25-embed-head</td>
+        <td>No</td>
+        <td class="val-bad">Depends on embed-distill-b0-v5 which is already invalidated</td>
+        <td><span class="verdict verdict-bad">✗ REMOVE</span></td>
+        <td>Cancel — skip directly to V2S experiment</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v26-asl-npcen</td>
+        <td>Yes — ASL + dual from 2025 top solutions</td>
+        <td class="val-good">Critical ablation: isolates PCEN effect. v23 has PCEN, v26 does not.</td>
+        <td><span class="verdict verdict-good">✓ KEEP</span></td>
+        <td>Highest priority — tells us definitively if PCEN killed v23</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v27-soft-boost</td>
+        <td>Partially — 2025 8th place used KD with soft targets (MLDLoss)</td>
+        <td class="val-warn">Theoretical: soft probs carry more signal. Not yet tested on this dataset.</td>
+        <td><span class="verdict verdict-open">? UNCERTAIN</span></td>
+        <td>Keep — but v24 (5× oversample) must be evaluated first</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-v2s-v2-asl</td>
+        <td>Yes — EfficientNetV2-S was 2nd/5th place 2025 backbone</td>
+        <td class="val-warn">V2S-v1 holdout was 0.7980 (worse than B0 v5 0.9192) — but V2S-v1 had NO ASL, NO dual, NO pseudo. Unfair comparison.</td>
+        <td><span class="verdict verdict-open">? HIGH RISK / HIGH REWARD</span></td>
+        <td>Keep with caution — V2S-v1 was severely undertrained</td>
+      </tr>
+      <tr>
+        <td class="mono">sed-b0-v28-final-combo</td>
+        <td>Partially — combines proven techniques</td>
+        <td class="val-good">Each component individually validated (ASL, dual, circ_shift, soft KD)</td>
+        <td><span class="verdict verdict-good">✓ KEEP</span></td>
+        <td>Best B0 candidate — but needs v26/v27 results to confirm component validity</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="subsection">3.1 The V2S Risk Assessment</div>
+  <div class="card-grid card-grid-2">
+    <div class="card">
+      <div class="card-title">V2S-v1 vs B0 Comparison (Apples to Oranges)</div>
+      <table>
+        <tr><th>Factor</th><th>sed-v2s-v1</th><th>sed-b0-v9-asl</th></tr>
+        <tr><td>Loss</td><td class="val-bad">BCE (no ASL)</td><td class="val-good">ASL</td></tr>
+        <tr><td>Dual loss</td><td class="val-bad">No (frame_w=0)</td><td class="val-good">Yes (0.5/0.5)</td></tr>
+        <tr><td>Pseudo labels</td><td class="val-bad">None</td><td class="val-good">Perch r5</td></tr>
+        <tr><td>Soundscape train</td><td class="val-bad">None</td><td class="val-good">Yes (1166 clips)</td></tr>
+        <tr><td>Holdout AUC</td><td class="val-bad">0.7980</td><td class="val-good">0.9467</td></tr>
+        <tr><td>Δ</td><td colspan="2" class="val-bad">−0.149 — but NOT a fair comparison</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">What V2S Actually Tests</div>
+      <div style="font-size:13px; color:var(--text); line-height:1.7;">
+        V2S-v2-asl fixes all of V2S-v1's shortcomings: adds ASL + dual + Perch pseudo + circ_shift.
+        <br><br>
+        <strong>Why it could help:</strong> V2S has 21.5M params vs B0's 5.3M → higher capacity for 234-class multi-taxa problem.
+        BirdCLEF 2025 2nd and 5th place both used V2S as their primary backbone.
+        <br><br>
+        <strong>Why it might not help:</strong> BirdCLEF 2025 had 206 species from Colombia. Our 2026 dataset has
+        28 zero-audio insect species that no backbone can learn from train_audio alone.
+        More parameters don't solve missing labels.
+        <br><br>
+        <strong>Honest estimate:</strong> If ASL + dual alone gives +0.027 to B0, V2S might add another
+        +0.005 to +0.020 due to capacity — but this is speculative.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §4 2025 SOLUTION MAPPING ════════════════════════════════════════════ -->
+<div class="section" id="s4">
+  <div class="section-title"><span class="num">4</span>What We Actually Took from 2025 Solutions (Honest Mapping)</div>
+
+  <div class="card">
+    <table>
+      <tr><th>Technique</th><th>2025 Source</th><th>Applied in Our Pipeline</th><th>Evidence of Effectiveness</th></tr>
+      <tr class="adopted">
+        <td><strong>SED with AttentionSEDHead</strong></td>
+        <td>Universal across 2025 top solutions</td>
+        <td class="val-good">✓ v5 onward</td>
+        <td>v5 holdout 0.9192 — strong baseline</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>GeM Frequency Pooling</strong></td>
+        <td>Used in 2025 SED architectures</td>
+        <td class="val-good">✓ All configs (use_gem=True)</td>
+        <td>Not ablated in isolation — taken as given</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>Dual clip+frame loss</strong></td>
+        <td>Universal in 2025 — clip + max_frame inference</td>
+        <td class="val-good">✓ v5 (proven +0.011 vs v12)</td>
+        <td class="val-good">Confirmed: v5 0.9192 vs v12 0.9079</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>ASL Loss</strong></td>
+        <td>Referenced in 2025 solutions (not universally adopted — some used BCE/Focal)</td>
+        <td class="val-good">✓ v9 onward</td>
+        <td class="val-good">Confirmed: +0.027 holdout vs BCE</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>Model Soup (top-k avg)</strong></td>
+        <td>2025 solutions used SWA / epoch averaging</td>
+        <td class="val-good">✓ save_topk_checkpoints=3</td>
+        <td>Consistent +0.01–0.02 in our experiments</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>Pseudo labels (multi-round)</strong></td>
+        <td>Universal — all serious 2025 solutions</td>
+        <td class="val-good">✓ 5 rounds, 1176 clips in r5</td>
+        <td>Direct coverage for zero-audio species</td>
+      </tr>
+      <tr class="adopted">
+        <td><strong>Nohuman filtering (Silero VAD)</strong></td>
+        <td>2025: detkov solution confirmed +AUC improvement</td>
+        <td class="val-good">✓ Applied to soundscape val</td>
+        <td>50% clips filtered — critical for signal quality</td>
+      </tr>
+      <tr>
+        <td><strong>Circular shift augmentation</strong></td>
+        <td>sedp experiments inspired by 2025 temporal aug</td>
+        <td class="val-warn">Added in v23+ (circ_shift_prob=0.5)</td>
+        <td class="val-warn">Not yet isolated in ablation — included in v23/v24</td>
+      </tr>
+      <tr>
+        <td><strong>EfficientNetV2-S backbone</strong></td>
+        <td>2025 2nd/5th place used tf_efficientnetv2_s</td>
+        <td class="val-warn">Planned: sed-v2s-v2-asl</td>
+        <td class="val-warn">Not yet tested with fair comparison (ASL + dual)</td>
+      </tr>
+      <tr>
+        <td><strong>Temporal smoothing at inference</strong></td>
+        <td>2025: 20%/60%/20% adjacent window weighting</td>
+        <td class="val-bad">In submission notebook only — not tested on holdout</td>
+        <td class="val-bad">No evidence it helps on our specific data</td>
+      </tr>
+      <tr>
+        <td><strong>Soft KD (MLDLoss)</strong></td>
+        <td>2025 8th place: 0.1×BCE + 0.9×MLDLoss</td>
+        <td class="val-warn">v24 (queued): soft Perch 234-dim probs as targets</td>
+        <td class="val-warn">Theoretically sound, untested here</td>
+      </tr>
+      <tr>
+        <td><strong>Multi-year pretraining</strong></td>
+        <td>2025 8th place: pretrain on BirdCLEF 2021–2024</td>
+        <td class="val-bad">✗ NOT implemented</td>
+        <td class="val-bad">Unimplemented — probably highest-impact missing technique</td>
+      </tr>
+      <tr>
+        <td><strong>Background noise augmentation</strong></td>
+        <td>Universal in 2025: SNR 5–30 dB field recordings</td>
+        <td class="val-bad">✗ noise_dir=null in all configs</td>
+        <td class="val-bad">Not implemented — no noise corpus available</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ §5 CAN WE WIN GOLD? ═════════════════════════════════════════════════ -->
+<div class="section" id="s5">
+  <div class="section-title"><span class="num red">5</span>Can We Win Gold? Honest Assessment</div>
+
+  <div class="alert alert-red">
+    <strong>Short answer: We cannot guarantee gold with the current plan.</strong>
+    We have no evidence our approach will win gold. Here is the honest breakdown.
+  </div>
+
+  <div class="subsection">5.1 Current Position</div>
+  <div class="card-grid card-grid-2">
+    <div class="card">
+      <div class="card-title">What We Know</div>
+      <table>
+        <tr><td class="val-dim">Current best LB</td><td><strong>0.893</strong> (ensemble-v5-public-trick)</td></tr>
+        <tr><td class="val-dim">Best SED holdout</td><td><strong>0.9467</strong> (v9-asl-soup)</td></tr>
+        <tr><td class="val-dim">SED → LB relationship</td><td class="val-bad">Non-linear: v9 holdout 0.9467 but LB 0.892 (↓ vs v5)</td></tr>
+        <tr><td class="val-dim">LB dominated by</td><td>Perch TFLite — SED adds marginal improvement</td></tr>
+        <tr><td class="val-dim">Gold medal estimate</td><td class="val-bad">Unknown — BirdCLEF 2026 results not published</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-title">The Perch Ceiling Problem</div>
+      <div style="font-size:13px; line-height:1.7;">
+        When we replaced v5 (holdout 0.9192) with v9-soup (holdout 0.9467) in the ensemble, <strong>LB decreased from 0.893 to 0.892</strong>.
+        This suggests Perch TFLite already covers most of the species the SED model improves on.
+        Improving our SED model may give diminishing LB returns unless it covers species Perch misses —
+        specifically the <strong>28 zero-audio species and 25 insect sonotypes</strong> where Perch
+        was also trained on limited data.
+        <br><br>
+        The path to gold likely requires either: (a) significantly better coverage of zero-audio species,
+        or (b) a fundamentally different ensemble that goes beyond Perch.
+      </div>
+    </div>
+  </div>
+
+  <div class="subsection">5.2 Realistic Upside Estimates</div>
+  <div class="card">
+    <table>
+      <tr><th>Technique</th><th>Estimated LB Gain</th><th>Confidence</th><th>Basis</th></tr>
+      <tr>
+        <td>v26 (ASL + no PCEN) → replace v5 in ensemble</td>
+        <td class="val-warn">0 to +0.003</td>
+        <td>Medium</td>
+        <td>PCEN confirmed harmful in sedp-v2; without PCEN, v26 should ≥ v9</td>
+      </tr>
+      <tr>
+        <td>V2S-v2-asl (larger backbone)</td>
+        <td class="val-warn">0 to +0.005</td>
+        <td>Low-Medium</td>
+        <td>2025 2nd place used V2S, but without fair comparison vs our B0+ASL</td>
+      </tr>
+      <tr>
+        <td>Soft KD v24/v27 (Perch 234-dim probs)</td>
+        <td class="val-warn">0 to +0.005</td>
+        <td>Low</td>
+        <td>Theoretically sound, zero empirical evidence on this dataset yet</td>
+      </tr>
+      <tr>
+        <td>Multi-year pretraining (BirdCLEF 2021–2024)</td>
+        <td class="val-good">+0.005 to +0.020</td>
+        <td>Medium-High</td>
+        <td>8th place 2025 attributed large gain; helps rare/zero-audio species</td>
+      </tr>
+      <tr>
+        <td>Insect sonotype specialization (soundscape-only training)</td>
+        <td class="val-good">+0.005 to +0.015</td>
+        <td>Medium</td>
+        <td>25 species with zero audio — any signal here is pure gain</td>
+      </tr>
+      <tr>
+        <td>Temporal smoothing at inference</td>
+        <td class="val-warn">−0.002 to +0.005</td>
+        <td>Low</td>
+        <td>Theoretical benefit for soundscapes, but could hurt if species don't persist across windows</td>
+      </tr>
+      <tr>
+        <td><strong>Total realistic upside</strong></td>
+        <td class="val-good"><strong>~0.005 to 0.015</strong></td>
+        <td>Low-Medium</td>
+        <td>Incremental improvements on proven techniques</td>
+      </tr>
+    </table>
+    <div style="margin-top:10px; font-size:12px; color:var(--text-dim);">
+      Current LB 0.893 + max realistic gain 0.015 = ~0.908. Whether that's gold depends entirely on
+      what top teams achieve in 2026 — which we don't know. In BirdCLEF 2025, the 8th place gold was
+      estimated at 0.894 private LB, suggesting our current 0.893 might already be in gold territory.
+      But this is speculation.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §6 POST-PROCESSING ANALYSIS ════════════════════════════════════════ -->
+<div class="section" id="s6">
+  <div class="section-title"><span class="num yellow">6</span>Post-Processing Analysis — What the Evidence Actually Says</div>
+
+  <div class="alert alert-yellow">
+    <strong>Honest assessment:</strong> The post-processing in our submission notebook (T1/T2/T3)
+    was designed based on patterns seen in 2025 public notebooks and general ML principles.
+    <strong>None of it has been validated on our specific holdout set.</strong>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Post-Processing Methods: Evidence vs Speculation</div>
+    <table>
+      <tr><th>Method</th><th>Our Implementation</th><th>2025 Evidence</th><th>Risk</th><th>Honest Verdict</th></tr>
+      <tr>
+        <td><strong>T1: Per-clip z-score norm</strong></td>
+        <td>Subtract clip mean, divide by std, rescale to [0,1]</td>
+        <td>Used in some 2025 solutions. Logically reduces background bias.</td>
+        <td class="val-warn">Medium — normalizing can amplify artifacts in quiet clips</td>
+        <td><span class="verdict verdict-neutral">⚠ Untested on our holdout</span></td>
+      </tr>
+      <tr>
+        <td><strong>T2: Tail species sqrt boost</strong></td>
+        <td>Apply sqrt() to species where mean prediction &lt; 0.05</td>
+        <td>Power transforms used in 2025 but noted to <em>overfit public LB</em></td>
+        <td class="val-bad">High — can inflate weak predictions for wrong species</td>
+        <td><span class="verdict verdict-bad">✗ Public LB overfit risk — remove or validate first</span></td>
+      </tr>
+      <tr>
+        <td><strong>T3: Zero-prior subtraction</strong></td>
+        <td>Subtract 1/234 from all predictions</td>
+        <td>"Public trick" in existing ensemble notebooks — reduces false positives for rare species</td>
+        <td class="val-warn">Medium — may suppress true positives for rare species</td>
+        <td><span class="verdict verdict-neutral">⚠ Keep but validate</span></td>
+      </tr>
+      <tr>
+        <td><strong>Temporal smoothing 20/60/20</strong></td>
+        <td>Weight adjacent 5s windows</td>
+        <td>Used by 2025 top solutions for soundscape smoothing</td>
+        <td class="val-warn">Medium — assumes species persist across windows (true for birds, not for brief calls)</td>
+        <td><span class="verdict verdict-neutral">⚠ Theoretically sound, untested on our data</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="subsection">6.1 The Insect Sonotype Post-Processing Problem</div>
+  <div class="alert alert-blue">
+    <strong>The 25 zero-audio insect sonotypes require special handling.</strong>
+    Standard classification models will output near-zero for these species since they never appear
+    in train_audio. The only signal comes from soundscape pseudo labels.
+    <br><br>
+    A targeted approach: <strong>soundscape-only training for the 25 insect sonotypes</strong> —
+    train a separate small classifier only on soundscape clips (both labeled and Perch-pseudolabeled)
+    for these species, then combine with the main model's predictions.
+    This is missing from our current pipeline entirely.
+  </div>
+</div>
+
+<!-- ═══ §7 CORRECTED RECOMMENDATIONS ═══════════════════════════════════════ -->
+<div class="section" id="s7">
+  <div class="section-title"><span class="num green">7</span>Corrected Recommendations (Evidence-Based)</div>
+
+  <div class="alert alert-green">
+    <strong>Replacing the Phase 2 plan with evidence-grounded priorities:</strong>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Priority Stack — Ranked by Expected Impact / Evidence Quality</div>
+    <table>
+      <tr><th>Priority</th><th>Action</th><th>Evidence</th><th>Expected Δ LB</th></tr>
+      <tr>
+        <td><strong style="color:var(--red);">P0 — REMOVE</strong></td>
+        <td>Cancel embed-distill-b0-v5 and sed-b0-v25-embed-head</td>
+        <td>v15 holdout 0.9176 &lt; v5 0.9192 — distill warmup proven unhelpful</td>
+        <td>Saves ~3 days GPU time for better experiments</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--green);">P1 — HIGH</strong></td>
+        <td>v26 (ASL + no PCEN): critical ablation, run ASAP</td>
+        <td>sedp-v2 PCEN: holdout 0.9271 → 0.6737. v26 directly tests if PCEN kills v23.</td>
+        <td>If v26 holdout &gt; 0.9467 → new ensemble submission</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--green);">P2 — HIGH</strong></td>
+        <td>sed-v2s-v2-asl: V2S + ASL + dual + pseudo (proper fair test)</td>
+        <td>2025 2nd/5th place backbone. V2S-v1 was severely undertrained — this is the real test.</td>
+        <td>Estimated +0 to +0.020 holdout vs B0</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--yellow);">P3 — MEDIUM</strong></td>
+        <td>v28 final combo: ASL + dual + soft KD + hard pseudo + strong aug</td>
+        <td>Each component proven individually. Kitchen-sink may compound positively.</td>
+        <td>Best-case B0 scenario: ~0.95+ holdout</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--yellow);">P4 — MEDIUM</strong></td>
+        <td>Insect sonotype specialization: soundscape-only model for 25 zero-audio species</td>
+        <td>25 species contributing equally to macro AUC with zero train signal = guaranteed floor.</td>
+        <td>Could be the biggest LB improvement — but requires new code</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--accent);">P5 — EXPLORE</strong></td>
+        <td>Multi-year pretraining: download BirdCLEF 2024/2025, pretrain SED backbone</td>
+        <td>8th place 2025 credited this as major improvement for rare species.</td>
+        <td>+0.005 to +0.020 — highest per-effort ratio if implemented</td>
+      </tr>
+      <tr>
+        <td><strong style="color:var(--text-dim);">P6 — LOW</strong></td>
+        <td>Validate post-processing (T1/T2/T3) on holdout before submitting</td>
+        <td>T2 (tail boost) is known to overfit public LB in 2025. Must be measured.</td>
+        <td>Could be +0.002 or −0.005 — needs measurement</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="subsection">7.1 Revised GPU Chain (Removing Invalid Experiments)</div>
+  <div class="card-grid card-grid-2">
+    <div class="card">
+      <div class="card-title">GPU 0 — Revised Chain</div>
+      <div style="font-size:13px; line-height:1.8; color:var(--text-dim);">
+        ~~embed-distill-b0-v5~~ <span style="color:var(--red);">CANCELLED</span><br>
+        ~~sed-b0-v25-embed-head~~ <span style="color:var(--red);">CANCELLED</span><br>
+        <span style="color:var(--green);">→</span> After v22: <strong>sed-v2s-v2-asl</strong> directly<br>
+        <span style="color:var(--green);">→</span> After V2S: <strong>sed-b0-v28-final-combo</strong>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">GPU 1 — Maintained Chain</div>
+      <div style="font-size:13px; line-height:1.8; color:var(--text-dim);">
+        v24 (soft pseudo, running chain) <span style="color:var(--orange);">→ eval</span><br>
+        <span style="color:var(--green);">→</span> <strong>sed-b0-v26-asl-npcen</strong> (MOST IMPORTANT)<br>
+        <span style="color:var(--green);">→</span> <strong>sed-b0-v27-soft-boost</strong><br>
+        <span style="color:var(--green);">→</span> Holdout eval + Excel update
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ §8 SUMMARY ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s8">
+  <div class="section-title"><span class="num">8</span>Summary — What We Claim vs What We Can Prove</div>
+  <div class="card">
+    <table>
+      <tr><th>Claim</th><th>Provable?</th><th>Evidence</th></tr>
+      <tr><td>ASL loss improves holdout AUC</td><td class="val-good">✓ Proven</td><td>v5→v9: +0.027 (reproducible, single-variable change)</td></tr>
+      <tr><td>Dual clip+frame loss helps</td><td class="val-good">✓ Proven</td><td>v12 (no dual) 0.9079 vs v5 (dual) 0.9192: +0.011</td></tr>
+      <tr><td>CutMix is harmful with ASL</td><td class="val-good">✓ Proven</td><td>v13 (ASL+CutMix) 0.8972 vs v9 (ASL only) 0.9467</td></tr>
+      <tr><td>PCEN is harmful</td><td class="val-good">✓ Proven (sedp-v2)</td><td>0.9271→0.6737; v23 re-tests in different context</td></tr>
+      <tr><td>Embed distill warmup helps</td><td class="val-bad">✗ Disproven</td><td>v15 (distill init) 0.9176 &lt; v5 (ImageNet) 0.9192</td></tr>
+      <tr><td>Rating filter helps quality</td><td class="val-bad">✗ Disproven</td><td>v16 (rating≥3) 0.8227 vs v5 (all data) 0.9192</td></tr>
+      <tr><td>Soft KD (v24) improves over hard pseudo (v23)</td><td class="val-warn">? Not yet tested</td><td>Theoretically: soft probs carry more signal. Awaiting results.</td></tr>
+      <tr><td>V2S outperforms B0+ASL</td><td class="val-warn">? Not yet tested fairly</td><td>V2S-v1 was BCE only, no dual, no pseudo — not a fair test</td></tr>
+      <tr><td>Post-processing improves LB</td><td class="val-bad">✗ Unvalidated on our data</td><td>T2 (tail boost) known to overfit public LB in 2025</td></tr>
+      <tr><td>Our approach wins gold</td><td class="val-bad">✗ Cannot claim</td><td>No 2026 gold medal benchmark to compare against</td></tr>
+    </table>
+  </div>
+</div>
+
+<div style="border-top:1px solid var(--border); padding-top:16px; margin-top:16px; font-size:12px; color:var(--text-dim); display:flex; justify-content:space-between;">
+  <div>BirdCLEF 2026 Strategy Critique — 2026-03-18</div>
+  <div>Honest evidence review: 10 proven claims · 3 disproven · 3 untested</div>
+</div>
+
+</div>
+</body>
+</html>

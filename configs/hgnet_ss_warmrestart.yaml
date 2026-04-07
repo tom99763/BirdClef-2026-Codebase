@@ -1,0 +1,54 @@
+experiment:
+  name: hgnet-ss-warmrestart
+  seed: 42
+
+# ── HGNet SS-WarmRestart: CosineAnnealingWarmRestarts scheduler ─────────────
+# 競爭者使用 CosineAnnealingWarmRestarts T_0=5 取代 OneCycleLR。
+# 每 5 epoch 重設 LR，讓模型有機會跳出局部最小值。
+# 這是 BirdCLEF 2025 1st place 的核心 scheduler 設定。
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  soundscape_gt_csv:     birdclef-2026/train_soundscapes_labels.csv
+  n_folds:               5
+
+model:
+  backbone:     hgnetv2_b0.ssld_stage2_ft_in1k
+  in_chans:     1
+  n_mels:       256
+  n_fft:        2048
+  win_length:   626
+  hop_length:   313
+  fmin:         20
+  top_db:       80.0
+  power:        2.0
+  lms_shape:    [256, 256]
+  mixup_alpha:  1.0
+  mixup_theta:  0.8
+
+training:
+  epochs:                   30
+  batch_size:               64
+  learning_rate:            5.0e-4
+  weight_decay:             1.0e-4
+  use_llrd:                 false
+  warmup_epochs:            2
+  early_stopping_patience:  7
+  scheduler:                warmrestart
+  sched_T0:                 5
+  sched_Tmult:              1
+  loss_type:                custom_bce
+  ss_gt_weight:             0.3
+  ss_gt_oversample:         2
+  use_sumix_freq:           false
+  use_specaug:              false
+  use_cutmix:               false
+  use_gain_norm:            false
+  use_swa:                  false
+
+output:
+  dir: outputs/hgnet-ss-warmrestart

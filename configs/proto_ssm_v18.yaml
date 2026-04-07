@@ -1,0 +1,60 @@
+experiment:
+  name: proto-ssm-v18
+  seed: 42
+
+data:
+  labeled_npz:     outputs/perch_labeled_ss.npz
+  labels_csv:      birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:    birdclef-2026/taxonomy.csv
+  n_folds:         5
+  windows_per_seq: 12
+
+model:
+  n_classes:       234
+  d_input:         1536
+  d_model:         320
+  d_state:         32
+  n_ssm_layers:    4
+  n_windows:       12
+  dropout:         0.12
+  n_prototypes:    2
+  n_sites:         20
+  meta_dim:        24
+  use_cross_attn:  true
+  cross_attn_heads: 8
+
+residual_ssm:
+  d_model:    128
+  d_state:    16
+  n_ssm_layers: 2
+  dropout:    0.1
+  n_epochs:   15
+  lr:         8.0e-4
+  patience:   12
+  correction_weight: 0.35
+
+training:
+  n_epochs:          80
+  lr:                8.0e-4
+  weight_decay:      1.0e-3
+  val_ratio:         0.15
+  patience:          20
+  pos_weight_cap:    25.0
+  distill_weight:    0.15
+  family_weight:     0.1
+  label_smoothing:   0.03
+  mixup_alpha:       0.4
+  focal_gamma:       2.5
+  swa_start_frac:    0.65
+  swa_lr:            4.0e-4
+  grad_clip:         1.0
+  batch_size:        8
+
+probe:
+  pca_dim:           128
+  alpha:             0.45
+  min_pos:           5
+
+output:
+  dir:               outputs/proto-ssm-v18
+  pretrained_dir:    "birdclef-2026/notebook resource/new direction/pretrained"

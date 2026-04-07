@@ -1,0 +1,55 @@
+experiment:
+  name: finetune-comp-v1
+  seed: 42
+
+# ── Fine-tune Competitor SED v1 ───────────────────────────────────────────────
+#
+# Start: competitor_sed_fold0.pt (AUC=0.9478)
+# Data : train_audio only — FocalBCE hard labels
+# LR   : 2e-5 (very low) + LLRD backbone=0.1×
+# Goal : Establish baseline — how much does fine-tuning alone help?
+#
+# Expected: AUC 0.93-0.94 (model already strong, just adapting to our data)
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  competitor_ckpt:       "birdclef-2026/notebook resource/current_subs/weights/competitor_sed_fold0.pt"
+  n_folds:               5
+
+model:
+  backbone:       tf_efficientnet_b0.ns_jft_in1k
+  clip_duration:  5
+  n_mels:         224
+  n_fft:          2048
+  hop_length:     512
+  fmin:           0
+  fmax:           16000
+  top_db:         80.0
+  power:          2.0
+  norm:           slaney
+  mel_scale:      htk
+  dropout:        0.1
+  drop_path_rate: 0.05
+  gem_p_init:     3.0
+  freq_mask:      24
+  time_mask:      32
+
+training:
+  early_stopping_patience: 5
+  epochs:           20
+  batch_size:       64
+  learning_rate:    2.0e-5
+  weight_decay:     1.0e-4
+  focal_gamma:      2.0
+  use_sumix_freq:   true
+  ss_weight:        0.0       # no soundscape branch in v1
+  use_llrd:         true
+  backbone_lr_mult: 0.1       # backbone LR = 2e-6, head LR = 2e-5
+  warmup_epochs:    2
+
+output:
+  dir: outputs/finetune-comp-v1

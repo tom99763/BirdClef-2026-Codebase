@@ -1,0 +1,48 @@
+experiment:
+  name: clap-v2-supcon
+  seed: 42
+
+clap_pretrained: laion/clap-htsat-unfused
+
+data:
+  train_csv:          birdclef-2026/train.csv
+  taxonomy_csv:       birdclef-2026/taxonomy.csv
+  audio_dir:          birdclef-2026/train_audio
+  soundscape_dir:     birdclef-2026/train_soundscapes
+  # R4 pseudo labels: highest purity (threshold_pct=94, gamma=1.82)
+  # Placeholder until R4 is generated; update path before running
+  pseudo_labels_csv:  pseudo_labels/sed_20s_r4.csv
+  # Pre-computed CLAP embedding cache (shared with clap-v1 for train_audio)
+  train_emb_dir:         outputs/clap_embeddings/train_audio
+  wild_emb_dir:          outputs/clap_embeddings/soundscapes_r4
+  # Time-slot text prototypes: shared with clap-v1
+  text_prototypes_path:  outputs/clap_embeddings/text_prototypes.npy
+  # Stage 2: SED NS soft labels teacher (npz with keys row_ids, probs)
+  # Update to r4 path when R4 is complete
+  sed_ns_probs_npz:      outputs/sed_ns_20s/all_ss_probs.npz
+  # Stage 2: ground-truth labels for soundscape validation set
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+
+model:
+  proj_dim:  256
+  dropout:   0.1
+
+training:
+  batch_size:           64
+  lr_stage1:            1.0e-3
+  lr_stage2:            3.0e-4
+  weight_decay:         1.0e-4
+  epochs_stage1:        60            # more epochs: R4 wild data is cleaner/smaller
+  epochs_stage2:        40
+  patience:             7             # slightly more patient for cleaner labels
+  temperature:          0.07
+  lambda_at_stage1:     0.30          # audio-text alignment loss weight
+  focal_gamma:          2.0
+  lambda_supcon_stage2: 0.1
+  min_pseudo_conf:      0.85          # stricter: R4 labels are high purity anyway
+  soft_label_alpha:     0.30          # Stage 2: SED NS blend weight
+  multi_label_thr:      0.50          # Stage 2: threshold for multi-species pseudo label
+  pseudo_weight:        1.0           # Stage 2: soundscape sample weight
+
+output:
+  dir: outputs/clap-v2-supcon

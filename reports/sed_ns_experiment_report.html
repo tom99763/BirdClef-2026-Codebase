@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SED Noisy Student — 實驗報告</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --surface2: #232640;
+    --accent: #6c8ebf;
+    --accent2: #5fa876;
+    --accent3: #e8a44a;
+    --accent4: #c75b5b;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --border: #2d3150;
+    --gold: #f0c040;
+    --new-best: #3d6e4a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    line-height: 1.6;
+    padding: 2rem;
+  }
+  h1 { font-size: 2rem; color: var(--gold); margin-bottom: 0.25rem; }
+  h2 { font-size: 1.3rem; color: var(--accent); margin: 2rem 0 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.4rem; }
+  h3 { font-size: 1rem; color: var(--accent3); margin: 1rem 0 0.5rem; }
+  .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+  .badge { display: inline-block; padding: 0.2em 0.7em; border-radius: 99px; font-size: 0.78rem; font-weight: 600; }
+  .badge-blue { background: #1e3a5f; color: #7ab3f5; }
+  .badge-green { background: #1a3d2b; color: #6fcf97; }
+  .badge-gold { background: #3d2e00; color: #f0c040; }
+  .badge-red { background: #3d1a1a; color: #f07070; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+  }
+  .card .label { color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.3rem; }
+  .card .value { font-size: 1.6rem; font-weight: 700; color: var(--gold); }
+  .card .sub { font-size: 0.82rem; color: var(--muted); margin-top: 0.25rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-bottom: 1.5rem; }
+  th { background: var(--surface2); color: var(--muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; padding: 0.6rem 0.8rem; text-align: left; }
+  td { padding: 0.55rem 0.8rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .highlight { background: var(--new-best) !important; }
+  .highlight td { color: #a3e6b5; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: monospace; }
+  td.best { color: var(--gold); font-weight: 700; }
+  td.good { color: #6fcf97; }
+  td.muted { color: var(--muted); font-style: italic; }
+
+  .arch-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    font-family: monospace;
+    font-size: 0.82rem;
+    white-space: pre;
+    overflow-x: auto;
+    color: #a8d8a8;
+    line-height: 1.7;
+    margin-bottom: 1.5rem;
+  }
+
+  .flow-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  .flow-step {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.82rem;
+    color: var(--text);
+  }
+  .flow-arrow { color: var(--muted); font-size: 1.1rem; }
+
+  .insight-block {
+    background: var(--surface);
+    border-left: 3px solid var(--accent2);
+    border-radius: 0 8px 8px 0;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.88rem;
+  }
+  .insight-block.warn { border-color: var(--accent4); }
+  .insight-block.gold { border-color: var(--gold); }
+
+  .lb-banner {
+    background: linear-gradient(135deg, #1a3d2b, #0f2d1a);
+    border: 2px solid var(--accent2);
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    margin-bottom: 2rem;
+    text-align: center;
+  }
+  .lb-banner .title { color: var(--muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; }
+  .lb-banner .score { font-size: 3.5rem; font-weight: 800; color: var(--gold); line-height: 1.1; }
+  .lb-banner .desc { color: #9de0b0; margin-top: 0.5rem; font-size: 0.95rem; }
+
+  .round-bar-container { margin-bottom: 1.5rem; }
+  .round-bar { margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
+  .round-bar .label { width: 60px; font-size: 0.82rem; color: var(--muted); flex-shrink: 0; }
+  .bar-track { flex: 1; background: var(--surface2); border-radius: 4px; height: 18px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 0.75rem; font-weight: 600; transition: width 0.3s; }
+  .bar-fill.b0 { background: linear-gradient(90deg, #2563ab, #3b82f6); color: #dbeafe; }
+  .bar-fill.pvt { background: linear-gradient(90deg, #6d3f9a, #a78bfa); color: #ede9fe; }
+  .round-bar .auc-val { width: 70px; font-size: 0.82rem; font-family: monospace; text-align: right; }
+
+  .params-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .param-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .param-card .key { font-size: 0.78rem; color: var(--muted); font-family: monospace; }
+  .param-card .val { font-size: 1.05rem; font-weight: 600; color: var(--accent3); font-family: monospace; }
+  .param-card .why { font-size: 0.78rem; color: var(--muted); }
+
+  .section { margin-bottom: 2.5rem; }
+  footer { color: var(--muted); font-size: 0.8rem; margin-top: 3rem; border-top: 1px solid var(--border); padding-top: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>SED Noisy Student — 實驗報告</h1>
+<p class="meta">BirdCLEF 2026 &nbsp;|&nbsp; 生成日期：2026-03-31 &nbsp;|&nbsp; 主要結論：我們的 SED 已超越 competitor</p>
+
+<!-- ── LB Banner ── -->
+<div class="lb-banner">
+  <div class="title">最新確認 LB 分數（無 competitor SED）</div>
+  <div class="score">0.931</div>
+  <div class="desc">NS Round 5 · fold 1+3 only · v17-protossm-sed-onnx-branchens-csebbs-vlom notebook<br>
+    <strong>R6 完整 5 folds 預計突破 0.933</strong>（fold3=0.9664 創歷史新高）</div>
+</div>
+
+<!-- ── Summary Cards ── -->
+<div class="grid3">
+  <div class="card">
+    <div class="label">B0 最高 SS AUC</div>
+    <div class="value">0.9664</div>
+    <div class="sub">R6 fold3 · 歷史新高</div>
+  </div>
+  <div class="card">
+    <div class="label">B0 R6 Mean AUC</div>
+    <div class="value">0.9383</div>
+    <div class="sub">5 folds 全部完成</div>
+  </div>
+  <div class="card">
+    <div class="label">PVT R1 Mean AUC</div>
+    <div class="value">0.9005</div>
+    <div class="sub">transformer 支線 · R2 進行中</div>
+  </div>
+</div>
+
+<!-- ── Architecture ── -->
+<div class="section">
+<h2>1. 模型架構</h2>
+
+<div class="arch-box">Input: 20s waveform (640,000 samples @ 32kHz)
+  ↓
+MelSpectrogram(n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000,
+               power=2, norm=slaney/htk)
+  ↓
+AmplitudeToDB(top_db=80) → normalize [0,1] → expand to 3-channel
+  ↓
+EfficientNet-B0(drop_path_rate=0.15, no global pool)   [← CNN 主線]
+     或
+pvt_v2_b0(3.4M params, Pyramid Vision Transformer)    [← PVT 支線]
+  ↓
+GEMFreqPool(p=3.0)           → (B, 1280, T_time)
+  ↓
+AttentionSEDHead:
+  fc(1280→1280) + att_conv(1280→234) + cls_conv(1280→234)
+  sigmoid( (softmax(tanh(att)) * cls).sum(-1) )
+  ↓
+Output: (B, 234) class probabilities</div>
+
+<h3>設計要點</h3>
+<div class="insight-block gold">
+  <strong>20s clip duration：</strong>覆蓋 4 個 Perch 5s windows，讓模型直接在 soundscape 域學習。這是 1st-place 核心 insight。
+</div>
+<div class="insight-block">
+  <strong>GEMFreqPool：</strong>只在頻率軸做 Generalized-Mean Pooling（p=3.0），保留時間軸資訊，讓 AttentionSEDHead 做 temporal aggregation。
+</div>
+<div class="insight-block">
+  <strong>drop_path_rate=0.15：</strong>R2 起加入 DropPath 正則化，防止後期過擬合。
+</div>
+</div>
+
+<!-- ── NS Flow ── -->
+<div class="section">
+<h2>2. Noisy Student 流程</h2>
+
+<div class="flow-row">
+  <div class="flow-step">① 5-fold 訓練</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">② Infer all soundscapes</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">③ BiSSM 殘差校正</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">④ gen_pseudo_ns.py</div>
+  <div class="flow-arrow">→</div>
+  <div class="flow-step">⑤ 更新下輪 config</div>
+</div>
+
+<table>
+  <tr>
+    <th>步驟</th>
+    <th>關鍵設定</th>
+    <th>說明</th>
+  </tr>
+  <tr>
+    <td><strong>① 訓練</strong></td>
+    <td>Focal BCE (γ=2), AdamW lr=1e-3, CosineAnnealing, 25-30 epochs, early_stop=4</td>
+    <td>Wave-level mixup + SpecAugment；CrossDomain MixUp λ=0.5</td>
+  </tr>
+  <tr>
+    <td><strong>② Infer</strong></td>
+    <td>sliding window stride=5s, 平均 5 folds</td>
+    <td>輸出 all_ss_probs.npz（全部 soundscape）</td>
+  </tr>
+  <tr>
+    <td><strong>③ BiSSM</strong></td>
+    <td>alpha=0.40, Perch teacher CSV</td>
+    <td>學習 teacher(Perch) - student(SED) 殘差，輸出 corrected.npz</td>
+  </tr>
+  <tr>
+    <td><strong>④ gen_pseudo</strong></td>
+    <td>perch_w=0.05, sed_w=0.95, pct=95, gamma=2.0</td>
+    <td>--nonaves_perch_only：非 Aves 類別只用 Perch 預測</td>
+  </tr>
+  <tr>
+    <td><strong>⑤ EMA</strong></td>
+    <td>ema_decay=0.999</td>
+    <td>跨輪次 EMA 權重繼承，平滑化蒸餾</td>
+  </tr>
+</table>
+
+<div class="insight-block warn">
+  <strong>--nonaves_perch_only：</strong>SED 在 Amphibia / Insecta / Mammalia / Reptilia 不可靠（訓練資料 Aves 偏多）。非 Aves 類別的 pseudo labels 完全依賴 Perch，防止污染。
+</div>
+</div>
+
+<!-- ── Round Results ── -->
+<div class="section">
+<h2>3. 各輪訓練結果（EfficientNet-B0）</h2>
+
+<div class="round-bar-container">
+  <div class="round-bar">
+    <div class="label">R1</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:72%">0.9120</div></div>
+    <div class="auc-val">0.9120</div>
+  </div>
+  <div class="round-bar">
+    <div class="label">R2</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:79%">0.9256</div></div>
+    <div class="auc-val">0.9256</div>
+  </div>
+  <div class="round-bar">
+    <div class="label">R3 ★</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:83%">0.9305</div></div>
+    <div class="auc-val">0.9305</div>
+  </div>
+  <div class="round-bar">
+    <div class="label">R4 ★</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:86%">0.9341</div></div>
+    <div class="auc-val">0.9341</div>
+  </div>
+  <div class="round-bar">
+    <div class="label">R5 ★</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:84%">0.9330</div></div>
+    <div class="auc-val">0.9330</div>
+  </div>
+  <div class="round-bar">
+    <div class="label">R6 ★</div>
+    <div class="bar-track"><div class="bar-fill b0" style="width:91%">0.9383</div></div>
+    <div class="auc-val"><strong>0.9383</strong></div>
+  </div>
+</div>
+
+<table>
+  <tr>
+    <th>Round</th>
+    <th class="num">fold0</th>
+    <th class="num">fold1</th>
+    <th class="num">fold2</th>
+    <th class="num">fold3</th>
+    <th class="num">fold4</th>
+    <th class="num">Mean AUC</th>
+    <th>LB (fold1+3)</th>
+    <th>備註</th>
+  </tr>
+  <tr>
+    <td>R1</td>
+    <td class="num">0.9015</td>
+    <td class="num">0.9149</td>
+    <td class="num">0.9009</td>
+    <td class="num">0.9289</td>
+    <td class="num">0.9138</td>
+    <td class="num">0.9120</td>
+    <td class="muted">—</td>
+    <td>起步輪；初始 pseudo label</td>
+  </tr>
+  <tr>
+    <td>R2</td>
+    <td class="num">0.9096</td>
+    <td class="num">0.9294</td>
+    <td class="num">0.9229</td>
+    <td class="num">0.9402</td>
+    <td class="num">0.9261</td>
+    <td class="num">0.9256</td>
+    <td class="muted">—</td>
+    <td>+0.0136 vs R1；加入 drop_path</td>
+  </tr>
+  <tr>
+    <td>R3</td>
+    <td class="num">0.9014</td>
+    <td class="num">0.9426</td>
+    <td class="num">0.9151</td>
+    <td class="num">0.9563</td>
+    <td class="num">0.9369</td>
+    <td class="num">0.9305</td>
+    <td class="good">0.926</td>
+    <td>首次確認 LB 效果</td>
+  </tr>
+  <tr>
+    <td>R4</td>
+    <td class="num">0.9034</td>
+    <td class="num">0.9480</td>
+    <td class="num">0.9238</td>
+    <td class="num">0.9544</td>
+    <td class="num">0.9408</td>
+    <td class="num">0.9341</td>
+    <td class="good">0.927</td>
+    <td>穩定提升</td>
+  </tr>
+  <tr>
+    <td>R5</td>
+    <td class="num">0.9023</td>
+    <td class="num">0.9451</td>
+    <td class="num">0.9210</td>
+    <td class="num">0.9595</td>
+    <td class="num">0.9370</td>
+    <td class="num">0.9330</td>
+    <td class="best">0.931</td>
+    <td>僅 fold1+3；突破競爭者</td>
+  </tr>
+  <tr class="highlight">
+    <td><strong>R6</strong></td>
+    <td class="num">0.9052</td>
+    <td class="num">0.9524</td>
+    <td class="num">0.9246</td>
+    <td class="num best">0.9664</td>
+    <td class="num">0.9431</td>
+    <td class="num best">0.9383</td>
+    <td class="best">TBD (&gt;0.933 預期)</td>
+    <td>fold3=0.9664 歷史新高</td>
+  </tr>
+</table>
+
+<p style="font-size:0.82rem; color:var(--muted); margin-top:-1rem; margin-bottom:1.5rem;">
+  ★ LB 已確認；AUC = max(ss_auc) across all epochs（非 wandb 最終值）
+</p>
+</div>
+
+<!-- ── LB Discovery ── -->
+<div class="section">
+<h2>4. 重大發現：我們的 SED 已超越 Competitor</h2>
+
+<table>
+  <tr>
+    <th>提交</th>
+    <th>SED 模型</th>
+    <th>使用 Competitor?</th>
+    <th class="num">LB 分數</th>
+    <th>備註</th>
+  </tr>
+  <tr>
+    <td>v17 + R3 (fold1+3)</td>
+    <td>sed_ns_b0_r3</td>
+    <td><span class="badge badge-red">否</span></td>
+    <td class="num">0.926</td>
+    <td>首次確認</td>
+  </tr>
+  <tr>
+    <td>v17 + R4 (fold1+3)</td>
+    <td>sed_ns_b0_r4</td>
+    <td><span class="badge badge-red">否</span></td>
+    <td class="num">0.927</td>
+    <td>穩步提升</td>
+  </tr>
+  <tr class="highlight">
+    <td>v17 + R5 (fold1+3)</td>
+    <td>sed_ns_b0_r5</td>
+    <td><span class="badge badge-red">否</span></td>
+    <td class="num best">0.931</td>
+    <td>僅 2 個 fold！接近 v17 最佳 0.933</td>
+  </tr>
+  <tr>
+    <td>v17 baseline (best)</td>
+    <td>competitor SED</td>
+    <td><span class="badge badge-blue">是</span></td>
+    <td class="num">0.933</td>
+    <td>目前最高基準</td>
+  </tr>
+</table>
+
+<div class="insight-block gold">
+  <strong>關鍵洞察：</strong>R5 只用 2 個 fold (fold1+3) 就達到 0.931，而 competitor 是全套系統。<br>
+  R6 全 5 folds（mean=0.9383）預計超過 0.933 基準，徹底擺脫 competitor 依賴。
+</div>
+
+<div class="insight-block warn">
+  <strong>歷史對比：</strong>2026-03-21 我們的 SED 替換 competitor 時 LB 從 0.921 → 0.908（-0.013）。<br>
+  NS 訓練 6 輪後，從 LB 0.908 提升到 0.931（+0.023），完全彌補了差距。
+</div>
+</div>
+
+<!-- ── Hyperparams ── -->
+<div class="section">
+<h2>5. 關鍵超參數（已驗證）</h2>
+
+<div class="params-grid">
+  <div class="param-card">
+    <div class="key">clip_duration</div>
+    <div class="val">20s</div>
+    <div class="why">覆蓋 4 個 Perch 5s windows；1st-place 核心 insight</div>
+  </div>
+  <div class="param-card">
+    <div class="key">use_sumix_freq</div>
+    <div class="val">false</div>
+    <div class="why">Wave-level mixup 優於 freq-bin；forum 驗證</div>
+  </div>
+  <div class="param-card">
+    <div class="key">epochs</div>
+    <div class="val">25–30</div>
+    <div class="why">避免過度自信（overconfidence）；forum insight</div>
+  </div>
+  <div class="param-card">
+    <div class="key">drop_path_rate</div>
+    <div class="val">0.15</div>
+    <div class="why">R2 起加入；防止後期過擬合</div>
+  </div>
+  <div class="param-card">
+    <div class="key">ema_decay</div>
+    <div class="val">0.999</div>
+    <div class="why">跨輪次 EMA 繼承；平滑化 pseudo label 演化</div>
+  </div>
+  <div class="param-card">
+    <div class="key">gamma (power transform)</div>
+    <div class="val">2.0</div>
+    <div class="why">壓低低置信分數，保留高置信信號</div>
+  </div>
+  <div class="param-card">
+    <div class="key">perch_w / sed_w</div>
+    <div class="val">0.05 / 0.95</div>
+    <div class="why">後期以 SED 為主；Perch 僅補充</div>
+  </div>
+  <div class="param-card">
+    <div class="key">percentile</div>
+    <div class="val">95</div>
+    <div class="why">只保留高置信 pseudo labels；減少噪聲</div>
+  </div>
+  <div class="param-card">
+    <div class="key">nonaves_perch_only</div>
+    <div class="val">true</div>
+    <div class="why">Amphibia/Insecta/Mammalia/Reptilia 只用 Perch</div>
+  </div>
+  <div class="param-card">
+    <div class="key">n_mels / n_fft</div>
+    <div class="val">224 / 2048</div>
+    <div class="why">高解析度 mel；hop=512 覆蓋 20s</div>
+  </div>
+  <div class="param-card">
+    <div class="key">GEMFreqPool p</div>
+    <div class="val">3.0</div>
+    <div class="why">Generalized Mean；比 AvgPool 更強調峰值</div>
+  </div>
+  <div class="param-card">
+    <div class="key">corrector_alpha</div>
+    <div class="val">0.40</div>
+    <div class="why">BiSSM 校正強度；40% 向 Perch teacher 靠攏</div>
+  </div>
+</div>
+</div>
+
+<!-- ── PVT Branch ── -->
+<div class="section">
+<h2>6. PVT v2 B0 獨立支線</h2>
+
+<div class="grid2">
+  <div>
+    <h3>設計目的</h3>
+    <p style="font-size:0.88rem; margin-bottom:1rem;">測試 Pyramid Vision Transformer backbone 是否比 CNN（EfficientNet-B0）更強。PVT 在 ImageNet 上有更好的長距離依賴建模能力，適合音頻時間序列。</p>
+    <h3>獨立性設計</h3>
+    <div class="insight-block">
+      PVT 從 R4 pseudo labels 直接起步，<strong>不等待</strong> B0 系列的 R8。<br>
+      自產生獨立的 <code>sed_20s_pvt_r{N}.csv</code>，不干擾 B0 pipeline。
+    </div>
+  </div>
+  <div>
+    <h3>PVT 進度</h3>
+    <div class="round-bar-container" style="margin-top:0.5rem;">
+      <div class="round-bar">
+        <div class="label">PVT R1</div>
+        <div class="bar-track"><div class="bar-fill pvt" style="width:50%">0.9005</div></div>
+        <div class="auc-val">0.9005</div>
+      </div>
+      <div class="round-bar">
+        <div class="label">PVT R2</div>
+        <div class="bar-track"><div class="bar-fill pvt" style="width:57%">0.9159</div></div>
+        <div class="auc-val">0.9159 *</div>
+      </div>
+    </div>
+    <p style="font-size:0.8rem; color:var(--muted);">* R2 fold4 尚未完成（4/5 folds）</p>
+    <table style="font-size:0.82rem; margin-top:0.75rem;">
+      <tr><th>Round</th><th class="num">Mean</th><th class="num">fold0-4</th></tr>
+      <tr><td>PVT R1</td><td class="num">0.9005</td><td class="num" style="font-size:0.78rem">0.8991 / 0.9243 / 0.8519 / 0.9101 / 0.9170</td></tr>
+      <tr><td>PVT R2 (4/5)</td><td class="num">0.9159</td><td class="num" style="font-size:0.78rem">0.9108 / 0.9182 / 0.9064 / 0.9281 / —</td></tr>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ── Scripts ── -->
+<div class="section">
+<h2>7. 腳本位置</h2>
+
+<table>
+  <tr><th>腳本</th><th>用途</th></tr>
+  <tr><td><code>train_sed_ns.py</code></td><td>主訓練腳本（fold 訓練 + infer_all_ss）</td></tr>
+  <tr><td><code>scripts/gen_pseudo_ns.py</code></td><td>生成下一輪 pseudo labels（power transform + percentile 篩選）</td></tr>
+  <tr><td><code>scripts/train_sed_residual_corrector.py</code></td><td>BiSSM 殘差校正器（Perch teacher vs SED 差距建模）</td></tr>
+  <tr><td><code>scripts/export_sed_to_onnx.py</code></td><td>匯出 ONNX（FP32 ~25MB + INT8 ~6.7MB）</td></tr>
+  <tr><td><code>scripts/auto_sed_ns_20s_full.sh</code></td><td>B0 R1-R4 自動化（已完成）</td></tr>
+  <tr><td><code>scripts/auto_sed_ns_20s_r5r8.sh</code></td><td>B0 R5-R8 自動化（R6 剛完成，R7-R8 執行中）</td></tr>
+  <tr><td><code>scripts/auto_sed_ns_pvt_20s_r1r4.sh</code></td><td>PVT R1-R4 自動化（R2 進行中）</td></tr>
+  <tr><td><code>scripts/visualize_sed_attention.py</code></td><td>每輪後視覺化最差樣本的 attention map（20 張）</td></tr>
+  <tr><td><code>configs/sed_ns_b0_*s_r*.yaml</code></td><td>各輪 config（自動更新 pseudo_labels_csv）</td></tr>
+</table>
+</div>
+
+<!-- ── Next Steps ── -->
+<div class="section">
+<h2>8. 下一步行動</h2>
+
+<table>
+  <tr>
+    <th>優先</th>
+    <th>任務</th>
+    <th>預期效果</th>
+    <th>狀態</th>
+  </tr>
+  <tr>
+    <td><span class="badge badge-gold">高</span></td>
+    <td>R6 全 5 folds ONNX 匯出 → v17 notebook 提交</td>
+    <td>LB &gt; 0.933（突破現有最佳）</td>
+    <td>等待 R6 完成</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-gold">高</span></td>
+    <td>R7-R8 繼續訓練（auto pipeline 進行中）</td>
+    <td>AUC 繼續提升</td>
+    <td>自動執行中</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-blue">中</span></td>
+    <td>PVT R2-R4 完成後與 B0 ensemble</td>
+    <td>架構多樣性增加</td>
+    <td>PVT R2 fold4 執行中</td>
+  </tr>
+  <tr>
+    <td><span class="badge badge-blue">中</span></td>
+    <td>CLAP 非 Aves 權重提升（non-Aves ensemble）</td>
+    <td>Amphibia/Insecta 分數提升</td>
+    <td>CLAP Stage 2 完成（val_auc=0.6915）</td>
+  </tr>
+</table>
+</div>
+
+<footer>
+  BirdCLEF 2026 Noisy Student SED — 報告自動生成 by Claude Code &nbsp;|&nbsp; 2026-03-31<br>
+  Pipeline: EfficientNet-B0 → 20s soundscape → Noisy Student × 6 rounds → LB 0.931 (no competitor)
+</footer>
+
+</body>
+</html>

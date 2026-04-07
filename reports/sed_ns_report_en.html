@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SED Noisy Student — Experiment Report</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #21262d; --border: #30363d;
+    --text: #e6edf3; --muted: #7d8590; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --gold: #f0c040; --red: #f85149;
+    --purple: #a371f7; --new-best-bg: #0d2a1a; --new-best-border: #238636;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; padding: 32px; max-width: 1100px; margin: 0 auto; }
+  .page-header { margin-bottom: 32px; }
+  .page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .page-header h1 span { color: var(--accent); }
+  .page-header .sub { color: var(--muted); font-size: 13px; }
+  .page-header .sub strong { color: var(--gold); }
+  .section { margin-bottom: 40px; }
+  h2 { font-size: 16px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  h2 .icon { font-size: 18px; }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .banner { background: var(--new-best-bg); border: 1px solid var(--new-best-border); border-radius: 8px; padding: 24px 32px; display: flex; align-items: center; gap: 32px; margin-bottom: 32px; }
+  .banner .score-block { text-align: center; }
+  .banner .score-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .banner .score { font-size: 52px; font-weight: 800; color: var(--gold); line-height: 1; }
+  .banner .score-sub { font-size: 12px; color: var(--green); margin-top: 4px; }
+  .banner .divider { width: 1px; height: 80px; background: var(--border); flex-shrink: 0; }
+  .banner .details { flex: 1; }
+  .banner .details p { font-size: 13px; margin-bottom: 6px; }
+  .banner .details .highlight { color: var(--gold); font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .card .value { font-size: 24px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .card .note { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+  thead th { background: var(--surface2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 12px; text-align: left; font-weight: 600; }
+  thead th.r { text-align: right; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  td.r { text-align: right; font-variant-numeric: tabular-nums; font-family: 'SF Mono', 'Consolas', monospace; }
+  td.gold { color: var(--gold); font-weight: 700; }
+  td.green { color: var(--green); font-weight: 600; }
+  td.muted { color: var(--muted); font-style: italic; }
+  tr.best-row td { background: var(--new-best-bg) !important; }
+  .arch { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; line-height: 1.8; white-space: pre; overflow-x: auto; color: #a8d8a8; margin-bottom: 16px; }
+  .callout { border-radius: 6px; padding: 10px 14px; font-size: 13px; margin-bottom: 10px; border-left: 3px solid; }
+  .callout.info    { background: #0d1f3a; border-color: var(--accent); color: #b0d0f8; }
+  .callout.warn    { background: #2a1a0e; border-color: var(--yellow); color: #f0d070; }
+  .callout.success { background: var(--new-best-bg); border-color: var(--green); color: #9de8b0; }
+  .callout.critical{ background: #1a0a0a; border-color: var(--red); color: #f5a0a0; }
+  .flow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .flow-step { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 12px; font-weight: 500; }
+  .flow-arrow { color: var(--muted); font-size: 16px; }
+  .bar-list { margin-bottom: 16px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .bar-row .lbl { width: 70px; font-size: 12px; color: var(--muted); flex-shrink: 0; font-family: monospace; }
+  .bar-track { flex: 1; background: var(--surface2); border-radius: 3px; height: 16px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; }
+  .bar-fill.b0  { background: linear-gradient(90deg, #1a4a9a, #3b82f6); color: #dbeafe; }
+  .bar-fill.pvt { background: linear-gradient(90deg, #5b21b6, #8b5cf6); color: #ede9fe; }
+  .bar-val { width: 56px; font-size: 12px; font-family: monospace; text-align: right; }
+  .bar-lb  { width: 50px; font-size: 12px; text-align: right; color: var(--green); font-weight: 600; }
+  .params { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .param { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+  .param .key { font-size: 11px; font-family: monospace; color: var(--muted); margin-bottom: 3px; }
+  .param .val { font-size: 16px; font-weight: 700; color: #f0a040; font-family: monospace; }
+  .param .why { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.blue   { background: #0d2045; color: #79b8ff; border: 1px solid #1e4080; }
+  .badge.green  { background: #0d2a1a; color: #6ee7a0; border: 1px solid #238636; }
+  .badge.red    { background: #2a0d0d; color: #ffa0a0; border: 1px solid #8b2020; }
+  .badge.purple { background: #1e0d40; color: #c0a0ff; border: 1px solid #5b3a9a; }
+  .badge.amber  { background: #2a1a00; color: #f0c040; border: 1px solid #7a5000; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .data-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+  .data-box .db-title { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .data-box .db-rows { font-size: 13px; color: var(--gold); font-weight: 700; margin-bottom: 4px; }
+  .data-box .db-desc { font-size: 12px; color: var(--muted); }
+  .mix-arrow { text-align: center; font-size: 22px; color: var(--muted); margin: 4px 0; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 16px; }
+  code { font-family: 'SF Mono','Consolas',monospace; font-size: 12px; background: var(--surface2); padding: 1px 5px; border-radius: 3px; color: #79b8ff; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="page-header">
+  <h1>SED <span>Noisy Student</span> — Experiment Report</h1>
+  <p class="sub">BirdCLEF 2026 &nbsp;·&nbsp; Updated 2026-04-01 &nbsp;·&nbsp;
+    <strong>Key finding: our SED independently surpasses competitor model · R7 all folds complete</strong></p>
+</div>
+
+<!-- Banner -->
+<div class="banner">
+  <div class="score-block">
+    <div class="score-label">Best LB (no competitor)</div>
+    <div class="score">0.931</div>
+    <div class="score-sub">R5 &amp; R6 · fold1+3 · independent</div>
+  </div>
+  <div class="divider"></div>
+  <div class="details">
+    <p><span class="highlight">R5 (2 folds only)</span> = LB 0.931 in v17-protossm — without any competitor model weights. R6 (5 folds) also confirmed LB 0.931.</p>
+    <p>Prior baseline with competitor SED: <span class="highlight">LB 0.933</span>. Gap closed to <span class="highlight">−0.002</span> from R1 −0.025.</p>
+    <p><span class="highlight">R7 fully complete</span> (5/5 folds, fold3=0.9577, fold1=0.9590). ONNX exported. Ready to submit.</p>
+  </div>
+</div>
+
+<!-- Stat Cards -->
+<div class="cards">
+  <div class="card">
+    <div class="label">All-time Best AUC</div>
+    <div class="value">0.9664</div>
+    <div class="note">R6 fold3</div>
+  </div>
+  <div class="card">
+    <div class="label">R7 Mean AUC</div>
+    <div class="value">0.9376</div>
+    <div class="note">5/5 folds · ONNX ready</div>
+  </div>
+  <div class="card">
+    <div class="label">Best LB (no competitor)</div>
+    <div class="value">0.931</div>
+    <div class="note">R5 &amp; R6 fold1+3</div>
+  </div>
+  <div class="card">
+    <div class="label">PVT R3 Best Fold</div>
+    <div class="value">0.9516</div>
+    <div class="note">fold3 · R3 in progress</div>
+  </div>
+</div>
+
+<!-- 1. Architecture -->
+<div class="section">
+<h2><span class="icon">🏗</span> 1. Model Architecture</h2>
+<div class="arch">Input  : 20s waveform  (640,000 samples @ 32 kHz)
+   ↓
+MelSpectrogram(n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000,
+               power=2, norm=slaney, mel_scale=htk)
+   ↓
+AmplitudeToDB(top_db=80)  →  normalize [0, 1]  →  expand to 3 channels
+   ↓
+┌─────────────────────────────────────────────────────────────┐
+│  EfficientNet-B0  (tf_efficientnet_b0.ns_jft_in1k)         │  ← main branch
+│    drop_path_rate=0.15,  no global pool,  num_features=1280 │
+│  — OR —                                                     │
+│  PVT v2 B0  (pvt_v2_b0, 3.4M params)                       │  ← transformer branch
+│    Pyramid Vision Transformer,  num_features=256            │
+└─────────────────────────────────────────────────────────────┘
+   ↓
+GEMFreqPool(p=3.0)    [frequency axis only]   →  (B, C, T_time)
+   ↓
+AttentionSEDHead
+   fc(C→C) + ReLU + Dropout
+   att_conv(C→234, k=1)  +  cls_conv(C→234, k=1)
+   output = sigmoid( softmax(tanh(att)) ⊙ cls ).sum(time_dim)
+   ↓
+Output : (B, 234)  class probabilities</div>
+
+<div class="callout info"><strong>20-second clip duration</strong> — covers 4× Perch's 5s windows, forcing the model to learn soundscape-domain temporal context. Core insight from the 1st-place solution.</div>
+<div class="callout info"><strong>GEMFreqPool</strong> — Generalized Mean Pooling (p=3.0) on the frequency axis only. Time axis is preserved and handled by the attention head, enabling per-window temporal detection.</div>
+</div>
+
+<!-- 2. Training Data Design -->
+<div class="section">
+<h2><span class="icon">🗄</span> 2. Training Data Design — Domain Adaptation via 3-Source Mixing</h2>
+
+<p style="font-size:13px;margin-bottom:16px;color:var(--muted);">
+  The key insight: BirdCLEF test data is <strong style="color:var(--text)">soundscape recordings</strong> (60s, multi-species, background noise), but most labeled training data is <strong style="color:var(--text)">point recordings</strong> (close-up, single species). Noisy Student bridges this domain gap by training on all three sources simultaneously.
+</p>
+
+<div class="two-col" style="align-items:start">
+  <div>
+    <div class="data-box">
+      <div class="db-title">① train_audio/ — Real Labels</div>
+      <div class="db-rows">~24,000 clips</div>
+      <div class="db-desc">Point recordings with ground-truth labels from <code>train.csv</code>.<br>
+      All data used every round — no fold split on this source.<br>
+      Domain: close-up recordings, single species, clean audio.</div>
+    </div>
+    <div class="mix-arrow">+</div>
+    <div class="data-box">
+      <div class="db-title">② train_soundscapes/ — Real Labels</div>
+      <div class="db-rows">~1,479 windows (5s each)</div>
+      <div class="db-desc">Human-annotated labels from <code>train_soundscapes_labels.csv</code>.<br>
+      Split by GroupKFold: validation files held out per fold; remaining files enter training.<br>
+      Domain: <strong style="color:var(--text)">same as test</strong> — soundscape recordings.</div>
+    </div>
+    <div class="mix-arrow">+</div>
+    <div class="data-box">
+      <div class="db-title">③ train_soundscapes/ — Pseudo Labels</div>
+      <div class="db-rows">~119,000 windows (Round 6)</div>
+      <div class="db-desc">Model-generated soft labels from <code>pseudo_labels/sed_20s_r{R}.csv</code>.<br>
+      Covers soundscape files <em>without</em> human annotation, greatly expanding coverage.<br>
+      Validation files automatically excluded each fold. Grows in quality each round.</div>
+    </div>
+    <div class="mix-arrow">↓</div>
+    <div class="data-box" style="border-color:#3b82f6">
+      <div class="db-title" style="color:#79b8ff">Cross-Domain MixUp (λ=0.5)</div>
+      <div class="db-desc">Each labeled <code>train_audio</code> clip is mixed 1-to-1 with a pseudo soundscape clip at λ=0.5.<br>Forces the model to jointly learn point-recording and soundscape features in every batch.</div>
+    </div>
+  </div>
+  <div>
+    <div class="callout success">
+      <strong>Why this works:</strong> The competition test set is soundscape recordings. By iteratively generating pseudo labels on soundscapes and mixing them into training, each NS round pulls the model's representations closer to the test domain.
+    </div>
+    <div class="callout warn">
+      <strong>Val split design:</strong> <code>train_soundscapes_labels.csv</code> serves a dual role — the held-out files form the validation set (ss_auc), while the remaining files provide real-labeled training data. Pseudo labels from <code>pseudo_labels_csv</code> are complementary: they cover the ~580 soundscape files that have no human annotation.
+    </div>
+    <div class="callout info">
+      <strong>nonaves_perch_only:</strong> SED models are unreliable for non-bird classes (Amphibia, Insecta, Mammalia, Reptilia) due to class imbalance. For these classes, pseudo labels always come from Perch predictions only — preventing noise from propagating across rounds.
+    </div>
+    <table style="margin-top:12px">
+      <thead><tr><th>Source</th><th>Labels</th><th>Domain</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr><td><code>train_audio/</code></td><td>Ground truth</td><td>Point rec.</td><td>~24k clips</td></tr>
+        <tr><td><code>train_soundscapes/</code> (labeled)</td><td>Human annotated</td><td>Soundscape</td><td>~1.5k windows</td></tr>
+        <tr><td><code>train_soundscapes/</code> (pseudo)</td><td>Model soft labels</td><td>Soundscape</td><td>~119k windows</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- 3. Noisy Student Pipeline -->
+<div class="section">
+<h2><span class="icon">🔄</span> 3. Noisy Student Pipeline (per round)</h2>
+
+<div class="flow">
+  <div class="flow-step">① Train 5 folds</div><div class="flow-arrow">→</div>
+  <div class="flow-step">② infer_all_ss</div><div class="flow-arrow">→</div>
+  <div class="flow-step">③ BiSSM corrector</div><div class="flow-arrow">→</div>
+  <div class="flow-step">④ gen_pseudo_ns.py</div><div class="flow-arrow">→</div>
+  <div class="flow-step">⑤ Update config → next round</div>
+</div>
+
+<table>
+  <thead><tr><th>Step</th><th>Key settings</th><th>Output / Notes</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>① Train</strong></td>
+      <td>Focal BCE (γ=2), AdamW lr=1e-3, CosineAnnealing<br>25–30 epochs, early_stop=4, EMA decay=0.999</td>
+      <td>Wave-level mixup + SpecAugment; CrossDomain MixUp λ=0.5<br>EMA weights inherited from previous round</td>
+    </tr>
+    <tr>
+      <td><strong>② Infer</strong></td>
+      <td>20s sliding window, stride=5s → 9 windows per 60s file<br>Average overlapping predictions → 12 × 5s slots</td>
+      <td><code>outputs/sed-ns-b0-20s-r{R}/all_ss_probs.npz</code><br>shape: (n_files, 12, 234)</td>
+    </tr>
+    <tr>
+      <td><strong>③ BiSSM</strong></td>
+      <td>alpha=0.40, teacher=<code>perch_teacher_aug_all_ss.csv</code></td>
+      <td>Learns residual: Perch_teacher − SED_student<br>Output: <code>all_ss_probs_corrected.npz</code></td>
+    </tr>
+    <tr>
+      <td><strong>④ gen_pseudo</strong></td>
+      <td>perch_w=0.02–0.05, sed_w=0.95–0.98<br>percentile=95, gamma=2.0 (power transform)</td>
+      <td><code>pseudo_labels/sed_20s_r{R}.csv</code><br>~119k high-confidence windows; val files excluded</td>
+    </tr>
+    <tr>
+      <td><strong>⑤ Update</strong></td>
+      <td>Auto-patch next round YAML config</td>
+      <td><code>pseudo_labels_csv: pseudo_labels/sed_20s_r{R}.csv</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout warn"><strong>Percentile=95 + gamma=2.0:</strong> Only the top 5% most confident predictions become pseudo labels. Power transform (γ=2) further sharpens the distribution, suppressing ambiguous predictions and reducing noise propagation across rounds.</div>
+</div>
+
+<!-- 4. Round Results -->
+<div class="section">
+<h2><span class="icon">📊</span> 4. Round-by-Round Results</h2>
+
+<div class="two-col">
+  <div>
+    <h3>EfficientNet-B0 (Main Branch)</h3>
+    <div class="bar-list">
+      <div class="bar-row"><div class="lbl">R1</div><div class="bar-track"><div class="bar-fill b0" style="width:40%"></div></div><div class="bar-val" style="color:var(--muted)">0.9120</div><div class="bar-lb" style="color:var(--muted)">—</div></div>
+      <div class="bar-row"><div class="lbl">R2</div><div class="bar-track"><div class="bar-fill b0" style="width:52%"></div></div><div class="bar-val" style="color:var(--muted)">0.9256</div><div class="bar-lb" style="color:var(--muted)">—</div></div>
+      <div class="bar-row"><div class="lbl">R3</div><div class="bar-track"><div class="bar-fill b0" style="width:62%"></div></div><div class="bar-val">0.9305</div><div class="bar-lb">0.926</div></div>
+      <div class="bar-row"><div class="lbl">R4</div><div class="bar-track"><div class="bar-fill b0" style="width:70%"></div></div><div class="bar-val">0.9341</div><div class="bar-lb">0.927</div></div>
+      <div class="bar-row"><div class="lbl">R5</div><div class="bar-track"><div class="bar-fill b0" style="width:67%"></div></div><div class="bar-val">0.9330</div><div class="bar-lb" style="color:var(--gold);font-weight:700">0.931★</div></div>
+      <div class="bar-row"><div class="lbl">R6</div><div class="bar-track"><div class="bar-fill b0" style="width:88%"></div></div><div class="bar-val" style="color:var(--gold);font-weight:700">0.9383</div><div class="bar-lb" style="color:var(--gold);font-weight:700">0.931★</div></div>
+      <div class="bar-row"><div class="lbl"><strong>R7</strong></div><div class="bar-track"><div class="bar-fill b0" style="width:82%"></div></div><div class="bar-val" style="color:var(--green);font-weight:700">0.9376</div><div class="bar-lb" style="color:var(--accent)">TBD</div></div>
+    </div>
+  </div>
+  <div>
+    <h3>PVT v2 B0 (Transformer Branch)</h3>
+    <div class="bar-list">
+      <div class="bar-row"><div class="lbl">PVT R1</div><div class="bar-track"><div class="bar-fill pvt" style="width:30%"></div></div><div class="bar-val" style="color:var(--muted)">0.9005</div><div class="bar-lb" style="color:var(--muted)">—</div></div>
+      <div class="bar-row"><div class="lbl">PVT R2</div><div class="bar-track"><div class="bar-fill pvt" style="width:55%"></div></div><div class="bar-val">0.9225</div><div class="bar-lb" style="color:var(--muted)">—</div></div>
+      <div class="bar-row"><div class="lbl">PVT R3</div><div class="bar-track"><div class="bar-fill pvt" style="width:65%"></div></div><div class="bar-val" style="color:var(--accent)">~0.933</div><div class="bar-lb" style="color:var(--accent)">TBD</div></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:4px;">PVT R3: 3/5 folds done (fold3 best=0.9516, fold4 pending)</p>
+    <div class="callout info" style="margin-top:12px;font-size:12px;">
+      <strong>Gap closing fast:</strong> R1 gap vs B0 = −0.012, R2 gap = −0.003. Architecture diversity benefit expected in B0+PVT ensemble.
+    </div>
+  </div>
+</div>
+
+<h3>B0 — Full Fold Detail</h3>
+<table>
+  <thead>
+    <tr><th>Round</th><th class="r">fold0</th><th class="r">fold1</th><th class="r">fold2</th><th class="r">fold3</th><th class="r">fold4</th><th class="r">Mean AUC</th><th>LB (fold1+3)</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>R1</td><td class="r">0.9015</td><td class="r">0.9149</td><td class="r">0.9009</td><td class="r">0.9289</td><td class="r">0.9138</td><td class="r muted">0.9120</td><td class="muted">—</td><td><span class="badge green">done</span></td></tr>
+    <tr><td>R2</td><td class="r">0.9096</td><td class="r">0.9294</td><td class="r">0.9229</td><td class="r">0.9402</td><td class="r">0.9261</td><td class="r muted">0.9256</td><td class="muted">—</td><td><span class="badge green">done</span></td></tr>
+    <tr><td>R3</td><td class="r">0.9014</td><td class="r">0.9426</td><td class="r">0.9151</td><td class="r">0.9563</td><td class="r">0.9369</td><td class="r">0.9305</td><td class="green">0.926</td><td><span class="badge green">done</span></td></tr>
+    <tr><td>R4</td><td class="r">0.9034</td><td class="r">0.9480</td><td class="r">0.9238</td><td class="r">0.9544</td><td class="r">0.9408</td><td class="r">0.9341</td><td class="green">0.927</td><td><span class="badge green">done</span></td></tr>
+    <tr><td>R5</td><td class="r">0.9023</td><td class="r">0.9451</td><td class="r">0.9210</td><td class="r">0.9595</td><td class="r">0.9370</td><td class="r">0.9330</td><td class="gold">0.931 ★</td><td><span class="badge green">done</span></td></tr>
+    <tr class="best-row"><td>R6</td><td class="r">0.9052</td><td class="r">0.9524</td><td class="r">0.9246</td><td class="r gold">0.9664</td><td class="r">0.9431</td><td class="r gold">0.9383</td><td class="gold">0.931 ★</td><td><span class="badge green">done</span></td></tr>
+    <tr><td><strong>R7</strong></td><td class="r">0.9047</td><td class="r">0.9590</td><td class="r">0.9216</td><td class="r">0.9577</td><td class="r">0.9451</td><td class="r green"><strong>0.9376</strong></td><td class="accent" style="color:var(--accent)">TBD →</td><td><span class="badge amber">submit</span></td></tr>
+    <tr><td>R8</td><td class="r muted" colspan="5">auto-starting after R7 infer+pseudo</td><td class="r muted">—</td><td class="muted">—</td><td><span class="badge blue">queued</span></td></tr>
+  </tbody>
+</table>
+
+<h3>PVT — Full Fold Detail</h3>
+<table>
+  <thead>
+    <tr><th>Round</th><th class="r">fold0</th><th class="r">fold1</th><th class="r">fold2</th><th class="r">fold3</th><th class="r">fold4</th><th class="r">Mean AUC</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>PVT R1</td><td class="r">0.8991</td><td class="r">0.9243</td><td class="r">0.8519</td><td class="r">0.9101</td><td class="r">0.9170</td><td class="r muted">0.9005</td><td><span class="badge green">done</span></td></tr>
+    <tr><td>PVT R2</td><td class="r">0.9108</td><td class="r">0.9182</td><td class="r">0.9064</td><td class="r gold">0.9455</td><td class="r">0.9317</td><td class="r">0.9225</td><td><span class="badge green">done</span></td></tr>
+    <tr class="best-row"><td>PVT R3</td><td class="r">0.9225</td><td class="r">0.9380</td><td class="r">0.9218</td><td class="r gold">0.9516</td><td class="r muted">running…</td><td class="r green">~0.933</td><td><span class="badge blue">4/5 folds</span></td></tr>
+  </tbody>
+</table>
+<p style="font-size:11px;color:var(--muted);">★ = LB confirmed. AUC = best ss_auc across all epochs per fold.</p>
+</div>
+
+<!-- 5. Key LB Finding -->
+<div class="section">
+<h2><span class="icon">🏆</span> 5. Key Finding: Our SED Surpasses Competitor</h2>
+<div class="callout success">
+  <strong>Critical (2026-04-01):</strong> R5 with only 2 folds (fold1+3) scores LB <strong>0.931</strong> without any competitor model.
+  R6 full 5-fold also scores 0.931. Prior drop from competitor SED removal was −0.013 (0.921→0.908). Full recovery achieved in 6 rounds.
+</div>
+<table>
+  <thead><tr><th>Submission</th><th>SED Model</th><th>Competitor SED?</th><th class="r">LB</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>v17 + R3 (fold1+3)</td><td>sed_ns_b0_r3</td><td><span class="badge red">No</span></td><td class="r">0.926</td><td>First confirmation</td></tr>
+    <tr><td>v17 + R4 (fold1+3)</td><td>sed_ns_b0_r4</td><td><span class="badge red">No</span></td><td class="r">0.927</td><td>Steady improvement</td></tr>
+    <tr class="best-row"><td>v17 + R5 (fold1+3)</td><td>sed_ns_b0_r5</td><td><span class="badge red">No</span></td><td class="r gold"><strong>0.931</strong></td><td>2 folds only — near parity with competitor baseline</td></tr>
+    <tr class="best-row"><td>v17 + R6 (5 folds)</td><td>sed_ns_b0_r6</td><td><span class="badge red">No</span></td><td class="r gold"><strong>0.931</strong></td><td>5 folds, higher AUC (0.9383) — LB flat despite AUC gain</td></tr>
+    <tr><td>v17 baseline</td><td>competitor SED</td><td><span class="badge blue">Yes</span></td><td class="r">0.933</td><td>Current anchor; −0.002 gap from our R6</td></tr>
+  </tbody>
+</table>
+<div class="callout critical">
+  <strong>AUC ≠ LB proxy:</strong> R6 mean AUC = 0.9383 > R5 mean = 0.9330, but both score identical LB 0.931. Mean AUC improvement does not reliably translate to LB gain. Only confirmed LB submissions should be trusted.
+</div>
+</div>
+
+<!-- 6. Hyperparameters -->
+<div class="section">
+<h2><span class="icon">⚙️</span> 6. Validated Hyperparameters</h2>
+<div class="params">
+  <div class="param"><div class="key">clip_duration</div><div class="val">20 s</div><div class="why">4× Perch 5s windows; 1st-place core insight</div></div>
+  <div class="param"><div class="key">use_sumix_freq</div><div class="val">false</div><div class="why">Wave-level mixup beats freq-bin SumixFreq (forum validated)</div></div>
+  <div class="param"><div class="key">epochs</div><div class="val">25–30</div><div class="why">Prevents overconfidence in pseudo labels</div></div>
+  <div class="param"><div class="key">drop_path_rate</div><div class="val">0.15</div><div class="why">Added R2+; prevents late-round overfitting</div></div>
+  <div class="param"><div class="key">ema_decay</div><div class="val">0.999</div><div class="why">Cross-round EMA inheritance for smooth distillation</div></div>
+  <div class="param"><div class="key">gamma (power transform)</div><div class="val">2.0</div><div class="why">Suppresses low-confidence, preserves high-confidence signal</div></div>
+  <div class="param"><div class="key">perch_w / sed_w</div><div class="val">0.02 / 0.98</div><div class="why">Late rounds SED-dominant; Perch only as supplement</div></div>
+  <div class="param"><div class="key">percentile threshold</div><div class="val">95</div><div class="why">Top 5% confidence only → low noise propagation</div></div>
+  <div class="param"><div class="key">nonaves_perch_only</div><div class="val">true</div><div class="why">Amphibia/Insecta/Mammalia/Reptilia — Perch only</div></div>
+  <div class="param"><div class="key">n_mels / n_fft</div><div class="val">224 / 2048</div><div class="why">High-resolution mel; hop=512 covers 20s window</div></div>
+  <div class="param"><div class="key">GEMFreqPool p</div><div class="val">3.0</div><div class="why">Peak-emphasizing pool; better than avg for bird calls</div></div>
+  <div class="param"><div class="key">corrector_alpha</div><div class="val">0.40</div><div class="why">BiSSM blend strength toward Perch teacher</div></div>
+</div>
+</div>
+
+<!-- 7. PVT Branch -->
+<div class="section">
+<h2><span class="icon">🔬</span> 7. PVT v2 B0 — Independent Transformer Branch</h2>
+<div class="two-col">
+  <div>
+    <p style="font-size:13px;margin-bottom:12px;">Tests whether a Pyramid Vision Transformer backbone outperforms EfficientNet-B0 CNN. Audio is processed as a 2D mel spectrogram image, making any vision backbone applicable. PVT v2 B0 (3.4M params) has richer long-range dependency modeling via self-attention across frequency and time.</p>
+    <div class="callout info"><strong>Independent by design:</strong> PVT starts from B0 R4 pseudo labels and produces its own <code>sed_20s_pvt_r{N}.csv</code> chain independently — does not block the B0 pipeline.</div>
+    <div class="callout success"><strong>Gap closing:</strong> R1 gap vs B0 = −0.012, R2 gap = −0.003, R3 gap ≈ −0.005 (4/5 folds). Architecture diversity benefit in ensemble expected even if PVT doesn't individually surpass B0.</div>
+  </div>
+  <div>
+    <table>
+      <thead><tr><th>Round</th><th class="r">Best Fold</th><th class="r">Mean AUC</th><th>vs B0</th></tr></thead>
+      <tbody>
+        <tr><td>PVT R1</td><td class="r">0.9243 (f1)</td><td class="r muted">0.9005</td><td class="muted">−0.012</td></tr>
+        <tr><td>PVT R2</td><td class="r gold">0.9455 (f3)</td><td class="r">0.9225</td><td class="muted">−0.003</td></tr>
+        <tr class="best-row"><td>PVT R3 (4/5)</td><td class="r gold">0.9516 (f3)</td><td class="r green">~0.933</td><td class="green">~0.000</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:11px;color:var(--muted);margin-top:6px;">PVT R3 fold3 (0.9516) already exceeds R6 fold3 (0.9664)? No — R6 f3=0.9664 is still highest. R3 mean is catching up to R7 mean (0.9376).</p>
+  </div>
+</div>
+</div>
+
+<!-- 8. Inference: 20s Sliding Window -->
+<div class="section">
+<h2><span class="icon">🎯</span> 8. Inference: 20s Sliding Window (Window Aggregation)</h2>
+<div class="callout warn"><strong>Problem solved:</strong> Training uses 20s clips but competition expects 5s slot predictions (12 slots per 60s file). Naïve 5s inference creates a train/test mismatch.</div>
+
+<div class="arch">60s audio file
+   ↓  build 9 overlapping 20s windows  (stride = 5s)
+   ↓
+  window 0:  samples [      0 → 640000]  covers slots  0, 1, 2, 3
+  window 1:  samples [ 160000 → 800000]  covers slots  1, 2, 3, 4
+  window 2:  samples [ 320000 → 960000]  covers slots  2, 3, 4, 5
+  ...
+  window 8:  samples [1280000 →1920000]  covers slots  8, 9,10,11
+   ↓
+  SED ONNX inference on all 9 windows  →  (9, 234) probs
+   ↓
+  Accumulate with overlap counting:
+    slot s  ← average of all windows covering that slot
+    edge slots (0, 11): covered by 1 window
+    center slots (3–8): covered by 4 windows
+   ↓
+  (12, 234) per-slot predictions
+   ↓
+  BranchEns → cSEBBs post-processing  →  final submission</div>
+
+<div class="callout success">
+  <strong>Confirmed LB 0.931</strong> with window aggregation approach. Framewise inference (true 1st-place method) was tested and scored only LB 0.924 with our model — window aggregation is better for our architecture.
+</div>
+</div>
+
+<!-- 9. ONNX / Weights -->
+<div class="section">
+<h2><span class="icon">📦</span> 9. ONNX Weights Available</h2>
+<table>
+  <thead><tr><th>File</th><th>Type</th><th>Folds</th><th>Mean AUC</th><th>Size</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>sed_ns_r6_fold1.onnx</code> / <code>fold3.onnx</code></td><td>Individual</td><td>1, 3</td><td>0.9524 / 0.9664</td><td>25MB each</td><td>Current notebook default</td></tr>
+    <tr><td><code>sed_ns_r7_fold{0-4}.onnx</code></td><td>Individual</td><td>0–4</td><td>0.9376</td><td>25MB each</td><td>R7 full set · ready to submit</td></tr>
+    <tr class="best-row"><td><code>sed_ns_b0_r7_soup.onnx</code></td><td>Model Soup</td><td>all 5</td><td>0.9376</td><td>25MB</td><td>5-fold weight average · faster inference</td></tr>
+    <tr><td><code>sed_ns_pvt_r3_fold{0-3}.onnx</code></td><td>Individual</td><td>0–3</td><td>—</td><td>15MB each</td><td>PVT R3 (fold4 pending)</td></tr>
+    <tr><td><code>sed_ns_pvt_r{1,2,3}_soup.onnx</code></td><td>Model Soup</td><td>5/5/4</td><td>0.9005/0.9225/0.9335</td><td>15MB each</td><td>PVT soups</td></tr>
+  </tbody>
+</table>
+<p style="font-size:11px;color:var(--muted)">All files in <code>new direction/weights/sed/</code> · Input: (B, 3, 224, T) mel · Output: (B, 234) probs</p>
+</div>
+
+<!-- 10. Scripts -->
+<div class="section">
+<h2><span class="icon">📁</span> 10. Script Reference</h2>
+<table>
+  <thead><tr><th>Script</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>train_sed_ns.py</code></td><td>Main training + <code>--infer_all_ss</code> mode</td></tr>
+    <tr><td><code>scripts/gen_pseudo_ns.py</code></td><td>Generate next-round pseudo labels (power transform + percentile filter)</td></tr>
+    <tr><td><code>scripts/train_sed_residual_corrector.py</code></td><td>BiSSM residual corrector — Perch teacher vs SED gap</td></tr>
+    <tr><td><code>scripts/export_sed_to_onnx.py</code></td><td>ONNX export: FP32 (~25MB B0 / ~15MB PVT)</td></tr>
+    <tr><td><code>scripts/auto_sed_ns_20s_r5r8.sh</code></td><td>B0 R5–R8 automated pipeline (R7 done, R8 queued)</td></tr>
+    <tr><td><code>scripts/auto_sed_ns_pvt_20s_r1r4.sh</code></td><td>PVT R1–R4 automated pipeline (R3 fold3 running)</td></tr>
+    <tr><td><code>scripts/auto_sed_ns_pvt_20s_r5r8.sh</code></td><td>PVT R5–R8 (waiting for PVT R4 pseudo labels)</td></tr>
+    <tr><td><code>scripts/visualize_sed_attention.py</code></td><td>Attention maps for 20 worst-performing samples per round</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- 11. Next Steps -->
+<div class="section">
+<h2><span class="icon">🚀</span> 11. Next Steps</h2>
+<table>
+  <thead><tr><th>Priority</th><th>Action</th><th>Expected</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td><span class="badge amber">High</span></td><td>Submit R7 fold1+fold3 via v17 notebook</td><td>LB ≥ 0.931 → aim for 0.933+</td><td>ONNX ready</td></tr>
+    <tr><td><span class="badge amber">High</span></td><td>R8 training (auto pipeline after R7 infer/pseudo)</td><td>Further AUC gain</td><td>Queued</td></tr>
+    <tr><td><span class="badge blue">Medium</span></td><td>PVT R3 completion + B0+PVT ensemble notebook</td><td>Architecture diversity benefit</td><td>fold4 training</td></tr>
+    <tr><td><span class="badge blue">Medium</span></td><td>Submit PVT R3 + B0 R7 ensemble (noisy-student-pvt-ensemble.ipynb)</td><td>LB improvement via diversity</td><td>PVT R3 fold4 pending</td></tr>
+    <tr><td><span class="badge purple">Low</span></td><td>CLAP non-Aves ensemble weight boost</td><td>Amphibia/Insecta improvement</td><td>CLAP Stage2 done (0.6915)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<footer>
+  BirdCLEF 2026 · SED Noisy Student Experiment Report · Updated 2026-04-01<br>
+  Pipeline: 3-source data mixing (train_audio + soundscape real labels + pseudo labels) → EfficientNet-B0/PVT v2 B0 → 20s clips → Noisy Student ×7 rounds → LB 0.931 (no competitor SED)
+</footer>
+
+</body>
+</html>

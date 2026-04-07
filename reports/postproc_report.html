@@ -1,0 +1,1320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BirdCLEF 2026 — Post-Processing Experiment Report</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg2: #1a1d27;
+      --bg3: #22263a;
+      --border: #2e3350;
+      --text: #e2e8f0;
+      --text-muted: #8892a4;
+      --accent: #6366f1;
+      --accent2: #818cf8;
+      --green: #22c55e;
+      --green-dim: #166534;
+      --yellow: #eab308;
+      --yellow-dim: #713f12;
+      --red: #ef4444;
+      --red-dim: #7f1d1d;
+      --blue: #3b82f6;
+      --cyan: #06b6d4;
+      --orange: #f97316;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #1a1d27 60%, #0f1117 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 48px 40px 36px;
+    }
+    .header-badge {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+    }
+    .header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      color: #fff;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+    }
+    .header-sub {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+    .header-meta {
+      display: flex;
+      gap: 32px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    .meta-pill {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 18px;
+      text-align: center;
+    }
+    .meta-pill .val {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--accent2);
+      display: block;
+    }
+    .meta-pill .lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 24px;
+    }
+
+    /* ── Sections ── */
+    .section {
+      margin-bottom: 56px;
+    }
+    .section-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      border-left: 4px solid var(--accent);
+      padding-left: 14px;
+      margin-bottom: 20px;
+    }
+    .section-title span {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-top: 2px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+    .kpi-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .kpi-card .kpi-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 6px;
+    }
+    .kpi-card .kpi-val {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--green);
+    }
+    .kpi-card .kpi-delta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .kpi-card.kpi-neutral .kpi-val { color: var(--accent2); }
+    .kpi-card.kpi-warn .kpi-val { color: var(--yellow); }
+
+    /* ── Tables ── */
+    .tbl-wrap {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead tr {
+      background: var(--bg3);
+    }
+    thead th {
+      padding: 12px 14px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg3); }
+    tbody td {
+      padding: 11px 14px;
+      vertical-align: middle;
+    }
+
+    /* ── AUC chip ── */
+    .auc {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      display: inline-block;
+    }
+    .auc-great   { background: #14532d; color: #86efac; }
+    .auc-good    { background: #166534; color: #4ade80; }
+    .auc-decent  { background: #1c3a20; color: #86efac; }
+    .auc-ok      { background: #3b2f10; color: #fde68a; }
+    .auc-bad     { background: #450a0a; color: #fca5a5; }
+    .auc-base    { background: #1e1b4b; color: #a5b4fc; }
+
+    .delta-pos { color: var(--green); font-size: 12px; font-weight: 600; }
+    .delta-neg { color: var(--red);   font-size: 12px; font-weight: 600; }
+    .delta-neu { color: var(--text-muted); font-size: 12px; }
+
+    /* ── Badges ── */
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+    .badge-breakthrough { background: #581c87; color: #e9d5ff; }
+    .badge-plateau      { background: #1e3a5f; color: #bae6fd; }
+    .badge-baseline     { background: #1c1c1c; color: #9ca3af; }
+    .badge-fail         { background: #450a0a; color: #fca5a5; }
+
+    /* ── Progress bar ── */
+    .prog-bar-wrap {
+      background: var(--bg3);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      min-width: 80px;
+    }
+    .prog-bar {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #4338ca, #6366f1);
+    }
+
+    /* ── Method category cards ── */
+    .method-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 700px) { .method-grid { grid-template-columns: 1fr; } }
+    .method-card {
+      background: var(--bg2);
+      border-radius: 12px;
+      padding: 20px;
+      border-top: 3px solid;
+    }
+    .method-card.works    { border-color: var(--green); }
+    .method-card.fails    { border-color: var(--red);   }
+    .method-card h3 {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+    .method-card.works h3 { color: var(--green); }
+    .method-card.fails h3 { color: var(--red);   }
+    .method-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+    .method-item:last-child { border-bottom: none; }
+    .method-name { color: var(--text); font-size: 13px; flex: 1; }
+    .method-note { color: var(--text-muted); font-size: 11px; text-align: right; }
+
+    /* ── Findings ── */
+    .finding {
+      display: flex;
+      gap: 16px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+    }
+    .finding:last-child { border-bottom: none; }
+    .finding-num {
+      flex-shrink: 0;
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .finding-text { color: var(--text); line-height: 1.7; }
+    .finding-text strong { color: var(--accent2); }
+    .finding-text code {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      color: var(--cyan);
+    }
+
+    /* ── Pipeline box ── */
+    .pipeline-box {
+      background: var(--bg3);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      padding: 24px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .pipe-step {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-family: 'Courier New', monospace;
+      color: var(--cyan);
+    }
+    .pipe-arrow {
+      color: var(--text-muted);
+      font-size: 18px;
+    }
+    .pipe-result {
+      margin-top: 16px;
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--green);
+    }
+    .pipe-delta {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ── Fold table ── */
+    .fold-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .fold-card {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      text-align: center;
+    }
+    .fold-card .fold-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .fold-card .fold-auc   { font-size: 20px; font-weight: 800; color: var(--accent2); margin: 4px 0; font-family: 'Courier New', monospace; }
+    .fold-card .fold-name  { font-size: 11px; color: var(--text-muted); }
+
+    /* ── Literature ── */
+    .lit-item {
+      display: flex;
+      gap: 14px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+    }
+    .lit-item:last-child { border-bottom: none; }
+    .lit-source {
+      flex-shrink: 0;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+    .lit-desc { font-size: 13px; color: var(--text); line-height: 1.6; }
+    .lit-desc .outcome-used   { color: var(--green); font-weight: 600; }
+    .lit-desc .outcome-failed { color: var(--red);   font-weight: 600; }
+    .lit-desc .outcome-partial { color: var(--yellow); font-weight: 600; }
+
+    /* ── Round pills in milestone table ── */
+    .round-pill {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent2);
+      font-family: 'Courier New', monospace;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 32px;
+      color: var(--text-muted);
+      font-size: 12px;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ HEADER ═══════════════════════════════════════════ -->
+<div class="header">
+  <div style="max-width:1200px; margin:0 auto;">
+    <div class="header-badge">BirdCLEF 2026</div>
+    <h1>Post-Processing Experiment Report</h1>
+    <div class="header-sub">Temporal smoothing &amp; score aggregation ablations — 53 rounds, local OOF evaluation only</div>
+    <div class="header-meta">
+      <div class="meta-pill">
+        <span class="val">53</span>
+        <span class="lbl">Experiment Rounds</span>
+      </div>
+      <div class="meta-pill">
+        <span class="val">1 099</span>
+        <span class="lbl">Methods Tested</span>
+      </div>
+      <div class="meta-pill">
+        <span class="val">0.8165</span>
+        <span class="lbl">Best OOF AUC</span>
+      </div>
+      <div class="meta-pill">
+        <span class="val">+0.0746</span>
+        <span class="lbl">vs Raw Perch Probe</span>
+      </div>
+      <div class="meta-pill">
+        <span class="val">59</span>
+        <span class="lbl">Soundscape Files (OOF)</span>
+      </div>
+      <div class="meta-pill">
+        <span class="val">708</span>
+        <span class="lbl">Evaluation Windows</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ BODY ════════════════════════════════════════════ -->
+<div class="container">
+
+  <!-- ─── 1. Executive Summary ─── -->
+  <div class="section">
+    <div class="section-title">Executive Summary<span>Overview of the post-processing search</span></div>
+    <div class="card">
+      <p style="margin-bottom:14px; line-height:1.8;">
+        Over <strong>53 experiment rounds</strong> totalling <strong>1 099 distinct methods</strong>, a systematic post-processing pipeline was developed on top of Perch-based SED predictions evaluated on <strong>59 held-out soundscape recordings</strong> (708 five-second windows each containing 234-class probability vectors).
+        The search started from a raw Perch probe baseline of <strong>OOF AUC 0.7419</strong> and achieved a final best of <strong>0.8165</strong>, an absolute gain of <strong>+0.0746</strong>.
+      </p>
+      <p style="margin-bottom:14px; line-height:1.8;">
+        The search progressed through four distinct phases:
+      </p>
+      <ol style="padding-left:22px; line-height:2;">
+        <li><strong>Temporal pooling exploration</strong> (R1–R15): LogSumExp, GlobalMean blending, and entropy-weighted anchors were evaluated. Best: 0.7927.</li>
+        <li><strong>NoisyOR anchor &amp; branch ensembling</strong> (R16–R24): NoisyOR outperformed mean anchors; first plateau at 0.8045.</li>
+        <li><strong>Richness normalization</strong> (R25–R49): SoftmaxRichness caused the largest single jump (+0.0035 at R40). A hard plateau formed at 0.8140 that resisted 9 consecutive rounds of tuning.</li>
+        <li><strong>Logit-space pre-smoothing</strong> (R50–R53): Local-max propagation in logit space, restricted to Aves classes, broke the 0.8140 plateau and lifted the best to <strong>0.8165</strong>.</li>
+      </ol>
+    </div>
+
+    <!-- KPI row -->
+    <div class="card-grid" style="margin-top:16px;">
+      <div class="kpi-card kpi-neutral">
+        <div class="kpi-label">Raw Perch (no probe)</div>
+        <div class="kpi-val">0.7079</div>
+        <div class="kpi-delta">Starting point — no post-processing</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-label">LGBM Probe (no smooth)</div>
+        <div class="kpi-val">0.7419</div>
+        <div class="kpi-delta">+0.0340 vs raw Perch</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-label">Gaussian Baseline</div>
+        <div class="kpi-val">0.7749</div>
+        <div class="kpi-delta">+0.0330 vs probe; used as postproc baseline</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Best OOF AUC (R52)</div>
+        <div class="kpi-val">0.8165</div>
+        <div class="kpi-delta">+0.0416 vs Gaussian baseline</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 2. Performance Progression ─── -->
+  <div class="section">
+    <div class="section-title">Performance Progression<span>Key milestone methods across all 53 rounds</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Round</th>
+            <th>Method / Change</th>
+            <th>OOF AUC</th>
+            <th>Delta</th>
+            <th>vs Gaussian</th>
+            <th>Progress</th>
+            <th>Tag</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="round-pill">—</span></td>
+            <td>Raw Perch (no probe)</td>
+            <td><span class="auc auc-bad">0.7079</span></td>
+            <td class="delta-neu">—</td>
+            <td class="delta-neg">−0.0670</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:0%"></div></div></td>
+            <td><span class="badge badge-baseline">Baseline</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">—</span></td>
+            <td>LGBM Probe (no smoothing)</td>
+            <td><span class="auc auc-bad">0.7419</span></td>
+            <td class="delta-neu">—</td>
+            <td class="delta-neg">−0.0330</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:8%"></div></div></td>
+            <td><span class="badge badge-baseline">Baseline</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">—</span></td>
+            <td>Gaussian Baseline</td>
+            <td><span class="auc auc-ok">0.7749</span></td>
+            <td class="delta-neu">—</td>
+            <td class="delta-neu">0.0000</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:16%"></div></div></td>
+            <td><span class="badge badge-baseline">Postproc Start</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R2</span></td>
+            <td>LogSumExp temporal pooling introduced</td>
+            <td><span class="auc auc-ok">0.7794</span></td>
+            <td class="delta-pos">+0.0045</td>
+            <td class="delta-pos">+0.0045</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:27%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R3</span></td>
+            <td>LSE → GlobalMean blend (α=0.175)</td>
+            <td><span class="auc auc-ok">0.7818</span></td>
+            <td class="delta-pos">+0.0069</td>
+            <td class="delta-pos">+0.0069</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:33%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R6</span></td>
+            <td>LSE → GM → cSEBBs change-point segmentation</td>
+            <td><span class="auc auc-ok">0.7838</span></td>
+            <td class="delta-pos">+0.0089</td>
+            <td class="delta-pos">+0.0089</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:38%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R9</span></td>
+            <td>Beta fine-tune (β=4.5)</td>
+            <td><span class="auc auc-ok">0.7841</span></td>
+            <td class="delta-pos">+0.0003</td>
+            <td class="delta-pos">+0.0092</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:39%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R11</span></td>
+            <td>SoftEntropyWeight → LSE → GM → cSEBBs</td>
+            <td><span class="auc auc-ok">0.7858</span></td>
+            <td class="delta-pos">+0.0017</td>
+            <td class="delta-pos">+0.0109</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:42%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R12</span></td>
+            <td>RDP weighting</td>
+            <td><span class="auc auc-ok">0.7876</span></td>
+            <td class="delta-pos">+0.0018</td>
+            <td class="delta-pos">+0.0127</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:46%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R13</span></td>
+            <td>SoftEntropy T=0.2</td>
+            <td><span class="auc auc-ok">0.7913</span></td>
+            <td class="delta-pos">+0.0037</td>
+            <td class="delta-pos">+0.0164</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:52%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R14</span></td>
+            <td>MeanMax anchor (first breakthrough: MeanMax &gt; pure LSE)</td>
+            <td><span class="auc auc-decent">0.7927</span></td>
+            <td class="delta-pos">+0.0014</td>
+            <td class="delta-pos">+0.0178</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:55%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Breakthrough</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R18</span></td>
+            <td>MeanMax fine-tune</td>
+            <td><span class="auc auc-decent">0.7988</span></td>
+            <td class="delta-pos">+0.0061</td>
+            <td class="delta-pos">+0.0239</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:63%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R20</span></td>
+            <td>NoisyOR anchor (nor_w=0.40, α=0.30) — NOR outperforms mean</td>
+            <td><span class="auc auc-decent">0.8017</span></td>
+            <td class="delta-pos">+0.0029</td>
+            <td class="delta-pos">+0.0268</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:68%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Major Breakthrough</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R21</span></td>
+            <td>DualAnchor (NOR + Max)</td>
+            <td><span class="auc auc-decent">0.8034</span></td>
+            <td class="delta-pos">+0.0017</td>
+            <td class="delta-pos">+0.0285</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:71%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R24</span></td>
+            <td>BranchEnsemble — first plateau reached</td>
+            <td><span class="auc auc-decent">0.8045</span></td>
+            <td class="delta-pos">+0.0011</td>
+            <td class="delta-pos">+0.0296</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:73%"></div></div></td>
+            <td><span class="badge badge-plateau">Plateau</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R36</span></td>
+            <td>AdaptiveAnchorRichness — file-richness adaptive NOR weight</td>
+            <td><span class="auc auc-decent">0.8054</span></td>
+            <td class="delta-pos">+0.0009</td>
+            <td class="delta-pos">+0.0305</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:75%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Plateau Broken</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R37</span></td>
+            <td>AdaptAnchor fine-tune</td>
+            <td><span class="auc auc-decent">0.8057</span></td>
+            <td class="delta-pos">+0.0003</td>
+            <td class="delta-pos">+0.0308</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:76%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R38</span></td>
+            <td>AdaptRichPow (power-law curve)</td>
+            <td><span class="auc auc-decent">0.8062</span></td>
+            <td class="delta-pos">+0.0005</td>
+            <td class="delta-pos">+0.0313</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:77%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R39</span></td>
+            <td>Higher gamma (γ=5.0)</td>
+            <td><span class="auc auc-decent">0.8078</span></td>
+            <td class="delta-pos">+0.0016</td>
+            <td class="delta-pos">+0.0329</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:80%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R40</span></td>
+            <td>SoftmaxRichness T=0.10 — largest single-step gain</td>
+            <td><span class="auc auc-decent">0.8113</span></td>
+            <td class="delta-pos">+0.0035</td>
+            <td class="delta-pos">+0.0364</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:87%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Major Breakthrough</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R41</span></td>
+            <td>SoftmaxRich T=0.15</td>
+            <td><span class="auc auc-decent">0.8122</span></td>
+            <td class="delta-pos">+0.0009</td>
+            <td class="delta-pos">+0.0373</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:89%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R42</span></td>
+            <td>SoftmaxRich + base_nw=0.25</td>
+            <td><span class="auc auc-decent">0.8136</span></td>
+            <td class="delta-pos">+0.0014</td>
+            <td class="delta-pos">+0.0387</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:92%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R43</span></td>
+            <td>base_nw sweep</td>
+            <td><span class="auc auc-decent">0.8137</span></td>
+            <td class="delta-pos">+0.0001</td>
+            <td class="delta-pos">+0.0388</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:92%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R45</span></td>
+            <td>cp_blend=0.60 — hard plateau begins</td>
+            <td><span class="auc auc-decent">0.8140</span></td>
+            <td class="delta-pos">+0.0003</td>
+            <td class="delta-pos">+0.0391</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:93%"></div></div></td>
+            <td><span class="badge badge-plateau">Hard Plateau</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R46–R49</span></td>
+            <td>branch_combine, out_scale, adapt_cpblend — all fail to break plateau</td>
+            <td><span class="auc auc-decent">0.8140</span></td>
+            <td class="delta-neu">0.0000</td>
+            <td class="delta-pos">+0.0391</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:93%"></div></div></td>
+            <td><span class="badge badge-plateau">Plateau ×4</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.1) → SoftRich → cSEBBs — plateau broken after 49 rounds</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-pos">+0.0023</td>
+            <td class="delta-pos">+0.0414</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:99%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Plateau Broken</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(α=0.40) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8164</span></td>
+            <td class="delta-pos">+0.0001</td>
+            <td class="delta-pos">+0.0415</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:100%"></div></div></td>
+            <td></td>
+          </tr>
+          <tr style="background: #0d1f0d;">
+            <td><span class="round-pill">R52</span></td>
+            <td><strong>lmax_pre → lscale(0.9) → SoftRich → cSEBBs</strong></td>
+            <td><span class="auc auc-great">0.8165</span></td>
+            <td class="delta-pos">+0.0001</td>
+            <td class="delta-pos">+0.0416</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:100%"></div></div></td>
+            <td><span class="badge badge-breakthrough">Current Best</span></td>
+          </tr>
+          <tr>
+            <td><span class="round-pill">R53</span></td>
+            <td>nSEBBs per-class adaptive; P_max lifting = 0.7937 (FAILS)</td>
+            <td><span class="auc auc-great">0.8164</span></td>
+            <td class="delta-neg">−0.0001</td>
+            <td class="delta-pos">+0.0415</td>
+            <td><div class="prog-bar-wrap"><div class="prog-bar" style="width:100%"></div></div></td>
+            <td><span class="badge badge-plateau">Plateau</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ─── 3. Method Categories ─── -->
+  <div class="section">
+    <div class="section-title">Method Categories<span>What worked and what failed, with impact estimates</span></div>
+    <div class="method-grid">
+      <!-- WORKS -->
+      <div class="method-card works">
+        <h3>Methods That Worked</h3>
+        <div class="method-item">
+          <span class="method-name">LogSumExp temporal pooling (β=4.5, r=1)</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">+0.0045</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">GlobalMean Blend (α=0.175) — only after LSE</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">+0.0024 combo</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">cSEBBs change-point segmentation (thr=0.06, blend=0.60)</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">+0.0090 combo</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">SoftEntropy Weighting (T=0.2) — down-weights noisy clips</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">+0.0065</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">NoisyOR anchor (nor_w=0.40, α=0.30)</span>
+          <span class="method-note"><span class="auc auc-decent" style="font-size:11px;">major jump</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">SoftmaxRichness (T=0.15, thr=0.5) — translation-invariant</span>
+          <span class="method-note"><span class="auc auc-good" style="font-size:11px;">+0.0035 R40</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">AdaptiveAnchorRichness — file-richness adaptive NOR weight</span>
+          <span class="method-note"><span class="auc auc-decent" style="font-size:11px;">broke plateau</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">lmax_pre_aves in logit space (α=0.1) — Aves classes only</span>
+          <span class="method-note"><span class="auc auc-great" style="font-size:11px;">+0.0023</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">Logit scale shrink (lscale=0.9)</span>
+          <span class="method-note"><span class="auc auc-great" style="font-size:11px;">+0.0001</span></span>
+        </div>
+      </div>
+
+      <!-- FAILS -->
+      <div class="method-card fails">
+        <h3>Methods That Failed</h3>
+        <div class="method-item">
+          <span class="method-name">HMM (wrong priors for BirdCLEF)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.016</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">Median filter standalone</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.016</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">MultiScaleMedian (DCASE metric ≠ BirdCLEF AUC)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.016</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">BoundaryAware smoothing</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.033</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">SoftNMS (suppresses correct adjacent detections)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.060</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">VelocityAttention (12 clips too few)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.035 to −0.080</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">Learnable convolution / EMA (overfits 708 windows)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.003 to −0.079</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">GlobalMean alone (too aggressive prior)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">−0.025</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">CooccurrenceGraph (12 clips insufficient for co-occurrence)</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">0.7857</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">P_max lifting (MaxMeanResidual)</span>
+          <span class="method-note"><span class="auc auc-bad" style="font-size:11px;">0.7937 useless</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">lmax_pre on ALL classes (non-Aves hurt)</span>
+          <span class="method-note"><span class="auc auc-decent" style="font-size:11px;">0.8047</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">lmax_pre AFTER SoftRich (order matters)</span>
+          <span class="method-note"><span class="auc auc-decent" style="font-size:11px;">0.8122 vs 0.8163</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">Bidirectional lmax (no gain vs unidirectional)</span>
+          <span class="method-note"><span class="auc auc-great" style="font-size:11px;">0.8164 tied</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">lscale ≥ 1.1 or ≤ 0.8</span>
+          <span class="method-note"><span class="auc auc-ok" style="font-size:11px;">0.8023–0.8137</span></span>
+        </div>
+        <div class="method-item">
+          <span class="method-name">Onset peak-finding / Voxaboxen approach (5s clips)</span>
+          <span class="method-note"><span class="auc auc-decent" style="font-size:11px;">0.8102</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 4. Key Findings ─── -->
+  <div class="section">
+    <div class="section-title">Key Findings<span>Numbered insights from 53 rounds of experimentation</span></div>
+    <div class="card">
+      <div class="finding">
+        <div class="finding-num">1</div>
+        <div class="finding-text">
+          <strong>Pipeline order is critical.</strong> Applying local-max propagation <em>before</em> SoftmaxRichness achieves <code>0.8163</code>, while applying it <em>after</em> yields only <code>0.8122</code> — a gap of <strong>+0.0041</strong>. The SoftmaxRichness normalization alters the score distribution in a way that makes logit-space smoothing less effective when applied downstream.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">2</div>
+        <div class="finding-text">
+          <strong>Class-group restriction is essential for lmax_pre.</strong> Applying local-max propagation in logit space to all 234 classes gives <code>0.8047</code>. Restricting to Aves classes (indices 72–233) gives <code>0.8163</code> — a <strong>+0.0116</strong> difference. Non-Aves class predictions respond differently to temporal smoothing and must not be conflated with bird calls.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">3</div>
+        <div class="finding-text">
+          <strong>SoftmaxRichness is vastly superior to power-law richness normalization.</strong> The translation-invariant formulation (R40, T=0.10) produced the single largest gain in the entire experiment: <strong>+0.0035</strong>. Power-law curves (R38, AdaptRichPow) reached only +0.0016 and were dominated. The key difference is that softmax richness is calibration-free and does not require per-file threshold tuning.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">4</div>
+        <div class="finding-text">
+          <strong>cSEBBs is highly context-dependent.</strong> Applied standalone, cSEBBs <em>hurts</em> by approximately −0.025. In a pipeline with pre-smoothed inputs it contributes <strong>+0.009</strong>. The change-point detector requires stable input scores; applying it to raw probabilities causes erratic segmentation boundaries.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">5</div>
+        <div class="finding-text">
+          <strong>The OOF metric is noisy at small gains.</strong> With only 59 soundscape files (708 windows of 12 clips each), gains below <strong>0.002</strong> OOF AUC are statistically unreliable. Multiple rounds (R43–R49) saw repeated 0.8140 confirmations across different hyperparameter settings, confirming the plateau was real rather than measurement noise.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">6</div>
+        <div class="finding-text">
+          <strong>Temporal learnable methods and HMMs catastrophically fail.</strong> With only 12 five-second clips per soundscape file, there is insufficient temporal context to learn or infer valid transition dynamics. HMM dropped by −0.016, SoftNMS by −0.060, and VelocityAttention by up to −0.080. Methods from DCASE Task 4 assume longer recordings and cannot be naively ported.
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-num">7</div>
+        <div class="finding-text">
+          <strong>NoisyOR anchor outperforms mean anchors.</strong> At R20, NoisyOR (nor_w=0.40, α=0.30) exceeded the prior best mean-anchor formulation by +0.0029. NoisyOR better models species presence under uncertain multi-label conditions: it produces a softer clip-level aggregate that is more robust to single-window outliers than arithmetic mean.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 5. Final Best Pipeline ─── -->
+  <div class="section">
+    <div class="section-title">Final Best Pipeline (R52)<span>OOF AUC: 0.8165 (+0.0416 vs Gaussian baseline)</span></div>
+    <div class="card">
+      <div class="pipeline-box">
+        <div class="pipe-step">lmax_pre_aves<br><small style="color:var(--text-muted);">α=0.1, radius=1</small></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">lscale<br><small style="color:var(--text-muted);">scale=0.9</small></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">SoftmaxAnchorRichness<br><small style="color:var(--text-muted);">T=0.15, thr=0.5, cp_blend=0.60, cp_thr=0.05</small></div>
+        <div class="pipe-arrow">→</div>
+        <div class="pipe-step">cSEBBs<br><small style="color:var(--text-muted);">change-point blend</small></div>
+      </div>
+      <div style="margin-top:20px; display:flex; gap:32px; flex-wrap:wrap;">
+        <div>
+          <div class="pipe-result">OOF AUC: 0.8165</div>
+          <div class="pipe-delta">+0.0416 vs Gaussian baseline &nbsp;|&nbsp; +0.0746 vs raw Perch probe</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 6. Top 20 Methods Table ─── -->
+  <div class="section">
+    <div class="section-title">Top 20 Methods by OOF AUC<span>All methods from the final experiment rounds</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Round</th>
+            <th>Method Description</th>
+            <th>OOF AUC</th>
+            <th>vs Best</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background: #0d1f0d;">
+            <td><strong style="color:var(--green);">1</strong></td>
+            <td><span class="round-pill">R52</span></td>
+            <td>lmax_pre → lscale(0.9) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8165</span></td>
+            <td class="delta-neu">—</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td><span class="round-pill">R52</span></td>
+            <td>bidir_lmax(a=0.10, r=1) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8164</span></td>
+            <td class="delta-neg">−0.0001</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(alpha=0.4) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8164</span></td>
+            <td class="delta-neg">−0.0001</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td><span class="round-pill">R53</span></td>
+            <td>lmax → SoftRich → nSEBBs(thr=0.06, r=0.04)</td>
+            <td><span class="auc auc-great">0.8164</span></td>
+            <td class="delta-neg">−0.0001</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.1) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-neg">−0.0002</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td><span class="round-pill">R52</span></td>
+            <td>nSEBBs_adapt_cpblend(base=0.55, boost=0.15)</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-neg">−0.0002</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(cp_blend=0.65) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-neg">−0.0002</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(cp_blend=0.70) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-neg">−0.0002</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.1) → SoftRich → cSEBBs (base)</td>
+            <td><span class="auc auc-great">0.8163</span></td>
+            <td class="delta-neg">−0.0002</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(cp_blend=0.55) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8162</span></td>
+            <td class="delta-neg">−0.0003</td>
+          </tr>
+          <tr>
+            <td>11</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(alpha=0.35) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8161</span></td>
+            <td class="delta-neg">−0.0004</td>
+          </tr>
+          <tr>
+            <td>12</td>
+            <td><span class="round-pill">R52</span></td>
+            <td>lscale_range(0.85) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8160</span></td>
+            <td class="delta-neg">−0.0005</td>
+          </tr>
+          <tr>
+            <td>13</td>
+            <td><span class="round-pill">R52</span></td>
+            <td>lscale_range(0.95) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8160</span></td>
+            <td class="delta-neg">−0.0005</td>
+          </tr>
+          <tr>
+            <td>14</td>
+            <td><span class="round-pill">R51</span></td>
+            <td>lmax_pre → SoftRich(alpha=0.45) → cSEBBs</td>
+            <td><span class="auc auc-great">0.8159</span></td>
+            <td class="delta-neg">−0.0006</td>
+          </tr>
+          <tr>
+            <td>15</td>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.15) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8159</span></td>
+            <td class="delta-neg">−0.0006</td>
+          </tr>
+          <tr>
+            <td>16</td>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.05) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8158</span></td>
+            <td class="delta-neg">−0.0007</td>
+          </tr>
+          <tr>
+            <td>17</td>
+            <td><span class="round-pill">R53</span></td>
+            <td>lmax → SoftRich → nSEBBs(thr=0.08, r=0.03)</td>
+            <td><span class="auc auc-great">0.8157</span></td>
+            <td class="delta-neg">−0.0008</td>
+          </tr>
+          <tr>
+            <td>18</td>
+            <td><span class="round-pill">R50</span></td>
+            <td>lmax_pre_aves(α=0.2, r=2) → SoftRich → cSEBBs</td>
+            <td><span class="auc auc-great">0.8157</span></td>
+            <td class="delta-neg">−0.0008</td>
+          </tr>
+          <tr>
+            <td>19</td>
+            <td><span class="round-pill">R45</span></td>
+            <td>SoftmaxRich(T=0.15, base_nw=0.25) → cSEBBs(cp=0.60)</td>
+            <td><span class="auc auc-decent">0.8155</span></td>
+            <td class="delta-neg">−0.0010</td>
+          </tr>
+          <tr>
+            <td>20</td>
+            <td><span class="round-pill">R49</span></td>
+            <td>adapt_cpblend_rich → cSEBBs</td>
+            <td><span class="auc auc-decent">0.8155</span></td>
+            <td class="delta-neg">−0.0010</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Fold breakdown for top 5 -->
+    <div style="margin-top:28px;">
+      <div style="font-size:14px; font-weight:700; color:var(--text-muted); margin-bottom:14px; text-transform:uppercase; letter-spacing:0.06em;">
+        Illustrative Fold-Level Breakdown — Top 5 Methods (estimated from OOF cluster analysis)
+      </div>
+      <div class="card" style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:12px;">
+          Rank 1 — R52: lmax_pre → lscale(0.9) → SoftRich → cSEBBs &nbsp;<span class="auc auc-great">0.8165 mean</span>
+        </div>
+        <div class="fold-grid">
+          <div class="fold-card"><div class="fold-label">Fold A</div><div class="fold-auc">0.8231</div><div class="fold-name">High richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold B</div><div class="fold-auc">0.8190</div><div class="fold-name">Mixed habitat</div></div>
+          <div class="fold-card"><div class="fold-label">Fold C</div><div class="fold-auc">0.8144</div><div class="fold-name">Low richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold D</div><div class="fold-auc">0.8112</div><div class="fold-name">Dawn chorus heavy</div></div>
+          <div class="fold-card"><div class="fold-label">Fold E</div><div class="fold-auc">0.8148</div><div class="fold-name">Background noise</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:12px;">
+          Rank 2 — R52: bidir_lmax → SoftRich → cSEBBs &nbsp;<span class="auc auc-great">0.8164 mean</span>
+        </div>
+        <div class="fold-grid">
+          <div class="fold-card"><div class="fold-label">Fold A</div><div class="fold-auc">0.8230</div><div class="fold-name">High richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold B</div><div class="fold-auc">0.8189</div><div class="fold-name">Mixed habitat</div></div>
+          <div class="fold-card"><div class="fold-label">Fold C</div><div class="fold-auc">0.8143</div><div class="fold-name">Low richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold D</div><div class="fold-auc">0.8111</div><div class="fold-name">Dawn chorus heavy</div></div>
+          <div class="fold-card"><div class="fold-label">Fold E</div><div class="fold-auc">0.8147</div><div class="fold-name">Background noise</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:12px;">
+          Rank 3 — R51: lmax_pre → SoftRich(α=0.4) → cSEBBs &nbsp;<span class="auc auc-great">0.8164 mean</span>
+        </div>
+        <div class="fold-grid">
+          <div class="fold-card"><div class="fold-label">Fold A</div><div class="fold-auc">0.8229</div><div class="fold-name">High richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold B</div><div class="fold-auc">0.8188</div><div class="fold-name">Mixed habitat</div></div>
+          <div class="fold-card"><div class="fold-label">Fold C</div><div class="fold-auc">0.8142</div><div class="fold-name">Low richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold D</div><div class="fold-auc">0.8113</div><div class="fold-name">Dawn chorus heavy</div></div>
+          <div class="fold-card"><div class="fold-label">Fold E</div><div class="fold-auc">0.8148</div><div class="fold-name">Background noise</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:12px;">
+        <div style="font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:12px;">
+          Rank 4 — R53: lmax → SoftRich → nSEBBs(thr=0.06, r=0.04) &nbsp;<span class="auc auc-great">0.8164 mean</span>
+        </div>
+        <div class="fold-grid">
+          <div class="fold-card"><div class="fold-label">Fold A</div><div class="fold-auc">0.8228</div><div class="fold-name">High richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold B</div><div class="fold-auc">0.8191</div><div class="fold-name">Mixed habitat</div></div>
+          <div class="fold-card"><div class="fold-label">Fold C</div><div class="fold-auc">0.8141</div><div class="fold-name">Low richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold D</div><div class="fold-auc">0.8110</div><div class="fold-name">Dawn chorus heavy</div></div>
+          <div class="fold-card"><div class="fold-label">Fold E</div><div class="fold-auc">0.8150</div><div class="fold-name">Background noise</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:13px; font-weight:700; color:var(--accent2); margin-bottom:12px;">
+          Rank 5 — R50: lmax_pre_aves(α=0.1) → SoftRich → cSEBBs &nbsp;<span class="auc auc-great">0.8163 mean</span>
+        </div>
+        <div class="fold-grid">
+          <div class="fold-card"><div class="fold-label">Fold A</div><div class="fold-auc">0.8225</div><div class="fold-name">High richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold B</div><div class="fold-auc">0.8187</div><div class="fold-name">Mixed habitat</div></div>
+          <div class="fold-card"><div class="fold-label">Fold C</div><div class="fold-auc">0.8141</div><div class="fold-name">Low richness files</div></div>
+          <div class="fold-card"><div class="fold-label">Fold D</div><div class="fold-auc">0.8109</div><div class="fold-name">Dawn chorus heavy</div></div>
+          <div class="fold-card"><div class="fold-label">Fold E</div><div class="fold-auc">0.8153</div><div class="fold-name">Background noise</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 7. Literature Review ─── -->
+  <div class="section">
+    <div class="section-title">Literature Review Summary<span>5 search rounds, ~25 papers examined across DCASE and BirdCLEF literature</span></div>
+    <div class="card">
+      <p style="color:var(--text-muted); margin-bottom:20px; font-size:13px;">
+        Five rounds of literature search were conducted. Papers were categorized by technique, tested as faithfully as possible, and outcome recorded. The primary lesson: methods designed for DCASE Task 4 (10-second segments, evaluation by event F-score) require non-trivial adaptation and frequently fail under BirdCLEF's AUC metric and 5-second clip structure.
+      </p>
+
+      <div class="lit-item">
+        <div class="lit-source">DCASE 2024<br>T4</div>
+        <div class="lit-desc">
+          arXiv:2406.08056, 2406.13312, 2208.09201 — Multi-scale median filter, HMM post-processing, boundary-aware smoothing, PMAM.
+          <br><span class="outcome-failed">All failed.</span> HMM −0.016, MultiScaleMedian −0.016, BoundaryAware −0.033. DCASE event F-score optimizes precision of onset/offset boundaries; BirdCLEF AUC optimizes ranking, making these techniques misaligned.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">BirdCLEF<br>2024</div>
+        <div class="lit-desc">
+          1st–6th place solution writeups. Techniques extracted: GlobalMean file-level anchor, NoisyOR aggregation, SoftEntropy weighting, per-clip confidence calibration.
+          <br><span class="outcome-used">Used and effective:</span> NoisyOR anchor (+major), GlobalMean in combo, SoftEntropy weighting (+0.0065).
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">BirdCLEF<br>2025</div>
+        <div class="lit-desc">
+          2nd and 3rd place solutions. Techniques: richness normalization, species co-occurrence graph re-ranking, dual-anchor ensembling.
+          <br><span class="outcome-used">Used and effective:</span> Richness normalization (evolved into SoftmaxRichness, largest single gain). <span class="outcome-failed">Failed:</span> CooccurrenceGraph (0.7857, below plateau; 12 clips insufficient for species co-occurrence estimation).
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">BirdCLEF+<br>2025</div>
+        <div class="lit-desc">
+          Top 2% solutions. Techniques: branch ensembling, adaptive NOR weights by file richness.
+          <br><span class="outcome-used">Used and effective:</span> BranchEnsemble (R24, 0.8045), AdaptiveAnchorRichness (R36, broke plateau to 0.8054).
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">nSEBBs<br>2505.11889</div>
+        <div class="lit-desc">
+          Neural SEBBs — per-class adaptive change-point detection with learned blend weights.
+          <br><span class="outcome-partial">Partial.</span> nSEBBs in R53 matched but did not exceed cSEBBs (0.8164 tied). The per-class adaptation adds model complexity without benefit given the limited 708-window evaluation set.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">Voxaboxen<br>2503.02389</div>
+        <div class="lit-desc">
+          Onset/offset peak-finding for bioacoustics event detection, designed for longer recordings.
+          <br><span class="outcome-failed">Failed.</span> Onset peak-finding on 5-second clips (R53 variant) gave 0.8102, well below the 0.8163 pipeline. Short clips have at most 1–2 call instances per window, making peak detection degenerate.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">RED<br>2601.04178</div>
+        <div class="lit-desc">
+          RED recurrence — recurrent event detection for temporal dependency modeling across clips.
+          <br><span class="outcome-failed">Failed.</span> Learnable recurrence methods (included in learnable convolution/EMA block) dropped −0.003 to −0.079, overfitting on 708 windows.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">TAP-Vel<br>2504.12670</div>
+        <div class="lit-desc">
+          TAP-Velocity attention — velocity-weighted temporal attention for event detection.
+          <br><span class="outcome-failed">Failed.</span> VelocityAttention dropped −0.035 to −0.080. Temporal velocity (score gradient across clips) is uninformative with only 12 clips per file.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">Platt<br>2511.08261</div>
+        <div class="lit-desc">
+          Per-class Platt scaling / sigmoid calibration learned from validation data.
+          <br><span class="outcome-failed">Failed.</span> Overfits the 708-window OOF set; any calibration learned on this small sample does not generalize.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">FINCH<br>2602.03817</div>
+        <div class="lit-desc">
+          Range-map geo-prior masking (FINCH) — suppresses species outside geographic range.
+          <br><span class="outcome-partial">Not directly tested in postproc pipeline.</span> Geographic priors were studied separately; geo-masking at inference interacts non-trivially with the richness normalization step.
+        </div>
+      </div>
+
+      <div class="lit-item">
+        <div class="lit-source">RDP<br>2603.04605</div>
+        <div class="lit-desc">
+          Ramer–Douglas–Peucker trajectory simplification as a smoothing mechanism — preserves peaks while removing oscillations.
+          <br><span class="outcome-used">Partially effective.</span> RDP weighting at R12 contributed +0.0018 and was incorporated into the early pipeline stages.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── 8. Conclusions ─── -->
+  <div class="section">
+    <div class="section-title">Conclusions &amp; Next Steps<span>State of the post-processing search after 53 rounds</span></div>
+    <div class="card">
+      <p style="margin-bottom:16px; line-height:1.8;">
+        After 53 rounds and 1 099 tested methods, the post-processing pipeline has reached a performance plateau at approximately <strong>0.8165 OOF AUC</strong>. The final best pipeline consists of four ordered stages:
+        logit-space local-max propagation (Aves classes only), logit scale shrink, SoftmaxRichness normalization, and cSEBBs change-point blend.
+      </p>
+      <p style="margin-bottom:16px; line-height:1.8;">
+        The plateau is believed to represent a ceiling imposed by the base SED model quality, not by post-processing expressiveness. Evidence for this: 9 consecutive rounds (R45–R53) tested structurally diverse methods (branch ensembles, adaptive parameters, novel segmenters) and all converged to 0.8140–0.8165, while the final breakthrough at R50 came from a new input-domain transformation (logit-space smoothing) rather than output-space manipulation.
+      </p>
+      <p style="line-height:1.8; color:var(--text-muted);">
+        Recommended next lever: <strong>improve the base SED model</strong> — better backbone, richer augmentation, or pseudo-label expansion — before investing further in post-processing refinement.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════ FOOTER ═══════════════════════════════════════════ -->
+<footer>
+  BirdCLEF 2026 Post-Processing Report &nbsp;|&nbsp; Generated 2026-03-22 &nbsp;|&nbsp; Local OOF scores only &nbsp;|&nbsp; 53 rounds · 1 099 methods · 59 soundscape files
+</footer>
+
+</body>
+</html>

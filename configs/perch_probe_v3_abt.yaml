@@ -1,0 +1,46 @@
+experiment:
+  name: perch-probe-v3-abt
+  seed: 42
+
+# All-But-Top(10) preprocessing before PCA
+# Removes top-10 PCA directions (rogue dims: recording env, device noise)
+# Then fits PCA(128) on cleaner embedding space
+# Based on: Mu & Viswanath, ICLR 2018 "All-but-the-top"
+
+data:
+  base_dir: birdclef-2026
+  manifest_path: outputs/embeddings_cache_nohuman/manifest.csv
+  pca_fit_splits: [train, soundscape]
+  add_train_clips: true
+
+model:
+  pca_dim: 128
+  hidden_dim: 512
+  use_hidden: true
+  dropout: 0.3
+  pca_whiten: true
+  abt_n_top: 10             # remove top-10 rogue PCA directions first
+  use_proto: false
+  use_tip: false
+  use_fecam: false
+  use_laplacian: false
+  use_gamma: false
+
+training:
+  epochs: 150
+  batch_size: 256
+  n_folds: 5
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 25
+  asl_gamma_neg: 4.0
+  asl_gamma_pos: 0.0
+  asl_clip: 0.05
+
+output:
+  dir: outputs
+
+wandb:
+  enabled: true
+  project: birdclef-2026
+  tags: [perch-probe, v3, all-but-top, abt10, pca128, add-train]

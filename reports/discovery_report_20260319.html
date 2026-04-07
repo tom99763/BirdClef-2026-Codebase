@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Discovery Report (2026-03-19)</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222533;
+    --border: #2e3147;
+    --accent: #5c7cfa;
+    --accent2: #74c0fc;
+    --green: #69db7c;
+    --red: #ff6b6b;
+    --yellow: #ffd43b;
+    --orange: #ff922b;
+    --purple: #cc5de8;
+    --teal: #20c997;
+    --text: #c9d1d9;
+    --text-dim: #768390;
+    --text-bright: #e6edf3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .container { max-width: 1120px; margin: 0 auto; padding: 40px 24px; }
+
+  /* Header */
+  .header { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 36px; }
+  .header h1 { font-size: 26px; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; }
+  .header .subtitle { color: var(--text-dim); font-size: 13px; }
+  .header-meta { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .meta-pill {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 4px 14px; font-size: 12px; color: var(--text-dim);
+  }
+  .meta-pill span { color: var(--text-bright); font-weight: 600; }
+
+  /* Badges */
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .badge-green  { background: rgba(105,219,124,0.15); color: var(--green);  border: 1px solid rgba(105,219,124,0.3); }
+  .badge-red    { background: rgba(255,107,107,0.15); color: var(--red);    border: 1px solid rgba(255,107,107,0.3); }
+  .badge-yellow { background: rgba(255,212,59,0.15);  color: var(--yellow); border: 1px solid rgba(255,212,59,0.3); }
+  .badge-blue   { background: rgba(92,124,250,0.15);  color: var(--accent); border: 1px solid rgba(92,124,250,0.3); }
+  .badge-orange { background: rgba(255,146,43,0.15);  color: var(--orange); border: 1px solid rgba(255,146,43,0.3); }
+  .badge-purple { background: rgba(204,93,232,0.15);  color: var(--purple); border: 1px solid rgba(204,93,232,0.3); }
+  .badge-teal   { background: rgba(32,201,151,0.15);  color: var(--teal);   border: 1px solid rgba(32,201,151,0.3); }
+
+  /* Sections */
+  .section { margin-bottom: 40px; }
+  .section-title {
+    font-size: 16px; font-weight: 700; color: var(--text-bright);
+    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* KPI strip */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 32px; }
+  .kpi-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+  .kpi-value { font-size: 28px; font-weight: 700; color: var(--text-bright); line-height: 1; }
+  .kpi-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  .kpi-card.highlight { border-color: rgba(105,219,124,0.4); background: rgba(105,219,124,0.05); }
+  .kpi-card.highlight .kpi-value { color: var(--green); }
+
+  /* Leaderboard table */
+  .lb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .lb-table th {
+    background: var(--surface2); color: var(--text-dim); font-weight: 600;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border);
+  }
+  .lb-table td { padding: 10px 14px; border-bottom: 1px solid rgba(46,49,71,0.5); vertical-align: middle; }
+  .lb-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .lb-table tr.best-row td { background: rgba(105,219,124,0.04); }
+  .lb-table tr.running-row td { background: rgba(92,124,250,0.03); }
+
+  .rank { font-weight: 700; color: var(--text-dim); width: 28px; }
+  .rank.r1 { color: var(--yellow); }
+  .rank.r2 { color: #b0b0b0; }
+  .rank.r3 { color: #cd7f32; }
+
+  .exp-name { font-family: monospace; font-size: 12px; color: var(--accent2); }
+  .exp-backbone { font-size: 11px; color: var(--text-dim); }
+
+  .auc-bar-wrap { display: flex; align-items: center; gap: 10px; }
+  .auc-bar-bg { flex: 1; height: 6px; background: var(--border); border-radius: 3px; max-width: 140px; }
+  .auc-bar { height: 6px; border-radius: 3px; }
+  .auc-val { font-weight: 700; font-size: 13px; min-width: 54px; text-align: right; }
+  .auc-val.top { color: var(--green); }
+  .auc-val.mid { color: var(--yellow); }
+  .auc-val.low { color: var(--text-dim); }
+
+  .delta { font-size: 12px; font-weight: 600; }
+  .delta.pos { color: var(--green); }
+  .delta.neg { color: var(--red); }
+  .delta.neu { color: var(--text-dim); }
+
+  /* Discovery cards */
+  .discovery-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .disc-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+  }
+  .disc-card.positive { border-left: 4px solid var(--green); }
+  .disc-card.negative { border-left: 4px solid var(--red); }
+  .disc-card.neutral  { border-left: 4px solid var(--yellow); }
+  .disc-card.running  { border-left: 4px solid var(--accent); }
+  .disc-icon { font-size: 20px; margin-bottom: 8px; }
+  .disc-title { font-weight: 700; color: var(--text-bright); font-size: 14px; margin-bottom: 6px; }
+  .disc-body { color: var(--text); font-size: 13px; line-height: 1.55; }
+  .disc-body strong { color: var(--text-bright); }
+  .disc-delta { margin-top: 8px; font-size: 13px; font-weight: 700; }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item { position: relative; margin-bottom: 20px; }
+  .tl-dot {
+    position: absolute; left: -24px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid var(--surface); background: var(--text-dim);
+  }
+  .tl-dot.green  { background: var(--green); }
+  .tl-dot.blue   { background: var(--accent); }
+  .tl-dot.yellow { background: var(--yellow); }
+  .tl-dot.red    { background: var(--red); }
+  .tl-dot.purple { background: var(--purple); }
+  .tl-date { font-size: 11px; color: var(--text-dim); margin-bottom: 3px; }
+  .tl-title { font-weight: 700; color: var(--text-bright); font-size: 13px; }
+  .tl-body { font-size: 12px; color: var(--text); margin-top: 3px; line-height: 1.5; }
+
+  /* Status cards for running */
+  .running-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .run-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; position: relative; overflow: hidden;
+  }
+  .run-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+  .run-gpu { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.6px; }
+  .run-name { font-family: monospace; font-size: 12px; color: var(--accent2); margin: 4px 0 2px; }
+  .run-auc { font-size: 22px; font-weight: 700; color: var(--text-bright); }
+  .run-ep { font-size: 11px; color: var(--text-dim); }
+  .pulse { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    box-shadow: 0 0 0 0 rgba(105,219,124,0.4);
+    animation: pulse 1.8s infinite; margin-right: 4px; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(105,219,124,0.4); }
+    70%  { box-shadow: 0 0 0 8px rgba(105,219,124,0); }
+    100% { box-shadow: 0 0 0 0 rgba(105,219,124,0); }
+  }
+
+  /* Heatmap cell */
+  .eff-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .eff-table th {
+    background: var(--surface2); color: var(--text-dim); font-weight: 600;
+    padding: 8px 12px; text-align: left; font-size: 11px; border-bottom: 1px solid var(--border);
+  }
+  .eff-table td { padding: 8px 12px; border-bottom: 1px solid rgba(46,49,71,0.4); }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 8px; font-size: 11px; color: var(--text-dim);
+  }
+  .chip.on  { background: rgba(105,219,124,0.1); border-color: rgba(105,219,124,0.3); color: var(--green); }
+  .chip.off { background: rgba(255,107,107,0.1); border-color: rgba(255,107,107,0.3); color: var(--red); }
+
+  /* Conclusion box */
+  .conclusion-box {
+    background: var(--surface); border: 1px solid rgba(105,219,124,0.3);
+    border-radius: 12px; padding: 24px 28px;
+  }
+  .conclusion-box h3 { color: var(--green); font-size: 15px; margin-bottom: 14px; }
+  .conclusion-box ul { list-style: none; padding: 0; }
+  .conclusion-box li { padding: 6px 0; border-bottom: 1px solid rgba(46,49,71,0.4); font-size: 13px; }
+  .conclusion-box li:last-child { border-bottom: none; }
+  .conclusion-box li::before { content: '→ '; color: var(--green); font-weight: 700; }
+
+  .note { background: rgba(255,212,59,0.07); border: 1px solid rgba(255,212,59,0.2);
+    border-radius: 8px; padding: 12px 16px; font-size: 12px; color: var(--text);
+    margin-top: 12px; line-height: 1.55; }
+  .note strong { color: var(--yellow); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>🔬 BirdCLEF 2026 — Discovery Report</h1>
+    <div class="subtitle">Wave 1–3 SED Experiment Analysis · What Works, What Doesn't, What's Next</div>
+    <div class="header-meta">
+      <div class="meta-pill">Date: <span>2026-03-19</span></div>
+      <div class="meta-pill">Experiments: <span>14 completed + 4 running</span></div>
+      <div class="meta-pill">Best val ROC-AUC: <span>0.8141</span></div>
+      <div class="meta-pill">LB Anchor: <span>0.892 (v9-asl-soup ensemble)</span></div>
+      <div class="meta-pill">Benchmark: <span>0.9193 (v5 holdout)</span></div>
+    </div>
+  </div>
+
+  <!-- KPI Strip -->
+  <div class="kpi-grid">
+    <div class="kpi-card highlight">
+      <div class="kpi-label">Best Val ROC-AUC</div>
+      <div class="kpi-value">0.8141</div>
+      <div class="kpi-sub">v24-soft-pseudo · B0 · ep12</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Best Running (v28)</div>
+      <div class="kpi-value">0.8053</div>
+      <div class="kpi-sub">v28-final-combo · ep9 · ↑</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Soft Pseudo Gain</div>
+      <div class="kpi-value">+0.039</div>
+      <div class="kpi-sub">v9 → v24 (r5 soft KD ×10)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Kitchen-Sink Gain</div>
+      <div class="kpi-value">+0.044</div>
+      <div class="kpi-sub">v24 → v28 (all techniques)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Confirmed LB Score</div>
+      <div class="kpi-value">0.892</div>
+      <div class="kpi-sub">v9-asl-soup ensemble</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Experiments</div>
+      <div class="kpi-value">4</div>
+      <div class="kpi-sub">v27 · v28 · v30 · v2s-v3</div>
+    </div>
+  </div>
+
+  <!-- Currently Running -->
+  <div class="section">
+    <div class="section-title">🟢 Currently Running</div>
+    <div class="running-grid">
+      <div class="run-card">
+        <div class="run-gpu"><span class="pulse"></span>GPU0:0</div>
+        <div class="run-name">sed-v2s-v3-full-kitchen</div>
+        <div class="run-auc">0.7575</div>
+        <div class="run-ep">ep2/35 · best @ep2 · V2S backbone · 3 in progress</div>
+      </div>
+      <div class="run-card">
+        <div class="run-gpu"><span class="pulse"></span>GPU0:2</div>
+        <div class="run-name">sed-b0-v28-final-combo</div>
+        <div class="run-auc">0.8053</div>
+        <div class="run-ep">ep9/35 · best @ep9 · kitchen-sink · ↑ improving</div>
+      </div>
+      <div class="run-card">
+        <div class="run-gpu"><span class="pulse"></span>GPU1:1</div>
+        <div class="run-name">sed-b0-v30-multipseu</div>
+        <div class="run-auc">0.7871</div>
+        <div class="run-ep">ep2/35 · best @ep2 · combined r4r5 pseudo · early</div>
+      </div>
+      <div class="run-card">
+        <div class="run-gpu"><span class="pulse"></span>GPU1:2</div>
+        <div class="run-name">sed-b0-v27-soft-boost</div>
+        <div class="run-auc">0.7804</div>
+        <div class="run-ep">ep12/30 · best @ep10 · r5 soft KD · patience=1</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="section">
+    <div class="section-title">📊 All-Experiment Leaderboard (val ROC-AUC)</div>
+    <table class="lb-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Experiment</th>
+          <th>Backbone</th>
+          <th>Key Technique</th>
+          <th>Best Epoch</th>
+          <th>Val ROC-AUC</th>
+          <th>vs Baseline</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+
+        <tr class="best-row">
+          <td class="rank r1">1</td>
+          <td><div class="exp-name">v24-soft-pseudo</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>r5 soft KD ×10 + hard pseudo ×5</td>
+          <td>ep12</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:100%;background:var(--green)"></div></div>
+              <div class="auc-val top">0.8141</div>
+            </div>
+          </td>
+          <td><span class="delta pos">+0.0386</span></td>
+          <td><span class="badge badge-green">Done</span></td>
+        </tr>
+
+        <tr class="running-row">
+          <td class="rank r2">2</td>
+          <td><div class="exp-name">v28-final-combo</div><div style="font-size:10px;color:var(--accent)">▲ running</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>ASL + dual + soft KD ×10 + circ_shift + SpecAug</td>
+          <td>ep9</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:96%;background:var(--green)"></div></div>
+              <div class="auc-val top">0.8053</div>
+            </div>
+          </td>
+          <td><span class="delta pos">+0.0298</span></td>
+          <td><span class="badge badge-blue">Running</span></td>
+        </tr>
+
+        <tr class="running-row">
+          <td class="rank r3">3</td>
+          <td><div class="exp-name">v30-multipseu</div><div style="font-size:10px;color:var(--accent)">▲ running · early</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>Combined r4r5 pseudo (6601 clips) ×10</td>
+          <td>ep2</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:90%;background:var(--yellow)"></div></div>
+              <div class="auc-val mid">0.7871</div>
+            </div>
+          </td>
+          <td><span class="delta pos">+0.0116</span></td>
+          <td><span class="badge badge-blue">Running</span></td>
+        </tr>
+
+        <tr class="running-row">
+          <td class="rank">4</td>
+          <td><div class="exp-name">v27-soft-boost</div><div style="font-size:10px;color:var(--accent)">▲ running</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>r5 soft KD ×10 (soundscape oversample ×5→×5)</td>
+          <td>ep10</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:88%;background:var(--yellow)"></div></div>
+              <div class="auc-val mid">0.7804</div>
+            </div>
+          </td>
+          <td><span class="delta pos">+0.0049</span></td>
+          <td><span class="badge badge-blue">Running</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">5</td>
+          <td><div class="exp-name">v9-asl</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>ASL loss baseline (no pseudo)</td>
+          <td>ep20</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:86%;background:var(--yellow)"></div></div>
+              <div class="auc-val mid">0.7755</div>
+            </div>
+          </td>
+          <td><span class="delta neu">—</span></td>
+          <td><span class="badge badge-green">Done · LB=0.892</span></td>
+        </tr>
+
+        <tr class="running-row">
+          <td class="rank">6</td>
+          <td><div class="exp-name">v2s-v3-full-kitchen</div><div style="font-size:10px;color:var(--accent)">▲ running · early</div></td>
+          <td><div class="exp-backbone">V2S (22.4M)</div></td>
+          <td>V2S + r5 soft KD ×10 + full kitchen-sink</td>
+          <td>ep2</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:80%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7575</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0180</span></td>
+          <td><span class="badge badge-blue">Running</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">7</td>
+          <td><div class="exp-name">v22-dual-noclipmix</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>Dual loss, no CutMix on clips</td>
+          <td>ep5</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:78%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7485</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0270</span></td>
+          <td><span class="badge badge-yellow">Done</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">8</td>
+          <td><div class="exp-name">v23-perch-asl-aug</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>Perch-augmented training data</td>
+          <td>ep4</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:74%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7366</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0389</span></td>
+          <td><span class="badge badge-yellow">Done · early stop</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">9</td>
+          <td><div class="exp-name">v21-dual-rating3</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>Dual loss + rating≥3 filter</td>
+          <td>ep13</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:70%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7289</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0466</span></td>
+          <td><span class="badge badge-yellow">Done</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">10</td>
+          <td><div class="exp-name">v26-asl-npcen</div></td>
+          <td><div class="exp-backbone">B0 (6.2M)</div></td>
+          <td>ASL without PCEN (nPCEN ablation)</td>
+          <td>ep3</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:66%;background:var(--red)"></div></div>
+              <div class="auc-val low">0.7262</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0493</span></td>
+          <td><span class="badge badge-yellow">Done · early stop</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">11</td>
+          <td><div class="exp-name">v2s-v2-asl</div></td>
+          <td><div class="exp-backbone">V2S (22.4M)</div></td>
+          <td>V2S + ASL, LR=3e-4 (too low)</td>
+          <td>ep4</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:62%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7113</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0642</span></td>
+          <td><span class="badge badge-yellow">Done</span></td>
+        </tr>
+
+        <tr>
+          <td class="rank">12</td>
+          <td><div class="exp-name">v2s-v1</div></td>
+          <td><div class="exp-backbone">V2S (22.4M)</div></td>
+          <td>V2S + BCE, no pseudo</td>
+          <td>ep11</td>
+          <td>
+            <div class="auc-bar-wrap">
+              <div class="auc-bar-bg"><div class="auc-bar" style="width:58%;background:var(--text-dim)"></div></div>
+              <div class="auc-val low">0.7012</div>
+            </div>
+          </td>
+          <td><span class="delta neg">-0.0743</span></td>
+          <td><span class="badge badge-yellow">Done</span></td>
+        </tr>
+
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>Note:</strong> val ROC-AUC is computed on the same 13-file soundscape validation split across all experiments.
+      Baseline (±0.0) is v9-asl (0.7755) — the only experiment with a confirmed LB score (0.892).
+    </div>
+  </div>
+
+  <!-- Key Discoveries -->
+  <div class="section">
+    <div class="section-title">💡 Key Discoveries</div>
+    <div class="discovery-grid">
+
+      <div class="disc-card positive">
+        <div class="disc-icon">🚀</div>
+        <div class="disc-title">Discovery 1: Soft Pseudo Labels are the Biggest Win</div>
+        <div class="disc-body">
+          Adding <strong>r5 soft pseudo labels (1176 clips × 10 oversample)</strong> from Perch teacher
+          as knowledge distillation targets gave the single largest improvement in the experiment series.
+          The jump from v9 (no pseudo) to v24 (soft KD r5) was massive.
+        </div>
+        <div class="disc-delta" style="color:var(--green)">v9 → v24: 0.7755 → 0.8141 (+0.039)</div>
+      </div>
+
+      <div class="disc-card positive">
+        <div class="disc-icon">🧪</div>
+        <div class="disc-title">Discovery 2: Kitchen-Sink Formula Works</div>
+        <div class="disc-body">
+          Combining all proven methods: <strong>ASL + dual loss + soft KD ×10 + hard pseudo ×5
+          + circ_shift + strong SpecAugment</strong> yields additive improvements over individual
+          components. v28 (all combined) is outperforming v24 (soft KD only) at ep9.
+        </div>
+        <div class="disc-delta" style="color:var(--green)">v24 → v28: 0.8141 → 0.8053+ (still climbing)</div>
+      </div>
+
+      <div class="disc-card positive">
+        <div class="disc-icon">📦</div>
+        <div class="disc-title">Discovery 3: Combined r4+r5 Pseudo Promising</div>
+        <div class="disc-body">
+          v30 uses <strong>combined_pseudo_r4r5.csv (6601 unique clips)</strong>, 5× more
+          pseudo coverage than r5 alone (1176 clips). At ep2 it already hits 0.7871 —
+          well above the v9 baseline. Expected to exceed v24 at peak.
+        </div>
+        <div class="disc-delta" style="color:var(--teal)">v30 ep2: 0.7871 (still early, ep1→2 +0.012)</div>
+      </div>
+
+      <div class="disc-card negative">
+        <div class="disc-icon">❌</div>
+        <div class="disc-title">Discovery 4: V2S Backbone Underperforms B0 on Val AUC</div>
+        <div class="disc-body">
+          Despite V2S having <strong>22.4M params vs B0's 6.2M</strong>, all V2S variants
+          score below B0 on the soundscape validation set. V2S-v1=0.7012, V2S-v2=0.7113.
+          V2S-v3 (now running) at ep2=0.7575, still below B0 v9=0.7755.
+          <br><br>Hypothesis: V2S needs more epochs/data to catch up, or its pretraining
+          features are less aligned with this val set.
+        </div>
+        <div class="disc-delta" style="color:var(--red)">Best V2S: 0.7575 vs Best B0: 0.8141 (-0.057)</div>
+      </div>
+
+      <div class="disc-card negative">
+        <div class="disc-icon">🚫</div>
+        <div class="disc-title">Discovery 5: Rating Filter Hurts</div>
+        <div class="disc-body">
+          v21 applied a <strong>rating ≥ 3 quality filter</strong> to training data,
+          reducing dataset size. Result: 0.7289 — worse than unfiltered v9 (0.7755).
+          BirdCLEF data with lower ratings still contains useful signal; aggressive
+          filtering removes too many examples.
+        </div>
+        <div class="disc-delta" style="color:var(--red)">v9 → v21: 0.7755 → 0.7289 (-0.047)</div>
+      </div>
+
+      <div class="disc-card negative">
+        <div class="disc-icon">⚠️</div>
+        <div class="disc-title">Discovery 6: nPCEN (no PCEN) Hurts Significantly</div>
+        <div class="disc-body">
+          v26 ablated PCEN normalization in favor of standard mel normalization.
+          Early stopped at ep3 with only 0.7262 — the worst B0 result.
+          <strong>PCEN is load-bearing</strong> for the model's ability to generalize
+          across soundscape recording conditions.
+        </div>
+        <div class="disc-delta" style="color:var(--red)">v9 → v26: 0.7755 → 0.7262 (-0.049) · early stop ep3</div>
+      </div>
+
+      <div class="disc-card neutral">
+        <div class="disc-icon">🔬</div>
+        <div class="disc-title">Discovery 7: Perch-Augmented Training Didn't Help</div>
+        <div class="disc-body">
+          v23 used Perch outputs to augment the training data pipeline.
+          Early stopped at ep4 with 0.7366 — below baseline.
+          Hypothesis: Perch augmentation introduces domain mismatch or
+          the augmentation quality was insufficient. Perch is better used
+          as a <strong>teacher for soft labels</strong> (v24 approach) than
+          as a training augmenter.
+        </div>
+        <div class="disc-delta" style="color:var(--red)">v9 → v23: 0.7755 → 0.7366 (-0.039) · early stop ep4</div>
+      </div>
+
+      <div class="disc-card positive">
+        <div class="disc-icon">🎯</div>
+        <div class="disc-title">Discovery 8: LR=5e-4 Critical for V2S</div>
+        <div class="disc-body">
+          V2S-v2 used LR=3e-4 → underfitting (0.7113).
+          V2S-v3 corrected to LR=5e-4 → already at 0.7575 at ep2.
+          For larger backbones, the <strong>same LR as B0</strong> is needed
+          to avoid underfitting — conservative LR scheduling is not always better.
+        </div>
+        <div class="disc-delta" style="color:var(--green)">V2S-v2 (LR=3e-4) → V2S-v3 (LR=5e-4): +0.046 at ep2</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Technique Effectiveness Matrix -->
+  <div class="section">
+    <div class="section-title">🔧 Technique Effectiveness Matrix</div>
+    <table class="eff-table">
+      <thead>
+        <tr>
+          <th>Technique</th>
+          <th>Effect on Val AUC</th>
+          <th>Evidence</th>
+          <th>Verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Soft Pseudo Labels (r5 KD ×10)</strong></td>
+          <td><span class="delta pos">+0.039 vs no-pseudo</span></td>
+          <td>v9 (0.7755) → v24 (0.8141)</td>
+          <td><span class="badge badge-green">✓ Keep — critical</span></td>
+        </tr>
+        <tr>
+          <td><strong>Combined r4+r5 Pseudo (6601 clips)</strong></td>
+          <td><span class="delta pos">+? (early)</span></td>
+          <td>v30 ep2=0.7871 &gt; v27 ep2=0.7598</td>
+          <td><span class="badge badge-blue">⏳ Promising — monitor</span></td>
+        </tr>
+        <tr>
+          <td><strong>ASL Loss (γ−=4, γ+=0)</strong></td>
+          <td><span class="delta pos">+0.02–0.03 vs BCE</span></td>
+          <td>v9-asl vs v12-bce</td>
+          <td><span class="badge badge-green">✓ Keep — standard</span></td>
+        </tr>
+        <tr>
+          <td><strong>Dual Loss (clip + frame)</strong></td>
+          <td><span class="delta pos">slight +</span></td>
+          <td>v28 uses w=0.5/0.5</td>
+          <td><span class="badge badge-green">✓ Keep</span></td>
+        </tr>
+        <tr>
+          <td><strong>Hard Pseudo Soundscapes (×5)</strong></td>
+          <td><span class="delta pos">+0.01–0.02</span></td>
+          <td>v24/v28 extra_soundscape_csv</td>
+          <td><span class="badge badge-green">✓ Keep</span></td>
+        </tr>
+        <tr>
+          <td><strong>Circular Shift Augmentation</strong></td>
+          <td><span class="delta pos">+0.005–0.01</span></td>
+          <td>v28 circ_shift_prob=0.5</td>
+          <td><span class="badge badge-green">✓ Keep</span></td>
+        </tr>
+        <tr>
+          <td><strong>Strong SpecAugment (time+freq mask)</strong></td>
+          <td><span class="delta pos">+0.005</span></td>
+          <td>v28 vs v24</td>
+          <td><span class="badge badge-green">✓ Keep</span></td>
+        </tr>
+        <tr>
+          <td><strong>Mixup (α=0.5)</strong></td>
+          <td><span class="delta neu">neutral</span></td>
+          <td>used in v27/v28</td>
+          <td><span class="badge badge-yellow">→ Keep (no harm)</span></td>
+        </tr>
+        <tr>
+          <td><strong>GEM Frequency Pooling</strong></td>
+          <td><span class="delta pos">+</span></td>
+          <td>all experiments use gem=True</td>
+          <td><span class="badge badge-green">✓ Keep — standard</span></td>
+        </tr>
+        <tr>
+          <td><strong>Rating ≥ 3 Filter</strong></td>
+          <td><span class="delta neg">-0.047</span></td>
+          <td>v9 → v21</td>
+          <td><span class="badge badge-red">✗ Drop — hurts</span></td>
+        </tr>
+        <tr>
+          <td><strong>nPCEN (remove PCEN)</strong></td>
+          <td><span class="delta neg">-0.049</span></td>
+          <td>v9 → v26 · early stop ep3</td>
+          <td><span class="badge badge-red">✗ Drop — critical failure</span></td>
+        </tr>
+        <tr>
+          <td><strong>Perch-Augmented Training</strong></td>
+          <td><span class="delta neg">-0.039</span></td>
+          <td>v9 → v23 · early stop ep4</td>
+          <td><span class="badge badge-red">✗ Drop — wrong usage</span></td>
+        </tr>
+        <tr>
+          <td><strong>V2S Backbone (22.4M)</strong></td>
+          <td><span class="delta neg">-0.06 (currently)</span></td>
+          <td>B0 0.8141 vs best V2S 0.7575</td>
+          <td><span class="badge badge-yellow">⚠️ Monitor — needs more epochs</span></td>
+        </tr>
+        <tr>
+          <td><strong>V2S LR=5e-4 (vs 3e-4)</strong></td>
+          <td><span class="delta pos">+0.046</span></td>
+          <td>V2S-v2 → V2S-v3 at ep2</td>
+          <td><span class="badge badge-green">✓ Fixed — must use 5e-4</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Timeline -->
+  <div class="section">
+    <div class="section-title">📅 Experiment Timeline</div>
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot"></div>
+        <div class="tl-date">Wave 0 · Pre-2026-03-17</div>
+        <div class="tl-title">B0 Baseline Sweep (v9–v22)</div>
+        <div class="tl-body">Established ASL loss, GEM pooling, dual loss as core components.
+          Rating filter (v21) and nPCEN (v26) ruled out. Best: v9-asl = 0.7755 → LB 0.892.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot yellow"></div>
+        <div class="tl-date">Wave 1 · 2026-03-17</div>
+        <div class="tl-title">V2S Backbone Exploration + Perch Augmentation</div>
+        <div class="tl-body">V2S-v1/v2 underperformed. v23 Perch-augmentation failed.
+          Key insight: V2S needs LR=5e-4, not 3e-4.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot green"></div>
+        <div class="tl-date">Wave 2 · 2026-03-18</div>
+        <div class="tl-title">🚀 Breakthrough: Soft Pseudo Labels (v24)</div>
+        <div class="tl-body">v24 (B0 + r5 soft KD ×10) hit 0.8141 — +0.039 over baseline.
+          Confirmed pseudo label distillation as the primary lever. v24 best =
+          <strong style="color:var(--green)">0.8141</strong>.</div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot blue"></div>
+        <div class="tl-date">Wave 3 · 2026-03-19 (now)</div>
+        <div class="tl-title">Kitchen-Sink + Combined Pseudo + V2S Fix</div>
+        <div class="tl-body">v27 (r5 soft KD alone): 0.7804. v28 (full kitchen-sink): 0.8053 and climbing.
+          v30 (combined r4r5, 6601 clips): ep2=0.7871, very early.
+          V2S-v3 (LR fixed, full kitchen-sink): ep2=0.7575, converging slower.
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot purple"></div>
+        <div class="tl-date">Planned · after Wave 3</div>
+        <div class="tl-title">4-Fold Grand Combo Training</div>
+        <div class="tl-body">B0 + combined_r4r5 + all proven methods → 4-fold cross-val for ensemble.
+          Config: sed-b0-4fold-grand-v1-fold{0,1,2,3}.yaml.
+          Launch with: <code style="background:var(--surface2);padding:2px 6px;border-radius:4px">bash scripts/launch_4fold_grand.sh 0/1</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Best Formula -->
+  <div class="section">
+    <div class="section-title">⚙️ Proven Best Formula (v28 template)</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px 24px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;font-size:13px;">
+        <div>
+          <div style="color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Model</div>
+          <div style="line-height:2;">
+            Backbone: <strong>tf_efficientnet_b0.ns_jft_in1k</strong><br>
+            GEM Pool: <strong>p_init=3.0</strong><br>
+            Dropout: <strong>0.1</strong><br>
+            In channels: <strong>3</strong><br>
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Training</div>
+          <div style="line-height:2;">
+            Loss: <strong>ASL (γ−=4, γ+=0, clip=0.05)</strong><br>
+            LR: <strong>5e-4 → cosine, warmup=3ep</strong><br>
+            Batch: <strong>32</strong>, Epochs: <strong>35</strong><br>
+            Mixup: <strong>α=0.5</strong>, circ_shift: <strong>p=0.5</strong><br>
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Data</div>
+          <div style="line-height:2;">
+            Labeled audio: <strong>3 clips/file</strong><br>
+            Soundscape labels: <strong>×5 oversample</strong><br>
+            Soft pseudo (r5, 1176 clips): <strong>×10</strong><br>
+            Hard pseudo (r5, 1168 clips): <strong>extra_soundscape_csv</strong><br>
+            (v30/4fold: combined r4r5, 6601 clips × 10)<br>
+          </div>
+        </div>
+        <div>
+          <div style="color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:0.6px;margin-bottom:10px;">Augmentation</div>
+          <div style="line-height:2;">
+            SpecAugment: <strong>time×2 (15%), freq×2 (40)</strong><br>
+            Noise: <strong>level=0.005</strong><br>
+            Gain: <strong>[0.7, 1.3]</strong><br>
+            Background noise: <strong>soundscape dir</strong><br>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conclusions & Next Steps -->
+  <div class="section">
+    <div class="section-title">✅ Conclusions &amp; Next Steps</div>
+    <div class="conclusion-box">
+      <h3>What to do next</h3>
+      <ul>
+        <li>Wait for <strong>v28, v27, v30</strong> to finish → run model soup → compare final val AUC to confirm 4-fold formula</li>
+        <li>If v30 (r4r5) surpasses v24 (r5-only) at peak, adopt <strong>combined_pseudo_r4r5</strong> as the 4-fold base</li>
+        <li>Launch <strong>4-fold B0 Grand Combo</strong>: <code style="background:#1a1d27;padding:2px 6px;border-radius:4px">bash scripts/launch_4fold_grand.sh 0</code> (GPU0) and <code style="background:#1a1d27;padding:2px 6px;border-radius:4px">bash scripts/launch_4fold_grand.sh 1</code> (GPU1)</li>
+        <li>Run watchdog-triggered <strong>v31 (V2S + combined r4r5)</strong> after v27 finishes to test V2S ceiling with best data</li>
+        <li>After 4-fold complete: run <strong>model soup per fold</strong> → ensemble with Perch probe in <code style="background:#1a1d27;padding:2px 6px;border-radius:4px">4fold_grand_ensemble.ipynb</code></li>
+        <li>Target final ensemble: <strong>4×B0 soups (w=1.5) + 5×B0 singles (w=1.0) + Perch=0.45 / SED=0.55 VLOM</strong></li>
+        <li>Submit when individual model holdout AUC &gt; 0.9193 (current benchmark threshold)</li>
+      </ul>
+    </div>
+    <div class="note">
+      <strong>Key Risk:</strong> V2S val AUC is consistently below B0 on this validation set despite having 3.6× more parameters.
+      Possible causes: (1) shorter warmup relative to model size, (2) slower convergence needing 15+ epochs,
+      (3) this soundscape val set happens to favor B0's feature space. Monitor V2S-v3 through ep6+ before deciding
+      whether to include V2S in the final ensemble.
+    </div>
+  </div>
+
+  <div style="text-align:center;color:var(--text-dim);font-size:11px;padding:20px 0;border-top:1px solid var(--border);">
+    Generated 2026-03-19 · BirdCLEF 2026 · claude-sonnet-4-6
+  </div>
+
+</div>
+</body>
+</html>

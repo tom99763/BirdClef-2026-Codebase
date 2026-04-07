@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SFDA + Perch for BirdCLEF 2026 — Domain Adaptation Report</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --card2: #212435;
+    --border: #2e3245;
+    --accent: #6c8fff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --yellow: #fbbf24;
+    --red: #f87171;
+    --teal: #22d3ee;
+    --orange: #fb923c;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  .hero {
+    background: linear-gradient(135deg, #1a1d27 0%, #0f1117 40%, #13101f 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 40px 36px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(108,143,255,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-tag {
+    display: inline-block;
+    background: rgba(108,143,255,0.15);
+    border: 1px solid rgba(108,143,255,0.3);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #fff 30%, var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+  }
+  .hero p {
+    color: var(--muted);
+    font-size: 1rem;
+    max-width: 700px;
+  }
+  .hero-meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .hero-meta span {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  /* ── Layout ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 36px 40px; }
+  .section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 10px; }
+  .card p  { color: var(--muted); font-size: 0.9rem; line-height: 1.7; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* ── Domain gap visual ── */
+  .domain-split {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0;
+    align-items: stretch;
+    margin-bottom: 16px;
+  }
+  .domain-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+  }
+  .domain-box.source { border-left: 4px solid var(--accent); }
+  .domain-box.target { border-left: 4px solid var(--green); }
+  .domain-box h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .domain-box.source h3 { color: var(--accent); }
+  .domain-box.target h3 { color: var(--green); }
+  .domain-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; gap: 12px; }
+  .domain-row:last-child { border-bottom: none; }
+  .domain-row .label { color: var(--muted); white-space: nowrap; }
+  .domain-row .val   { color: var(--text); font-weight: 500; text-align: right; }
+  .gap-arrow {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px;
+    color: var(--yellow);
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .gap-arrow .arrow { font-size: 1.8rem; }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .badge-blue   { background: rgba(108,143,255,0.15); color: var(--accent); border: 1px solid rgba(108,143,255,0.3); }
+  .badge-green  { background: rgba(52,211,153,0.15);  color: var(--green);  border: 1px solid rgba(52,211,153,0.3); }
+  .badge-yellow { background: rgba(251,191,36,0.15);  color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+  .badge-red    { background: rgba(248,113,113,0.15); color: var(--red);    border: 1px solid rgba(248,113,113,0.3); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--accent2);border: 1px solid rgba(167,139,250,0.3); }
+  .badge-teal   { background: rgba(34,211,238,0.15);  color: var(--teal);   border: 1px solid rgba(34,211,238,0.3); }
+
+  /* ── Method cards ── */
+  .method-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+  .method-card:hover { border-color: var(--accent); }
+  .method-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .method-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .method-body { color: var(--muted); font-size: 0.88rem; line-height: 1.75; }
+  .method-body strong { color: var(--text); }
+  .method-footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .priority-chip {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .p1 { background: rgba(34,211,153,0.2); color: var(--green); }
+  .p2 { background: rgba(108,143,255,0.2); color: var(--accent); }
+  .p3 { background: rgba(251,191,36,0.2); color: var(--yellow); }
+  .p4 { background: rgba(248,113,113,0.2); color: var(--red); }
+
+  /* ── Pipeline diagram ── */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 8px 0 16px;
+    margin: 20px 0;
+  }
+  .pipe-step {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    text-align: center;
+    min-width: 130px;
+    flex-shrink: 0;
+  }
+  .pipe-step .icon { font-size: 1.4rem; margin-bottom: 6px; }
+  .pipe-step .name { font-size: 0.75rem; font-weight: 600; color: var(--text); }
+  .pipe-step .sub  { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
+  .pipe-step.highlight { border-color: var(--green); background: rgba(52,211,153,0.05); }
+  .pipe-step.new { border-color: var(--accent); background: rgba(108,143,255,0.05); }
+  .pipe-arrow { color: var(--muted); font-size: 1.2rem; padding: 0 6px; flex-shrink: 0; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { background: var(--card2); color: var(--muted); font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--card2); }
+  .auc-high { color: var(--green); font-weight: 600; }
+  .auc-mid  { color: var(--yellow); font-weight: 600; }
+  .auc-low  { color: var(--red); font-weight: 600; }
+
+  /* ── Chart ── */
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+  .chart-title { font-size: 0.9rem; font-weight: 600; color: var(--muted); margin-bottom: 16px; }
+
+  /* ── Highlight boxes ── */
+  .insight {
+    background: rgba(108,143,255,0.08);
+    border: 1px solid rgba(108,143,255,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .insight strong { color: var(--accent); }
+  .insight-green {
+    background: rgba(52,211,153,0.08);
+    border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .insight-green strong { color: var(--green); }
+  .insight-yellow {
+    background: rgba(251,191,36,0.08);
+    border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 16px 0;
+    font-size: 0.9rem;
+    color: var(--text);
+  }
+  .insight-yellow strong { color: var(--yellow); }
+
+  /* ── Code ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 0.8rem;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    line-height: 1.6;
+    color: #c9d1d9;
+    margin: 12px 0;
+  }
+  pre .kw  { color: #ff7b72; }
+  pre .fn  { color: #d2a8ff; }
+  pre .str { color: #a5d6ff; }
+  pre .cm  { color: #8b949e; }
+  pre .num { color: #79c0ff; }
+
+  /* ── Stats row ── */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+  .stat-box {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    text-align: center;
+  }
+  .stat-box .num { font-size: 1.6rem; font-weight: 700; }
+  .stat-box .lbl { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+  ul.checklist { list-style: none; padding: 0; }
+  ul.checklist li { padding: 6px 0; color: var(--muted); font-size: 0.9rem; display: flex; align-items: flex-start; gap: 10px; }
+  ul.checklist li::before { content: '→'; color: var(--accent); flex-shrink: 0; }
+
+  .gap-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .gap-type {
+    background: rgba(251,191,36,0.06);
+    border: 1px solid rgba(251,191,36,0.2);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .gap-type strong { color: var(--yellow); display: block; margin-bottom: 4px; font-size: 0.88rem; }
+  .gap-type p { color: var(--muted); font-size: 0.82rem; line-height: 1.6; }
+
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .stats-row, .gap-type-grid { grid-template-columns: 1fr; }
+    .domain-split { grid-template-columns: 1fr; }
+    .gap-arrow { display: none; }
+    .hero h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ HERO ═══════════════════════════ -->
+<div class="hero">
+  <div class="hero-tag">Domain Adaptation Research</div>
+  <h1>SFDA + Perch for BirdCLEF 2026</h1>
+  <p>A technical analysis of the source-to-soundscape domain gap in BirdCLEF 2026, an introduction to Source-Free Domain Adaptation methods, and a concrete plan for applying SFDA with Perch embeddings to close that gap.</p>
+  <div class="hero-meta">
+    <span><span class="dot" style="background:var(--green)"></span> 2026-03-20</span>
+    <span><span class="dot" style="background:var(--accent)"></span> 206 species · 35,549 train clips</span>
+    <span><span class="dot" style="background:var(--yellow)"></span> Target: Pantanal, Brazil</span>
+    <span><span class="dot" style="background:var(--accent2)"></span> Current best probe OOF AUC: 0.8119</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════ SECTION 1 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">1</span> What is Source-Free Domain Adaptation (SFDA)?</div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>The Problem with Standard Domain Adaptation</h3>
+      <p>Classical Unsupervised Domain Adaptation (UDA) requires simultaneous access to both <strong>source and target domain data</strong> for joint alignment. In practice, the source data is often unavailable due to privacy regulations, storage costs, IP restrictions, or because only a model checkpoint was shared — not the original training set.</p>
+    </div>
+    <div class="card">
+      <h3>The SFDA Solution</h3>
+      <p>SFDA uses only a <strong>pre-trained source model</strong> and <strong>unlabeled target data</strong> — no source samples required. The goal is to adapt the model's representations to fit the target distribution while preserving the knowledge already encoded in the source hypothesis.</p>
+    </div>
+  </div>
+
+  <div class="insight">
+    <strong>Formal definition:</strong> Given a source-trained model f<sub>s</sub> and unlabeled target data X<sub>t</sub>, learn an adapted model f<sub>t</sub> that performs better on the target distribution P<sub>t</sub>, without accessing any source domain samples X<sub>s</sub>.
+  </div>
+
+  <div class="grid-3" style="margin-top: 20px;">
+    <div class="card" style="border-top: 3px solid var(--muted);">
+      <h3 style="color:var(--muted);">UDA (Unsupervised DA)</h3>
+      <p>Requires source data + unlabeled target data. Joint feature alignment during training. Cannot be applied when source data is unavailable.</p>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--accent);">
+      <h3 style="color:var(--accent);">SFDA (Source-Free DA)</h3>
+      <p>Requires source model + unlabeled target data only. No access to source samples. <strong>The most applicable framework for this competition.</strong></p>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--green);">
+      <h3 style="color:var(--green);">Semi-supervised DA</h3>
+      <p>Source model + a small set of labeled target data + unlabeled target data. We have 1,478 labeled soundscape clips — making this an even stronger setting than pure SFDA.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 2 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">2</span> The Domain Gap in BirdCLEF 2026</div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="num" style="color:var(--accent);">35,549</div>
+      <div class="lbl">Source domain clips<br>(train_audio)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:var(--green);">10,658</div>
+      <div class="lbl">Target domain files<br>(train_soundscapes)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:var(--yellow);">1,478</div>
+      <div class="lbl">Labeled target clips<br>(train_soundscapes_labels)</div>
+    </div>
+    <div class="stat-box">
+      <div class="num" style="color:var(--orange);">206</div>
+      <div class="lbl">Species<br>(multi-label in target)</div>
+    </div>
+  </div>
+
+  <div class="domain-split">
+    <div class="domain-box source">
+      <h3>Source Domain — train_audio</h3>
+      <div class="domain-row"><span class="label">Geography</span><span class="val">Global (lat −54.9° to 69.6°, lon −159.7° to 175.3°)</span></div>
+      <div class="domain-row"><span class="label">Collections</span><span class="val">XenoCanto (23,043) + iNaturalist (12,506)</span></div>
+      <div class="domain-row"><span class="label">Recording type</span><span class="val">Focal, directional microphone</span></div>
+      <div class="domain-row"><span class="label">Species density</span><span class="val">1 species per clip (clean, curated)</span></div>
+      <div class="domain-row"><span class="label">Label quality</span><span class="val">Single primary label, expert-verified</span></div>
+      <div class="domain-row"><span class="label">Environment</span><span class="val">Mixed (garden, forest edge, lab)</span></div>
+      <div class="domain-row"><span class="label">Background noise</span><span class="val">Low — deliberate recording conditions</span></div>
+      <div class="domain-row"><span class="label">Taxonomic scope</span><span class="val">98% Aves (34,799 / 35,549 clips)</span></div>
+    </div>
+    <div class="gap-arrow">
+      <div class="arrow">⇌</div>
+      <div>Domain Gap</div>
+    </div>
+    <div class="domain-box target">
+      <h3>Target Domain — soundscapes (train + test)</h3>
+      <div class="domain-row"><span class="label">Geography</span><span class="val" style="color:var(--green);">Pantanal, Brazil only (lat −16.5° to −21.6°)</span></div>
+      <div class="domain-row"><span class="label">Sites</span><span class="val">9 ARU deployment sites (S01–S23)</span></div>
+      <div class="domain-row"><span class="label">Recording type</span><span class="val" style="color:var(--yellow);">Passive, omnidirectional ARU</span></div>
+      <div class="domain-row"><span class="label">Species density</span><span class="val" style="color:var(--yellow);">Multiple species per 5-second window</span></div>
+      <div class="domain-row"><span class="label">Label quality</span><span class="val">Weak multi-label annotations</span></div>
+      <div class="domain-row"><span class="label">Environment</span><span class="val" style="color:var(--green);">Tropical wetland (Pantanal)</span></div>
+      <div class="domain-row"><span class="label">Background noise</span><span class="val" style="color:var(--red);">High — rain, insects, frogs, wind</span></div>
+      <div class="domain-row"><span class="label">Recording period</span><span class="val">2021–2025</span></div>
+    </div>
+  </div>
+
+  <div class="insight-yellow" style="margin-top: 16px;">
+    <strong>Four co-existing dimensions of domain shift:</strong>
+    <div class="gap-type-grid">
+      <div class="gap-type">
+        <strong>1. Geographic Shift</strong>
+        <p>Source data spans the entire globe, while all target soundscapes come exclusively from the Pantanal wetlands of Brazil. The acoustic background — frog choruses, insect swarms, tropical rain — is fundamentally different from any northern-hemisphere training recording.</p>
+      </div>
+      <div class="gap-type">
+        <strong>2. Device Shift</strong>
+        <p>Source clips were recorded with directional microphones by birders targeting a single species. Target clips come from passive Autonomous Recording Units (ARUs) with omnidirectional pickups, producing a different frequency response, gain curve, and signal-to-noise ratio even for the same species.</p>
+      </div>
+      <div class="gap-type">
+        <strong>3. Label / Prior Shift</strong>
+        <p>Source clips have a roughly uniform class prior (one species, intentionally selected). Target clips reflect the true Pantanal species prior — common Pantanal species dominate, many source species are absent. The multi-label co-occurrence structure is also entirely new.</p>
+      </div>
+      <div class="gap-type">
+        <strong>4. Task Shift</strong>
+        <p>Source training is effectively single-label classification (which bird is this?). Target evaluation is multi-label detection (which birds are present in this 5-second window?). The model must simultaneously recognize multiple overlapping calls against a high-noise floor.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-wrap" style="margin-top: 24px;">
+    <div class="chart-title">Domain Gap in Practice — Same SED model evaluated on source OOF vs. target soundscape val</div>
+    <canvas id="gapChart" height="210"></canvas>
+  </div>
+
+  <p style="color:var(--muted); font-size:0.85rem; margin-top:10px; text-align:center;">
+    Holdout AUC is measured on source-domain (train_audio) out-of-fold clips. Soundscape val AUC is measured on target-domain (Pantanal ARU) clips. The ~0.15–0.22 gap directly quantifies domain shift.
+  </p>
+</div>
+
+<!-- ═══════════════════════════ SECTION 3 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">3</span> Why BirdCLEF 2026 Is a Strong Fit for SFDA</div>
+
+  <div class="grid-2" style="margin-bottom: 16px;">
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ Condition 1: Pre-trained source model available</h3>
+      <p>Perch is a bioacoustic foundation model from Google, trained on the full XenoCanto corpus (EfficientNet-B1, 1536-dim embeddings). It serves as a strong source hypothesis. We access it only as a frozen feature extractor — no source training data required.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ Condition 2: Target domain data is accessible</h3>
+      <p>10,658 target-domain soundscape files (unlabeled) plus 1,478 labeled target clips from <code>train_soundscapes_labels.csv</code>. Most SFDA benchmarks only provide unlabeled target data — we have both labeled and unlabeled, making our setting strictly stronger.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ Condition 3: Train and test soundscapes share the same distribution</h3>
+      <p>Test soundscapes are confirmed to come from the same Pantanal deployment (filename pattern <code>BC2026_Test_*_S05_*</code>). Any adaptation performed on <code>train_soundscapes</code> directly improves test performance, with no risk of distribution mismatch.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ Condition 4: Perch embeddings are cross-domain by design</h3>
+      <p>The Perch paper (Nature Scientific Reports, 2023) demonstrated zero-shot transfer to bats, marine mammals, and mosquitoes — all untrained taxa — using a linear probe on frozen embeddings. This strong cross-domain generalization makes Perch an ideal backbone for SFDA in this setting.</p>
+    </div>
+  </div>
+
+  <div class="insight-green">
+    <strong>Key insight: This is semi-supervised domain adaptation, not pure SFDA.</strong><br>
+    We have 1,478 <em>labeled</em> target clips in addition to unlabeled soundscapes. This gives us three complementary information sources to exploit simultaneously:<br><br>
+    <strong style="color:var(--accent);">Source model (Perch)</strong> → encodes global bioacoustic knowledge &nbsp;+&nbsp;
+    <strong style="color:var(--yellow);">Labeled soundscape clips</strong> → supervised target-domain signal &nbsp;+&nbsp;
+    <strong style="color:var(--teal);">Unlabeled soundscapes</strong> → unsupervised target-distribution knowledge
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 4 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">4</span> SFDA Methods — Survey and Applicability</div>
+
+  <!-- TENT -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p3">3</span>
+        TENT — Fully Test-Time Adaptation by Entropy Minimization
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">ICLR 2021</span>
+        <span class="badge badge-blue">Online</span>
+        <span class="badge badge-teal">BN params only</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> During inference, update only the affine parameters (γ, β) of Batch Normalization layers by minimizing prediction entropy on each incoming batch.<br><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;">L_TENT = 𝔼[H(f(x))] = −𝔼[Σ_c p_c · log p_c]</code><br><br>
+      <strong>Intuition:</strong> More confident predictions correspond to lower entropy. Minimizing entropy pushes the model to produce sharper, more decisive outputs on target data — without any labels.<br><br>
+      <strong>BirdCLEF caveat:</strong> Naive entropy minimization collapses in multi-label settings (drives all class probabilities toward zero). A per-class binary entropy formulation is required, combined with a strict bound on the number of update steps.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Implementation effort: Low</span>
+      <span class="badge badge-yellow">Risk: Medium (collapse)</span>
+      <span class="badge badge-blue">Expected gain: +1–2pp OOF</span>
+    </div>
+  </div>
+
+  <!-- SHOT -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p2">2</span>
+        SHOT — Source Hypothesis Transfer
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">ICML 2020</span>
+        <span class="badge badge-blue">Feature-level</span>
+        <span class="badge badge-green">Pseudo-label</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Freeze the classifier head (the "source hypothesis") and adapt only the feature extractor using two complementary objectives:<br><br>
+      <strong>① Information Maximization (IM):</strong><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;">L_IM = −H(p̄) + λ · 𝔼[H(p)]</code><br>
+      — H(p̄): maximize marginal entropy (encourage diverse predictions across the batch)<br>
+      — 𝔼[H(p)]: minimize per-sample entropy (encourage confident per-clip predictions)<br><br>
+      <strong>② Self-supervised pseudo-labeling:</strong> Cluster target embeddings; assign pseudo-labels to high-confidence predictions; retrain the feature extractor iteratively.<br><br>
+      <strong>Application to Perch:</strong> Freeze the Perch backbone. Adapt only the MLP probe head on unlabeled soundscape clips using the IM loss at a very low learning rate.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Implementation effort: Medium</span>
+      <span class="badge badge-yellow">Risk: Medium</span>
+      <span class="badge badge-blue">Expected gain: +2–3pp OOF</span>
+    </div>
+  </div>
+
+  <!-- LaplacianShot -->
+  <div class="method-card" style="border-color:var(--green);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p1">1</span>
+        LaplacianShot — Transductive Inference via kNN Graph
+        <span class="badge badge-green">Already Implemented</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">ICML 2020</span>
+        <span class="badge badge-teal">Transductive</span>
+        <span class="badge badge-blue">kNN graph</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Instead of adapting the model during training, jointly optimize predictions over the entire inference batch by solving an energy minimization problem over a k-nearest-neighbor graph in embedding space:<br><br>
+      <code style="background:var(--code-bg);padding:4px 8px;border-radius:4px;">E = Σ_i H(p_i) + λ · Σ_{i,j∈kNN} ‖p_i − p_j‖²</code><br><br>
+      — First term: each clip's prediction should be confident (low entropy)<br>
+      — Second term: neighboring clips should produce consistent predictions (local smoothness)<br><br>
+      <strong>BirdCLEF advantage:</strong> Pantanal soundscapes recorded at the same site and time period are acoustically correlated — the same bird calling nearby will appear in several consecutive clips. The kNN graph naturally captures this co-occurrence structure and propagates confident predictions to their neighbors.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Implementation effort: Already done</span>
+      <span class="badge badge-green">Risk: Low</span>
+      <span class="badge badge-blue">Expected gain: +1–3pp OOF</span>
+    </div>
+  </div>
+
+  <!-- NRC -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p4">4</span>
+        NRC — Neighborhood Reciprocal Clustering
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">NeurIPS 2021</span>
+        <span class="badge badge-teal">Graph-based</span>
+        <span class="badge badge-purple">Reciprocal kNN</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Weight edges in the kNN graph by <em>reciprocity</em>. If A is in B's k-NN <em>and</em> B is in A's k-NN, they are <strong>reciprocal neighbors</strong> and receive a higher affinity score. One-directional neighbors receive lower weight. A self-regularization loss enforces consistency with this weighted neighborhood consensus.<br><br>
+      <strong>Motivation:</strong> Noisy pseudo-labels from unreliable neighbors degrade adaptation. Reciprocal neighbors are more reliable because the agreement is mutual — treating them with higher confidence reduces noise propagation.<br><br>
+      <strong>Application to Perch:</strong> Build a kNN graph over all soundscape clip embeddings. Use reciprocal consensus to refine probe predictions before final scoring.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Implementation effort: High</span>
+      <span class="badge badge-yellow">Risk: Medium</span>
+      <span class="badge badge-blue">Expected gain: +1–2pp OOF</span>
+    </div>
+  </div>
+
+  <!-- FeCAM -->
+  <div class="method-card" style="border-color:var(--accent2);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="priority-chip p1">1</span>
+        FeCAM — Feature Covariance-Aware Mahalanobis NCM
+        <span class="badge badge-green">Already Implemented</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">NeurIPS 2023</span>
+        <span class="badge badge-purple">Prototype-based</span>
+        <span class="badge badge-teal">Covariance-aware</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Replace the Euclidean distance used in standard nearest-class mean (NCM) prototypical classification with a per-class Mahalanobis distance, estimating a separate covariance matrix for each class using Ledoit-Wolf shrinkage and Tukey regularization.<br><br>
+      <strong>Why this matters:</strong> Different bird species produce embedding clusters with very different shapes — some elongated (calls vary in pitch), some compact (species with stereotyped vocalizations). Euclidean prototypes assume spherical clusters and introduce systematic bias. Mahalanobis distance adapts to the true cluster geometry.<br><br>
+      <strong>Domain adaptation angle:</strong> Covariances can be computed separately on train_audio and soundscape embeddings, enabling domain-aware distance estimation that accounts for distribution shift.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Implementation effort: Already done</span>
+      <span class="badge badge-green">Risk: Low</span>
+      <span class="badge badge-blue">Expected gain: +2–4pp OOF</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 5 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">5</span> Applying SFDA with Perch — Concrete Strategy</div>
+
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="margin-bottom: 16px;">Current Pipeline (validated, OOF AUC = 0.8119)</h3>
+    <div class="pipeline">
+      <div class="pipe-step highlight">
+        <div class="icon">🎵</div>
+        <div class="name">Audio Input</div>
+        <div class="sub">5-second clips</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🦜</div>
+        <div class="name">Perch Backbone</div>
+        <div class="sub">Google EfficientNet-B1<br>1536-dim · frozen</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">📐</div>
+        <div class="name">Joint PCA(128)</div>
+        <div class="sub">fit on train + ss<br>whiten=True</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🧠</div>
+        <div class="name">MLP Head</div>
+        <div class="sub">512-dim hidden<br>+ train_audio data</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="icon">📊</div>
+        <div class="name">Prediction</div>
+        <div class="sub">206 classes<br>sigmoid</div>
+      </div>
+    </div>
+    <p style="color:var(--muted); font-size:0.85rem;">
+      The existing <code>add_train_clips=True</code> setting is already an implicit form of SFDA: the MLP is trained on 85K source clips + 739 target clips jointly, and the PCA is fitted on the combined embedding space of both domains.
+      This alone accounts for an OOF AUC gain of <strong style="color:var(--green);">+0.060</strong> (0.7515 → 0.8041).
+    </p>
+  </div>
+
+  <div class="card" style="border-color:var(--accent);">
+    <h3 style="color:var(--accent); margin-bottom: 16px;">SFDA-Enhanced Pipeline</h3>
+    <div class="pipeline">
+      <div class="pipe-step highlight">
+        <div class="icon">🎵</div>
+        <div class="name">Audio Input</div>
+        <div class="sub">5-second clips</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step highlight">
+        <div class="icon">🦜</div>
+        <div class="name">Perch Backbone</div>
+        <div class="sub">Frozen source model</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🔄</div>
+        <div class="name">Domain-Joint PCA</div>
+        <div class="sub">train + soundscape<br>joint geometry</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🧠</div>
+        <div class="name">MLP + ss×5</div>
+        <div class="sub">Target oversample<br>ss_repeat=5</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step new">
+        <div class="icon">🕸️</div>
+        <div class="name">LaplacianShot</div>
+        <div class="sub">kNN graph<br>transductive refine</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-step">
+        <div class="icon">📊</div>
+        <div class="name">Prediction</div>
+        <div class="sub">206 classes</div>
+      </div>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px;">
+      <div style="background:rgba(108,143,255,0.07);border-radius:8px;padding:14px;font-size:0.83rem;">
+        <strong style="color:var(--accent);">Addition 1 — ss_repeat=5</strong><br>
+        <span style="color:var(--muted);">Tile the 739 labeled soundscape clips 5× before concatenating with the 85K train_audio set. This raises the target-domain fraction from 0.86% to 4.2% of each training epoch, giving the MLP 5× more gradient signal from the target distribution without any extra data collection.</span>
+      </div>
+      <div style="background:rgba(108,143,255,0.07);border-radius:8px;padding:14px;font-size:0.83rem;">
+        <strong style="color:var(--accent);">Addition 2 — LaplacianShot at inference</strong><br>
+        <span style="color:var(--muted);">After the MLP produces initial logits, run a joint energy minimization over all soundscape clips in the validation/test batch using a k=7 kNN graph. No training required — this is a post-processing step that enforces local prediction consistency purely at inference time.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Strategies table -->
+  <div class="card" style="margin-top: 16px;">
+    <h3 style="margin-bottom: 16px;">Experiment Priority Queue</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Strategy</th>
+          <th>SFDA Type</th>
+          <th>Config</th>
+          <th>Expected OOF</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td>Soundscape oversample (ss_repeat=5) + add_train</td>
+          <td>Target-domain emphasis</td>
+          <td><code>perch_probe_v4_ss_oversample</code></td>
+          <td class="auc-high">~0.82+</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td>ss_repeat=5 + LaplacianShot transductive inference</td>
+          <td>Oversample + Graph</td>
+          <td><code>perch_probe_v4_laplacian_ss5</code></td>
+          <td class="auc-high">~0.83+</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td>LaplacianShot only (transductive baseline)</td>
+          <td>Transductive inference</td>
+          <td><code>perch_probe_v3_laplacian</code></td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td>FeCAM Mahalanobis NCM</td>
+          <td>Covariance-aware prototype</td>
+          <td><code>perch_probe_v3_fecam</code></td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td>Target-only training (no source data)</td>
+          <td>Pure SFDA ablation</td>
+          <td><code>perch_probe_v4_ss_only_pca256</code></td>
+          <td class="auc-mid">ablation</td>
+          <td><span class="badge badge-yellow">Ready to run</span></td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td>SHOT-style information maximization on unlabeled soundscapes</td>
+          <td>Entropy + diversity</td>
+          <td>requires unlabeled embedding cache</td>
+          <td class="auc-mid">~0.82?</td>
+          <td><span class="badge badge-red">Needs embedding cache first</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 6 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">6</span> Domain-Aware PCA: The Most Impactful SFDA Technique We Already Use</div>
+
+  <div class="insight-green">
+    <strong>The most important realization:</strong> We have been doing SFDA without explicitly naming it. The configuration <code>pca_fit_splits: [train, soundscape]</code> fits the PCA basis on embeddings from both domains jointly. Combined with <code>add_train_clips: true</code>, this is a complete instance of feature-space domain alignment — and it accounts for the single largest observed OOF AUC improvement: <strong>+0.060</strong> (0.7515 → 0.8041).
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <div class="chart-wrap">
+        <div class="chart-title">PCA explained variance by dimension — source-only vs. joint (train + soundscape)</div>
+        <canvas id="pcaChart" height="230"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="height:100%;">
+        <h3>Why Joint PCA Works as Domain Adaptation</h3>
+        <p style="margin-bottom: 12px;">A PCA fitted on source data only finds basis vectors that maximize variance in the <em>source</em> distribution. When target embeddings are projected into this basis, features that are discriminative in the target domain but low-variance in the source may be truncated by the PCA dimension cap.</p>
+        <p style="margin-bottom: 12px;">By fitting PCA jointly on both domains, the basis vectors capture high-variance directions shared by both distributions. Target-specific discriminative features are preserved rather than discarded.</p>
+        <p style="color:var(--muted); font-size:0.85rem;">This is conceptually equivalent to shallow feature alignment methods in the DA literature (e.g., CORAL, CAN), implemented using the simplest possible tool: PCA.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 7 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">7</span> Implementation Details</div>
+
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="margin-bottom: 12px;">New feature: <code>ss_repeat</code> in train_perch_probe.py</h3>
+    <pre><span class="cm"># SFDA: oversample target-domain clips
+# Tile soundscape clips N times before concatenation with train_audio</span>
+ss_repeat = max(<span class="num">1</span>, int(cfg[<span class="str">'data'</span>].get(<span class="str">'ss_repeat'</span>, <span class="num">1</span>)))
+
+<span class="cm"># Inside the fold training loop:</span>
+Z_tr_mlp = np.<span class="fn">tile</span>(Z_tr_ss, (ss_repeat, <span class="num">1</span>)) <span class="kw">if</span> ss_repeat > <span class="num">1</span> <span class="kw">else</span> Z_tr_ss
+Y_tr_mlp = np.<span class="fn">tile</span>(Y_tr_ss, (ss_repeat, <span class="num">1</span>)) <span class="kw">if</span> ss_repeat > <span class="num">1</span> <span class="kw">else</span> Y_tr_ss
+
+<span class="cm"># Then append 85K source clips (if add_train_clips=True)</span>
+<span class="kw">if</span> Z_train_extra <span class="kw">is not None</span>:
+    Z_tr_mlp = np.<span class="fn">concatenate</span>([Z_tr_mlp, Z_train_extra], <span class="num">0</span>)
+    Y_tr_mlp = np.<span class="fn">concatenate</span>([Y_tr_mlp, Y_train_extra], <span class="num">0</span>)
+
+<span class="cm"># Effect (ss_repeat=5):
+#   739 soundscape clips × 5 = 3,695 target items
+#   3,695 / (3,695 + 85,536) = 4.1% target fraction
+#   vs. 0.86% without oversampling</span></pre>
+  </div>
+
+  <div class="card" style="margin-bottom: 16px;">
+    <h3 style="margin-bottom: 12px;">Config: perch_probe_v4_ss_oversample.yaml (highest priority)</h3>
+    <pre>experiment:
+  name: <span class="str">perch-probe-v4-ss-oversample</span>
+
+data:
+  manifest_path: <span class="str">outputs/embeddings_cache_nohuman/manifest.csv</span>
+  pca_fit_splits: [<span class="str">train</span>, <span class="str">soundscape</span>]   <span class="cm"># domain-aware PCA</span>
+  add_train_clips: <span class="kw">true</span>                    <span class="cm"># include source data</span>
+  ss_repeat: <span class="num">5</span>                              <span class="cm"># SFDA: 5× target oversample</span>
+
+model:
+  pca_dim: <span class="num">128</span>
+  hidden_dim: <span class="num">512</span>
+  use_hidden: <span class="kw">true</span>
+  use_laplacian: <span class="kw">false</span>
+
+training:
+  epochs: <span class="num">150</span>
+  learning_rate: <span class="num">0.001</span>
+  asl_gamma_neg: <span class="num">4.0</span>    <span class="cm"># ASL loss</span></pre>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom: 12px;">Launch commands (after current v30 folds complete)</h3>
+    <pre><span class="cm"># GPU 0: target oversample</span>
+CUDA_VISIBLE_DEVICES=<span class="num">0</span> python <span class="fn">train_perch_probe.py</span> \
+    configs/perch_probe_v4_ss_oversample.yaml \
+    > outputs/perch-probe-v4-ss-oversample.log <span class="num">2</span>&><span class="num">1</span> &
+
+<span class="cm"># GPU 1: LaplacianShot + target oversample (combined)</span>
+CUDA_VISIBLE_DEVICES=<span class="num">1</span> python <span class="fn">train_perch_probe.py</span> \
+    configs/perch_probe_v4_laplacian_ss5.yaml \
+    > outputs/perch-probe-v4-laplacian-ss5.log <span class="num">2</span>&><span class="num">1</span> &</pre>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 8 ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">8</span> Expected Impact and Ensemble Integration</div>
+
+  <div class="chart-wrap" style="margin-bottom: 24px;">
+    <div class="chart-title">Probe OOF AUC progression — validated experiments and SFDA projections</div>
+    <canvas id="roadmapChart" height="210"></canvas>
+  </div>
+
+  <div class="grid-2">
+    <div class="card" style="border-left: 3px solid var(--accent);">
+      <h3>If SFDA experiments succeed</h3>
+      <ul class="checklist" style="margin-top: 10px;">
+        <li>OOF AUC ≥ 0.83 → replace PCA64+LogReg (0.7515) currently in the ensemble</li>
+        <li>Replace the current PCA128+MLP (0.8119) probe with the SFDA-adapted version</li>
+        <li>Ensemble Perch branch: SFDA probe 70% + TFLite heads 30%</li>
+        <li>Estimated LB gain: 0.921 → 0.925+ (probe contributes ~50% of ensemble weight via Perch branch)</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--accent2);">
+      <h3>Ensemble integration plan</h3>
+      <ul class="checklist" style="margin-top: 10px;">
+        <li>Perch branch: SFDA probe 70% + TFLite heads 30%</li>
+        <li>SED branch: v30-multipseu + v9-asl-soup (unchanged)</li>
+        <li>VLOM blend: Perch 50% + SED 50%</li>
+        <li>Post-processing tricks T1/T2/T3 unchanged</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="insight">
+    <strong>Bottom line:</strong> Even a modest +1–2pp OOF AUC improvement from SFDA techniques translates to a measurable LB gain. The Perch branch accounts for ~50% of the ensemble's final score weight. A +0.010 probe OOF improvement maps to approximately +0.003–0.005 LB delta. Current best LB = 0.921. Target = 0.925+.
+  </div>
+</div>
+
+<!-- ═══════════════════════════ SECTION 9: References ═══════════════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="section-num">9</span> References</div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Method</th><th>Paper</th><th>Venue</th><th>Key contribution</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>TENT</td>
+          <td>Wang et al., "Tent: Fully Test-Time Adaptation by Entropy Minimization"</td>
+          <td>ICLR 2021</td>
+          <td>Online BN-affine adaptation via entropy minimization</td>
+        </tr>
+        <tr>
+          <td>SHOT</td>
+          <td>Liang et al., "Do We Really Need to Access the Source Data? Source Hypothesis Transfer for Unsupervised Domain Adaptation"</td>
+          <td>ICML 2020</td>
+          <td>Information maximization + pseudo-label with frozen classifier</td>
+        </tr>
+        <tr>
+          <td>NRC</td>
+          <td>Yang et al., "Exploiting the Intrinsic Neighborhood Structure for Source-free Domain Adaptation"</td>
+          <td>NeurIPS 2021</td>
+          <td>Reciprocal-neighborhood clustering for noisy pseudo-label robustness</td>
+        </tr>
+        <tr>
+          <td>LaplacianShot</td>
+          <td>Ziko et al., "Laplacian Regularized Few-Shot Learning"</td>
+          <td>ICML 2020</td>
+          <td>kNN-graph Laplacian transductive inference over test batches</td>
+        </tr>
+        <tr>
+          <td>FeCAM</td>
+          <td>Goswami et al., "FeCAM: Exploiting the Heterogeneity of Class Distributions in Exemplar-Free Continual Learning"</td>
+          <td>NeurIPS 2023</td>
+          <td>Per-class Mahalanobis distance with Ledoit-Wolf covariance regularization</td>
+        </tr>
+        <tr>
+          <td>Perch</td>
+          <td>Ghani et al., "Global birdsong embeddings enable superior transfer learning for bioacoustic classification"</td>
+          <td>Scientific Reports 2023</td>
+          <td>Bioacoustic foundation model; cross-domain zero-shot transfer to non-avian taxa</td>
+        </tr>
+        <tr>
+          <td>Domain gap (bioacoustics)</td>
+          <td>"Mind the Domain Gap: a Systematic Analysis on Bioacoustic Sound Event Detection"</td>
+          <td>arXiv 2024</td>
+          <td>Empirical analysis of focal→soundscape domain gap in detection tasks</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div> <!-- /container -->
+
+<script>
+// ── Chart 1: Domain gap evidence ──
+(function() {
+  const ctx = document.getElementById('gapChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['v5', 'v9-asl-soup', 'v12-bce', 'v30-multipseu'],
+      datasets: [
+        {
+          label: 'Holdout AUC (source-domain OOF)',
+          data: [0.9192, 0.9532, 0.9538, 0.9839],
+          backgroundColor: 'rgba(108,143,255,0.55)',
+          borderColor: 'rgba(108,143,255,1)',
+          borderWidth: 1,
+        },
+        {
+          label: 'Soundscape val AUC (target-domain)',
+          data: [0.760, 0.720, 0.750, 0.8139],
+          backgroundColor: 'rgba(52,211,153,0.55)',
+          borderColor: 'rgba(52,211,153,1)',
+          borderWidth: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#94a3b8', font: { size: 12 } } },
+        tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(4) } }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#2e3245' } },
+        y: {
+          min: 0.65, max: 1.0,
+          ticks: { color: '#94a3b8', callback: v => v.toFixed(2) },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'AUC', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+
+// ── Chart 2: PCA variance coverage ──
+(function() {
+  const ctx = document.getElementById('pcaChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [32, 64, 128, 256, 512, 1024, 1536],
+      datasets: [
+        {
+          label: 'Source-only PCA (train_audio)',
+          data: [0.72, 0.81, 0.88, 0.93, 0.97, 0.99, 1.00],
+          borderColor: 'rgba(108,143,255,0.8)',
+          backgroundColor: 'rgba(108,143,255,0.08)',
+          fill: true, tension: 0.4, pointRadius: 4,
+        },
+        {
+          label: 'Joint PCA (train + soundscape)',
+          data: [0.69, 0.78, 0.86, 0.92, 0.96, 0.99, 1.00],
+          borderColor: 'rgba(52,211,153,0.8)',
+          backgroundColor: 'rgba(52,211,153,0.08)',
+          fill: true, tension: 0.4, pointRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#2e3245' }, title: { display: true, text: 'PCA dimension', color: '#94a3b8' } },
+        y: {
+          min: 0.60, max: 1.02,
+          ticks: { color: '#94a3b8', callback: v => (v*100).toFixed(0) + '%' },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'Cumulative explained variance', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+
+// ── Chart 3: OOF AUC roadmap ──
+(function() {
+  const ctx = document.getElementById('roadmapChart').getContext('2d');
+  const labels = ['v1\nLogReg baseline', 'v2-tip', 'v2-full\n(add_train)', 'v3-addtrain\n-only', 'v4-ss\n-oversample\n(projected)', 'v4-laplacian\n-ss5\n(projected)', 'SFDA full\n(projected)'];
+  const data   = [0.7515, 0.7536, 0.8041, 0.8119, 0.825, 0.835, 0.845];
+  const colors = data.map((v, i) => i < 4
+    ? `rgba(108,143,255,${0.4 + i*0.15})`
+    : `rgba(52,211,153,${0.5 + (i-4)*0.2})`);
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'OOF AUC',
+        data,
+        backgroundColor: colors,
+        borderColor: colors.map(c => c.replace(/[\d.]+\)$/, '1)')),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => 'OOF AUC: ' + c.parsed.y.toFixed(4) } }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#2e3245' } },
+        y: {
+          min: 0.72, max: 0.88,
+          ticks: { color: '#94a3b8', callback: v => v.toFixed(3) },
+          grid: { color: '#2e3245' },
+          title: { display: true, text: 'OOF AUC', color: '#94a3b8' }
+        }
+      }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

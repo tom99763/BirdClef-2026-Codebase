@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>BirdCLEF 2026 — Teacher-Student Distillation & Pseudo-Label 研究報告</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 24px; background: #f8f9fa; color: #212529; }
+  h1 { color: #1a237e; border-bottom: 3px solid #1a237e; padding-bottom: 8px; }
+  h2 { color: #283593; border-left: 5px solid #3949ab; padding-left: 12px; margin-top: 36px; }
+  h3 { color: #37474f; margin-top: 24px; }
+  h4 { color: #546e7a; }
+  pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 6px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+  code { background: #e8eaf6; color: #283593; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+  th { background: #3949ab; color: white; padding: 10px 14px; text-align: left; }
+  td { padding: 8px 14px; border-bottom: 1px solid #dee2e6; }
+  tr:nth-child(even) { background: #f0f2ff; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .highlight { background: #e8f5e9; border-left: 4px solid #43a047; padding: 12px 16px; border-radius: 4px; margin: 12px 0; }
+  .warn { background: #fff3e0; border-left: 4px solid #fb8c00; padding: 12px 16px; border-radius: 4px; margin: 12px 0; }
+  .tag { display: inline-block; background: #3949ab; color: white; border-radius: 12px; padding: 2px 10px; font-size: 12px; margin: 2px; }
+  .tag.green { background: #43a047; }
+  .tag.orange { background: #fb8c00; }
+  .score { font-size: 1.4em; font-weight: bold; color: #1a237e; }
+  ul li { margin: 6px 0; }
+</style>
+</head>
+<body>
+
+<h1>BirdCLEF 2026 — Teacher-Student Distillation & Pseudo-Label 研究報告</h1>
+<p style="color:#546e7a">生成日期：2026-03-22 ｜ 資料來源：本地 notebook 分析 + 既有 codebase</p>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>一、研究背景與目標</h2>
+<div class="card">
+  <p>BirdCLEF 2026 的核心挑戰是 <strong>訓練域 (train_audio) → 測試域 (soundscape) 的 domain shift</strong>。
+  Teacher-Student Distillation 與 Pseudo Labeling 是兩種主流解法：</p>
+  <table>
+    <tr><th>方法</th><th>核心思想</th><th>資料需求</th><th>效果</th></tr>
+    <tr><td><strong>Output Distillation</strong></td><td>用 Teacher 的 soft label 監督 Student</td><td>已標記 soundscape</td><td>直接改善 soundscape AUC</td></tr>
+    <tr><td><strong>Embedding Distillation</strong></td><td>對齊 Student 的 embedding 空間與 Teacher</td><td>任意 audio（可無標籤）</td><td>骨幹更強，transfer 更好</td></tr>
+    <tr><td><strong>Noisy Student</strong></td><td>用 ensemble 生成偽標籤，訓練更大 student</td><td>未標記 soundscape</td><td>Domain adaptation 最強</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>二、Noisy Student Pseudo Labeling（目標域偽標籤）</h2>
+<div class="card">
+  <p>來源：<code>public sed/birdclef-2026-target-domain-pseudo-labeling.ipynb</code></p>
+
+  <h3>2.1 整體流程</h3>
+  <pre>
+未標記 soundscapes (10,658 files)
+  → 5-fold ONNX ensemble 推理（並行 2 GPU worker）
+  → Sigmoid → soft probabilities
+  → 1D Moving Average 平滑（window=3, nearest padding）
+  → Babych Power Transform (γ=2.0)  ← BirdCLEF 2025 第 1 名技巧
+  → 動態 class-specific 95th percentile 閾值過濾
+  → 輸出 CSV (245,134 → 240,661 rows after filter)
+  </pre>
+
+  <h3>2.2 關鍵程式碼</h3>
+  <pre>
+# 1. Ensemble 推理（5 folds 平均 logit）
+raw_probs = 1.0 / (1.0 + np.exp(-ensemble_logits))
+
+# 2. 時間平滑
+from scipy.ndimage import uniform_filter1d
+smoothed_probs = uniform_filter1d(raw_probs, size=3, axis=0, mode='nearest')
+
+# 3. Babych Power Transform（第 1 名關鍵）
+transformed_probs = np.power(smoothed_probs, gamma=2.0)
+# 效果：低置信度 → 趨近 0，高置信度 → 保留
+
+# 4. 動態閾值過濾
+class_thresholds = final_df[classes].quantile(0.95)  # per-class 95th percentile
+keep_mask = (final_df[classes] >= class_thresholds).any(axis=1)
+filtered_df = final_df[keep_mask].copy()
+  </pre>
+
+  <div class="highlight">
+    <strong>Babych Power Transform (γ=2.0)</strong>：BirdCLEF 2025 第 1 名的核心後處理。
+    P=0.5 → 0.25，P=0.9 → 0.81，P=0.1 → 0.01。
+    有效壓制低信心噪訊，保留高信心正例。
+  </div>
+
+  <h3>2.3 配置參數</h3>
+  <table>
+    <tr><th>參數</th><th>值</th><th>說明</th></tr>
+    <tr><td>sample_rate</td><td>32,000 Hz</td><td></td></tr>
+    <tr><td>window / hop</td><td>5s / 2.5s</td><td>overlapping windows</td></tr>
+    <tr><td>gamma</td><td>2.0</td><td>Power Transform exponent</td></tr>
+    <tr><td>dynamic_threshold_percentile</td><td>95</td><td>per-class filtering</td></tr>
+    <tr><td>batch_size</td><td>256</td><td>ONNX inference</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>三、SED 訓練架構（Noisy Student Stage 2）</h2>
+<div class="card">
+  <p>來源：<code>public sed/birdclef-2026-training.ipynb</code>，LB ≈ 0.862 baseline + pseudo label boost</p>
+
+  <h3>3.1 模型架構</h3>
+  <pre>
+waveform (B, 160_000)
+  → AudioToMelPCEN (GPU float32)        → (B, 1, 128, 313)
+    ├── STFT (n_fft=1024, hop=512)
+    ├── Mel filterbank (128 mels, 40-14kHz, slaney)
+    └── PCEN (learnable α, δ, r, s per freq bin)
+  → SpecAugment (2×freq + 2×time)       (train only)
+  → EfficientNet-B0 (timm, no GAP)      → (B, 1280, F, T)
+  → SEDAttentionHead
+    ├── Mean pool frequency              → (B, T, 1280)
+    ├── Frame logits: FC(1280→234)       → (B, T, 234)
+    ├── Attention: FC(1280→128)→Tanh→FC(128→234)→Softmax
+    └── Weighted sum over T             → (B, 234)
+  </pre>
+
+  <h3>3.2 PCEN Frontend（可學習）</h3>
+  <pre>
+class AudioToMelPCEN(nn.Module):
+    # 每個 mel bin 一組可學習參數 (shape: 1 × 128 × 1)
+    alpha_raw = nn.Parameter(torch.full(shape, logit(0.98)))   # smoothing
+    delta_raw = nn.Parameter(torch.full(shape, softplus_inv(2.0)))  # bias
+    r_raw     = nn.Parameter(torch.full(shape, logit(0.5)))    # root
+    s_raw     = nn.Parameter(torch.full(shape, logit(0.25)))   # IIR decay
+
+    # PCEN 公式：
+    # M = IIR_smooth(S, s)  (background estimate)
+    # PCEN = (S / (ε + M)^α + δ)^r − δ^r
+  </pre>
+
+  <div class="highlight">
+    PCEN vs AmplitudeToDB：PCEN 做 <strong>自適應增益正規化</strong>，動態壓縮背景噪音，
+    對 soundscape 的靜音段和強噪段都有更好的抗干擾效果。
+  </div>
+
+  <h3>3.3 Loss Function（Masked BCE）</h3>
+  <pre>
+class MaskedBCEWithLogitsLoss(nn.Module):
+    def forward(self, logits, primary_targets, secondary_targets):
+        combined = torch.clamp(primary_targets + secondary_targets, 0.0, 1.0)
+        raw_loss = BCE_with_logits(logits, combined)
+
+        # 遮罩 secondary label 的梯度，只保留 primary label 監督
+        mask = torch.ones_like(raw_loss)
+        mask[secondary_targets == 1.0] = 0.0
+        mask[primary_targets  == 1.0] = 1.0
+
+        return (raw_loss * mask).mean()
+  </pre>
+
+  <h3>3.4 Pseudo Label 軟標籤混合（背景疊加）</h3>
+  <pre>
+# 背景音檔以 SNR 10-30 dB 混入主要音訊
+rms_focal = sqrt(mean(wav^2))
+rms_bg    = sqrt(mean(bg^2))
+scale     = rms_focal / (rms_bg * 10^(snr_db/20))
+wav_mixed = clamp(wav + bg * scale * mix_mask, -1.0, 1.0)
+
+# 軟標籤按混音比例縮放
+if use_pseudo_labels:
+    blended = primary_targets + bg_pseudo_targets * scale * mix_mask * pseudo_label_weight
+    primary_targets = clamp(blended, 0.0, 1.0)
+
+# pseudo_label_weight = 0.5（縮小偽標籤影響，防止 domain shift）
+  </pre>
+
+  <h3>3.5 訓練配置</h3>
+  <table>
+    <tr><th>參數</th><th>值</th></tr>
+    <tr><td>Backbone</td><td>tf_efficientnet_b0.ns_jft_in1k</td></tr>
+    <tr><td>Mel params</td><td>n_fft=1024, hop=512, n_mels=128, fmin=40, fmax=14000</td></tr>
+    <tr><td>Epochs</td><td>30（snapshot: ep20,22,24,26,28,30 → model soup）</td></tr>
+    <tr><td>Batch size</td><td>64 (2 GPU) = 32 per GPU</td></tr>
+    <tr><td>LR</td><td>3e-4（head）/ 3e-5（backbone, LLRD 10×）</td></tr>
+    <tr><td>Weight decay</td><td>1e-4</td></tr>
+    <tr><td>Mixup</td><td>Additive mixup α∈[0.3,0.7], p=0.5</td></tr>
+    <tr><td>BG mix prob</td><td>0.80, SNR 10-30 dB</td></tr>
+    <tr><td>SpecAugment</td><td>2×freq(12) + 2×time(24)</td></tr>
+    <tr><td>Pseudo label weight</td><td>0.5</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>四、Embedding Distillation（表示學習蒸餾）</h2>
+<div class="card">
+  <p>來源：<code>train_embed_distill.py</code>（本地 codebase）</p>
+
+  <h3>4.1 核心思想</h3>
+  <p>不蒸餾分類結果，而是蒸餾 <strong>Perch v2 的 1536-dim embedding 空間</strong>。
+  Student 骨幹（EfficientNet-B0）在音訊 mel 上提取 embedding，
+  訓練目標是讓其 L2-normalized embedding 與 Perch teacher 對齊。</p>
+
+  <pre>
+Student 架構：
+  EfficientNet-B0
+    → GEMFreqPool (p=3.0, freq 維度 pooling)
+    → AdaptiveAvgPool1d (time 維度 pooling)
+    → Linear(feat_dim) → GELU → Dropout
+    → Linear(→ 1536) → LayerNorm → L2-normalize
+    → unit-sphere embedding (1536-dim)
+  </pre>
+
+  <h3>4.2 Loss Functions</h3>
+  <pre>
+# 方法 1：Cosine Loss（默認）
+loss = (1.0 - (student_emb * teacher_emb_norm).sum(dim=-1)).mean()
+# 兩端都 L2-normalize，最大化餘弦相似度
+
+# 方法 2：InfoNCE / NT-Xent（v3 config）
+def infonce_loss(student_emb, teacher_emb, temperature=0.1):
+    B = student_emb.shape[0]
+    sim = torch.matmul(student_emb, teacher_emb.T) / temperature  # (B, B)
+    labels = torch.arange(B, device=student_emb.device)
+    # 對角線 = 正例對，非對角線 = batch 負例
+    return (F.cross_entropy(sim, labels) + F.cross_entropy(sim.T, labels)) / 2
+  </pre>
+
+  <h3>4.3 實驗配置對比</h3>
+  <table>
+    <tr><th>Config</th><th>骨幹</th><th>Loss</th><th>In_chans</th><th>Key Aug</th><th>Epochs</th></tr>
+    <tr><td>v1</td><td>EffB0</td><td>cosine</td><td>1</td><td>無</td><td>30</td></tr>
+    <tr><td>v2</td><td>EffB0</td><td>cosine</td><td>3</td><td>SpecAug</td><td>30</td></tr>
+    <tr><td>v3</td><td>EffB0</td><td><strong>InfoNCE T=0.1</strong></td><td>1</td><td>SpecAug</td><td>30</td></tr>
+    <tr><td>v4</td><td>EffB0</td><td>cosine</td><td>1</td><td>2×SpecAug + mixup0.4 + noise</td><td>30</td></tr>
+    <tr><td>v5</td><td>EffB0</td><td>cosine</td><td>3</td><td>2×SpecAug + mixup0.4 + noise</td><td>40</td></tr>
+    <tr><td>B2-v1</td><td>EffB2</td><td>cosine</td><td>1</td><td>SpecAug</td><td>30</td></tr>
+    <tr><td>B4-v1</td><td>EffB4</td><td>cosine</td><td>1</td><td>SpecAug</td><td>30</td></tr>
+  </table>
+
+  <div class="highlight">
+    <strong>Embedding Distillation 優勢：</strong>可以使用任何未標記音訊（107k train_audio + soundscapes）。
+    蒸餾完的骨幹再接分類頭 fine-tune，比從 ImageNet 預訓練直接 fine-tune 效果好得多。
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>五、Output Distillation（分類蒸餾）</h2>
+<div class="card">
+  <p>來源：<code>train_distill.py</code>（本地 codebase）</p>
+
+  <h3>5.1 Teacher</h3>
+  <p>已訓練的 Perch label-head（nohuman-label-soundscape-train），holdout AUC = <span class="score">0.9550</span></p>
+
+  <h3>5.2 Loss（雙目標）</h3>
+  <pre>
+# Hard label loss（train_audio，真實標籤）
+clip_loss = ASL(clip_pred, hard_label)        # Asymmetric Focal Loss
+
+# Soft label distillation loss（soundscape，Perch 輸出）
+distill_loss = ASL(clip_ss, perch_soft_label)
+
+# Frame-level loss（時間監督）
+frame_loss = BCE(frame_logit, hard_label)
+
+# 最終
+total = clip_loss_w * clip_loss
+      + frame_loss_w * frame_loss
+      + distill_weight * distill_loss
+# 典型值：clip_loss_w=0.5, frame_loss_w=0.5, distill_weight=0.5
+  </pre>
+
+  <h3>5.3 配置</h3>
+  <table>
+    <tr><th>參數</th><th>distill_b0_v1</th><th>distill_b0_v2_full</th></tr>
+    <tr><td>Soundscape 數量</td><td>1,176 clips (round5_pseudo.csv)</td><td>~10,658 files (全量)</td></tr>
+    <tr><td>Distill weight</td><td>0.5</td><td>0.5</td></tr>
+    <tr><td>LLRD backbone mult</td><td>0.1</td><td>0.1</td></tr>
+    <tr><td>ASL γ_neg / γ_pos</td><td>4.0 / 0.0</td><td>4.0 / 0.0</td></tr>
+    <tr><td>Warmup</td><td>3 epochs</td><td>3 epochs</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>六、三種方法比較與建議</h2>
+<div class="card">
+  <table>
+    <tr><th>方法</th><th>Teacher</th><th>資料</th><th>優點</th><th>缺點</th><th>建議</th></tr>
+    <tr>
+      <td><strong>Noisy Student</strong></td>
+      <td>5-fold SED ensemble</td>
+      <td>未標記 soundscape</td>
+      <td>Domain adaptation 最強；可迭代提升</td>
+      <td>需要先有好的 SED 模型</td>
+      <td class="tag green">優先嘗試</td>
+    </tr>
+    <tr>
+      <td><strong>Embedding Distill</strong></td>
+      <td>Perch v2 (frozen)</td>
+      <td>所有 train_audio + soundscape</td>
+      <td>骨幹學到豐富音訊表示；無標籤也能用</td>
+      <td>需要先 cache Perch embeddings</td>
+      <td class="tag green">優先嘗試</td>
+    </tr>
+    <tr>
+      <td><strong>Output Distill</strong></td>
+      <td>Perch label-head</td>
+      <td>已標記 soundscape</td>
+      <td>直接對齊分類目標；實作簡單</td>
+      <td>限於 Perch 的 234 類空間</td>
+      <td class="tag orange">次要</td>
+    </tr>
+  </table>
+
+  <h3>建議實驗路線</h3>
+  <div class="highlight">
+    <ol>
+      <li><strong>Embedding Distillation</strong>：用 <code>train_embed_distill.py</code> (configs v4 or v5)，
+          在 train_audio + soundscapes 上蒸餾 Perch embedding。cosine loss 或 InfoNCE 都可以試。
+          完成後骨幹接 ProtoSSM 或分類頭 fine-tune。</li>
+      <li><strong>Pseudo Label 生成</strong>：用當前最好的 model（Perch probe）對未標記 soundscape 推理，
+          套用 Power Transform (γ=2.0) + 95th percentile 過濾，生成偽標籤 CSV。</li>
+      <li><strong>Noisy Student 訓練</strong>：將偽標籤 CSV 餵進 SED/ProtoSSM 訓練，
+          pseudo_label_weight=0.5 縮小影響，避免 diversity collapse。</li>
+    </ol>
+  </div>
+  <div class="warn">
+    <strong>注意（已知限制）</strong>：根據之前實驗記錄，pseudo labels 在 SED 訓練中會破壞 Perch ensemble 多樣性，
+    導致整體 ensemble LB 下降。目前只有 ProtoSSM 適合接受偽標籤輔助（因為它不是 Perch 的直接學生）。
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>七、現有 Codebase 資源清單</h2>
+<div class="card">
+  <table>
+    <tr><th>檔案</th><th>功能</th><th>狀態</th></tr>
+    <tr><td><code>train_embed_distill.py</code></td><td>Embedding Distillation 訓練</td><td class="tag green">可用</td></tr>
+    <tr><td><code>train_distill.py</code></td><td>Output Distillation (ASL soft label)</td><td class="tag green">可用</td></tr>
+    <tr><td><code>scripts/extract_perch_teacher_all_ss.py</code></td><td>提取 Perch teacher logits（全量 soundscape）</td><td class="tag green">可用</td></tr>
+    <tr><td><code>scripts/cache_mel_for_distill.py</code></td><td>預計算 mel cache 加速 embed distill</td><td class="tag green">可用</td></tr>
+    <tr><td><code>pseudo_labels/round5_pseudo.csv</code></td><td>1,176 筆已生成偽標籤</td><td class="tag green">可用</td></tr>
+    <tr><td><code>configs/embed_distill_b0_v1~v5.yaml</code></td><td>Embedding distillation 配置</td><td class="tag green">可用</td></tr>
+    <tr><td><code>configs/distill_b0_v1.yaml</code></td><td>Output distillation 配置</td><td class="tag green">可用</td></tr>
+    <tr><td><code>outputs/perch_labeled_ss.npz</code></td><td>66 soundscape Perch embeddings cache</td><td class="tag green">已存在</td></tr>
+  </table>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════ -->
+<h2>八、目前 ProtoSSM 實驗進度（2026-03-22）</h2>
+<div class="card">
+  <table>
+    <tr><th>實驗</th><th>OOF AUC</th><th>Mean Fold AUC</th><th>F0</th><th>F1</th><th>F2</th><th>F3</th><th>F4</th><th>狀態</th></tr>
+    <tr><td>v3（基準，full-batch，無 aug）</td><td>0.8327</td><td>0.9007</td><td>0.9143</td><td>0.8533</td><td>0.8761</td><td>0.9284</td><td>0.9316</td><td>✅</td></tr>
+    <tr><td><strong>v4-light（noise+mask+mini-batch）</strong></td><td><strong>0.8377</strong></td><td><strong>0.9144</strong></td><td>0.9308</td><td>0.8831</td><td>0.8823</td><td>0.9373</td><td>0.9387</td><td>✅</td></tr>
+    <tr><td>v4-full（全 aug + mixup + smooth）</td><td>—</td><td>—</td><td>0.9251</td><td>0.8741</td><td>0.8772</td><td>0.9250</td><td>ep87: 0.9403</td><td>🔄</td></tr>
+  </table>
+  <p>v4-light 勝出，aug 有效。下一步：將 v4-light 的 OOF logits 接入 LGBM/Perch ensemble。</p>
+</div>
+
+<hr>
+<p style="color:#888;font-size:12px">報告由 Claude Code 自動生成 ｜ 2026-03-22</p>
+</body>
+</html>

@@ -1,0 +1,59 @@
+experiment:
+  name: hgnet-v2
+  seed: 42
+
+# ── HGNetV2-B0 v2 — Semi-Supervised with SED Pseudo Labels ──────────────────
+#
+# Same architecture as v1 but adds soundscape pseudo labels
+# sourced from finetune-comp-v1 SED predictions (sed_20s_r1.csv or round5_pseudo.csv)
+# Mirrors the noisy-student strategy of finetune_comp chain.
+#
+# Changes from v1:
+#   - perch_ss_csv: soundscape pseudo labels from our SED model
+#   - ss_weight: 0.3 (soft label branch weight)
+#   - ss_oversample: 2 (oversample soundscapes per epoch)
+#   - use_llrd: true + backbone_lr_mult: 0.1  (LLRD for fine-tuning)
+#   - learning_rate lowered to 1e-4 (noisy-student round, avoid catastrophic forgetting)
+#   - init_ckpt: best fold from hgnet-v1 (set by auto_hgnet.sh)
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  perch_ss_csv:          pseudo_labels/round5_pseudo.csv  # updated by auto_hgnet.sh
+  init_ckpt:             "PLACEHOLDER_UPDATED_BY_PIPELINE"
+  n_folds:               5
+
+model:
+  backbone:     hgnetv2_b0.ssld_stage2_ft_in1k
+  in_chans:     1
+  n_mels:       256
+  n_fft:        2048
+  win_length:   626
+  hop_length:   313
+  fmin:         20
+  fmax:         null
+  top_db:       80.0
+  power:        2.0
+  lms_shape:    [256, 256]
+  mixup_alpha:  1.0
+  mixup_theta:  0.8
+  mixup_skip_epochs: 5
+
+training:
+  epochs:           20
+  batch_size:       64
+  learning_rate:    1.0e-4
+  weight_decay:     1.0e-4
+  use_llrd:         true
+  backbone_lr_mult: 0.1
+  warmup_epochs:    1
+  early_stopping_patience: 5
+  scheduler:        cosine
+  ss_weight:        0.3
+  ss_oversample:    2
+
+output:
+  dir: outputs/hgnet-v2

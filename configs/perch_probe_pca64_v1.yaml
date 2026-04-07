@@ -1,0 +1,35 @@
+experiment:
+  name: perch-probe-pca64-v1
+  seed: 42
+
+data:
+  base_dir: birdclef-2026
+  manifest_path: outputs/embeddings_cache_nohuman/manifest.csv
+  pca_fit_splits: [train, soundscape]
+  add_train_clips: false
+
+model:
+  pca_dim: 64
+  hidden_dim: 256
+  use_hidden: true
+  dropout: 0.3
+  pca_whiten: true
+
+training:
+  epochs: 150
+  batch_size: 64
+  n_folds: 5
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 25
+  asl_gamma_neg: 4.0
+  asl_gamma_pos: 0.0
+  asl_clip: 0.05
+
+output:
+  dir: outputs
+
+wandb:
+  enabled: true
+  project: birdclef-2026
+  tags: [perch-probe, pca64, mlp, asl]

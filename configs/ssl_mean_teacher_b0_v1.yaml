@@ -1,0 +1,60 @@
+experiment:
+  name: ssl-mean-teacher-b0-v1
+  seed: 42
+
+# ── Mean Teacher Semi-Supervised Learning ─────────────────────────────────────
+#
+# Teacher: EMA of student, warm-started from competitor SED (AUC=0.9478)
+# Student: EfficientNet-B0, also warm-started from competitor SED
+#
+# Labeled   : train_audio (35,549 files) — FocalBCE hard labels
+# Unlabeled : ALL train_soundscapes (~10,658 files, ~128K 5s clips)
+#             → student(strong_aug) matches teacher(weak_aug) predictions
+#
+# EMA α=0.999: teacher is a slow-moving average → stable pseudo targets
+# Ramp-up: consistency weight grows from 0→1 over 5 epochs (avoids early collapse)
+# Confidence threshold: only use unlabeled clips where teacher max-prob >= 0.1
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  competitor_ckpt:       "birdclef-2026/notebook resource/current_subs/weights/competitor_sed_fold0.pt"
+  n_folds:               5
+
+model:
+  backbone:       tf_efficientnet_b0.ns_jft_in1k
+  clip_duration:  5
+  n_mels:         224
+  n_fft:          2048
+  hop_length:     512
+  fmin:           0
+  fmax:           16000
+  top_db:         80.0
+  power:          2.0
+  norm:           slaney
+  mel_scale:      htk
+  dropout:        0.1
+  drop_path_rate: 0.10
+  gem_p_init:     3.0
+  freq_mask:      24
+  time_mask:      32
+
+training:
+  early_stopping_patience: 7
+  epochs:               30
+  batch_size:           128
+  learning_rate:        5.0e-4       # lower LR — warm-started from competitor
+  weight_decay:         1.0e-4
+  focal_gamma:          2.0
+  use_sumix_freq:       true
+  ema_alpha:            0.999        # EMA momentum
+  consistency_weight:   1.0          # max consistency weight (after ramp-up)
+  rampup_epochs:        5            # epochs to ramp consistency from 0→1
+  confidence_threshold: 0.10         # min teacher max-prob to use clip
+  unlabeled_oversample: 2            # unlabeled steps per labeled step
+
+output:
+  dir: outputs/ssl-mean-teacher-b0-v1

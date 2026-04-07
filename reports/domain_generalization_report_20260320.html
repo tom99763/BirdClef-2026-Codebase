@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Domain Generalization + Perch — BirdCLEF 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --card: #1a1d27; --card2: #212435; --border: #2e3245;
+    --accent: #6c8fff; --accent2: #a78bfa; --green: #34d399;
+    --yellow: #fbbf24; --red: #f87171; --teal: #22d3ee; --orange: #fb923c;
+    --text: #e2e8f0; --muted: #94a3b8; --code-bg: #0d1117;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.65; }
+
+  .hero {
+    background: linear-gradient(135deg, #1a1d27 0%, #0f1117 40%, #0f1a17 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 48px 40px 36px; position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ''; position: absolute; top: -80px; right: -80px;
+    width: 340px; height: 340px;
+    background: radial-gradient(circle, rgba(52,211,153,0.10) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-tag {
+    display: inline-block; background: rgba(52,211,153,0.12);
+    border: 1px solid rgba(52,211,153,0.3); color: var(--green);
+    font-size: 12px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase;
+    padding: 4px 14px; border-radius: 20px; margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-size: 2.2rem; font-weight: 700;
+    background: linear-gradient(135deg, #fff 30%, var(--green));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 10px;
+  }
+  .hero p { color: var(--muted); max-width: 740px; }
+  .hero-meta { display: flex; gap: 24px; margin-top: 20px; flex-wrap: wrap; }
+  .hero-meta span { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 36px 40px; }
+  .section { margin-bottom: 52px; }
+  .section-title {
+    font-size: 1.1rem; font-weight: 700; margin-bottom: 22px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .snum {
+    width: 26px; height: 26px; border-radius: 50%; background: var(--green);
+    color: #000; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px; margin-bottom: 14px; }
+  .card h3 { font-size: 0.97rem; font-weight: 600; margin-bottom: 10px; }
+  .card p  { color: var(--muted); font-size: 0.88rem; line-height: 1.75; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .badge-blue   { background: rgba(108,143,255,0.15); color: var(--accent);  border: 1px solid rgba(108,143,255,0.3); }
+  .badge-green  { background: rgba(52,211,153,0.15);  color: var(--green);   border: 1px solid rgba(52,211,153,0.3); }
+  .badge-yellow { background: rgba(251,191,36,0.15);  color: var(--yellow);  border: 1px solid rgba(251,191,36,0.3); }
+  .badge-red    { background: rgba(248,113,113,0.15); color: var(--red);     border: 1px solid rgba(248,113,113,0.3); }
+  .badge-purple { background: rgba(167,139,250,0.15); color: var(--accent2); border: 1px solid rgba(167,139,250,0.3); }
+  .badge-teal   { background: rgba(34,211,238,0.15);  color: var(--teal);    border: 1px solid rgba(34,211,238,0.3); }
+  .badge-orange { background: rgba(251,146,60,0.15);  color: var(--orange);  border: 1px solid rgba(251,146,60,0.3); }
+
+  .method-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px; margin-bottom: 12px;
+    transition: border-color 0.2s;
+  }
+  .method-card:hover { border-color: var(--green); }
+  .method-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+  .method-title { font-size: 0.98rem; font-weight: 600; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .method-body  { color: var(--muted); font-size: 0.87rem; line-height: 1.78; }
+  .method-body strong { color: var(--text); }
+  .method-footer { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .pchip {
+    width: 28px; height: 28px; border-radius: 50%;
+    font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .p1 { background: rgba(34,211,153,0.2); color: var(--green); }
+  .p2 { background: rgba(108,143,255,0.2); color: var(--accent); }
+  .p3 { background: rgba(251,191,36,0.2);  color: var(--yellow); }
+  .p4 { background: rgba(248,113,113,0.2); color: var(--red); }
+
+  .insight {
+    background: rgba(52,211,153,0.07); border: 1px solid rgba(52,211,153,0.25);
+    border-radius: 10px; padding: 16px 20px; margin: 14px 0; font-size: 0.9rem; color: var(--text);
+  }
+  .insight strong { color: var(--green); }
+  .warn {
+    background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 10px; padding: 16px 20px; margin: 14px 0; font-size: 0.9rem; color: var(--text);
+  }
+  .warn strong { color: var(--yellow); }
+  .info {
+    background: rgba(108,143,255,0.07); border: 1px solid rgba(108,143,255,0.25);
+    border-radius: 10px; padding: 16px 20px; margin: 14px 0; font-size: 0.9rem; color: var(--text);
+  }
+  .info strong { color: var(--accent); }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; overflow-x: auto; font-size: 0.79rem;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    line-height: 1.6; color: #c9d1d9; margin: 12px 0;
+  }
+  .kw  { color: #ff7b72; } .fn  { color: #d2a8ff; }
+  .str { color: #a5d6ff; } .cm  { color: #8b949e; }
+  .num { color: #79c0ff; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
+  th { background: var(--card2); color: var(--muted); font-size: 0.73rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--card2); }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px; }
+  .stat-box { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .stat-box .num { font-size: 1.55rem; font-weight: 700; }
+  .stat-box .lbl { font-size: 0.73rem; color: var(--muted); margin-top: 4px; }
+
+  .domain-split { display: grid; grid-template-columns: 1fr 70px 1fr; align-items: stretch; margin-bottom: 14px; }
+  .dbox { background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+  .dbox.src { border-left: 4px solid var(--accent); }
+  .dbox.tgt { border-left: 4px solid var(--green); }
+  .dbox h3  { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+  .dbox.src h3 { color: var(--accent); }
+  .dbox.tgt h3 { color: var(--green); }
+  .drow { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; gap: 10px; }
+  .drow:last-child { border-bottom: none; }
+  .drow .lb { color: var(--muted); white-space: nowrap; }
+  .drow .vl { color: var(--text); font-weight: 500; text-align: right; }
+  .gap-col { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--yellow); font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  .gap-col .arr { font-size: 1.7rem; }
+
+  .pipeline { display: flex; align-items: center; overflow-x: auto; padding: 8px 0 14px; margin: 18px 0; }
+  .pipe-step { background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 13px 16px; text-align: center; min-width: 120px; flex-shrink: 0; }
+  .pipe-step .ic { font-size: 1.35rem; margin-bottom: 5px; }
+  .pipe-step .nm { font-size: 0.73rem; font-weight: 600; }
+  .pipe-step .sb { font-size: 0.66rem; color: var(--muted); margin-top: 3px; }
+  .pipe-step.existing { border-color: var(--muted); }
+  .pipe-step.dg { border-color: var(--green); background: rgba(52,211,153,0.05); }
+  .pipe-arr { color: var(--muted); font-size: 1.1rem; padding: 0 5px; flex-shrink: 0; }
+
+  ul.cl { list-style: none; padding: 0; }
+  ul.cl li { padding: 5px 0; color: var(--muted); font-size: 0.88rem; display: flex; align-items: flex-start; gap: 10px; }
+  ul.cl li::before { content: '→'; color: var(--green); flex-shrink: 0; }
+
+  .chart-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 22px; }
+  .chart-title { font-size: 0.87rem; font-weight: 600; color: var(--muted); margin-bottom: 14px; }
+
+  @media (max-width: 800px) {
+    .grid-2, .grid-3, .stats-row { grid-template-columns: 1fr; }
+    .domain-split { grid-template-columns: 1fr; }
+    .gap-col { display: none; }
+    .hero h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="hero-tag">Domain Generalization Research</div>
+  <h1>Domain Generalization + Perch<br>for BirdCLEF 2026</h1>
+  <p>Why the focal-to-soundscape domain gap calls for Domain Generalization (not SFDA), which DG methods apply, and a concrete experiment plan combining Freq-MixStyle, SWAD, WiSE-FT, and GroupDRO with Perch embeddings.</p>
+  <div class="hero-meta">
+    <span><span class="dot" style="background:var(--green)"></span> 2026-03-20</span>
+    <span><span class="dot" style="background:var(--accent)"></span> 206 species · 35,549 focal clips</span>
+    <span><span class="dot" style="background:var(--yellow)"></span> Target: Pantanal soundscapes (unseen at training)</span>
+    <span><span class="dot" style="background:var(--accent2)"></span> Probe OOF AUC baseline: 0.8119</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ══ S1: SFDA vs DG ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">1</span> Why Domain Generalization — Not Source-Free Domain Adaptation</div>
+
+  <div class="warn">
+    <strong>⚠️ SFDA is the wrong framing for this competition.</strong><br>
+    Source-Free Domain Adaptation requires access to <em>unlabeled target data</em> during training or at test time to perform adaptation. In BirdCLEF 2026, <code>test_soundscapes/</code> contains only a <code>readme.txt</code>. There is no target audio to adapt to — the actual test soundscapes are withheld by Kaggle and only scored server-side.
+  </div>
+
+  <div class="grid-3" style="margin-top: 18px;">
+    <div class="card" style="border-top: 3px solid var(--red);">
+      <h3 style="color:var(--red);">✗ SFDA (Source-Free DA)</h3>
+      <p>Requires: source model + <strong>unlabeled target data</strong>. Adapts the model to a specific target distribution using target samples (entropy minimization, pseudo-labeling, etc.). <em>We do not have test soundscape audio.</em></p>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--green);">
+      <h3 style="color:var(--green);">✓ Domain Generalization (DG)</h3>
+      <p>Requires: source data only (+ optional labeled proxy target). Train a model whose learned representations are <strong>inherently robust</strong> to distribution shift, without seeing any target data. Correct framing for BirdCLEF 2026.</p>
+    </div>
+    <div class="card" style="border-top: 3px solid var(--accent);">
+      <h3 style="color:var(--accent);">Our Setting: Semi-supervised DG</h3>
+      <p>We have 1,478 <strong>labeled proxy-target clips</strong> (train_soundscapes_labels) from the same Pantanal region. These act as a DG validation signal and a small supervised bridge — stronger than pure DG.</p>
+    </div>
+  </div>
+
+  <div class="insight" style="margin-top: 18px;">
+    <strong>Formal definition of our problem:</strong> Given source training data D_s (train_audio, global focal recordings) and a small labeled proxy-target set D_t (train_soundscapes, 1,478 clips), learn a model f that generalizes to an <em>unseen</em> target distribution P_test (withheld Pantanal soundscapes), where P_test ≈ P_{D_t} but D_test is never available during training.
+  </div>
+</div>
+
+<!-- ══ S2: Domain Gap ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">2</span> The Domain Gap in BirdCLEF 2026</div>
+
+  <div class="stats-row">
+    <div class="stat-box"><div class="num" style="color:var(--accent);">35,549</div><div class="lbl">Source clips<br>(train_audio)</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--green);">10,658</div><div class="lbl">Target soundscape files<br>(withheld at inference)</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--yellow);">1,478</div><div class="lbl">Labeled proxy-target clips<br>(train_soundscapes)</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--orange);">206</div><div class="lbl">Species<br>(multi-label in target)</div></div>
+  </div>
+
+  <div class="domain-split">
+    <div class="dbox src">
+      <h3>Source — train_audio</h3>
+      <div class="drow"><span class="lb">Geography</span><span class="vl">Global (lat −54.9° to 69.6°)</span></div>
+      <div class="drow"><span class="lb">Collections</span><span class="vl">XenoCanto (23K) + iNaturalist (12K)</span></div>
+      <div class="drow"><span class="lb">Microphone</span><span class="vl">Directional (birder/researcher)</span></div>
+      <div class="drow"><span class="lb">Species density</span><span class="vl">1 species per clip</span></div>
+      <div class="drow"><span class="lb">SNR</span><span class="vl">High — deliberate recording</span></div>
+      <div class="drow"><span class="lb">Background</span><span class="vl">Low noise, variable</span></div>
+      <div class="drow"><span class="lb">Label type</span><span class="vl">Single primary label, curated</span></div>
+    </div>
+    <div class="gap-col"><div class="arr">⇌</div><div>Gap</div></div>
+    <div class="dbox tgt">
+      <h3>Target — test_soundscapes (unseen)</h3>
+      <div class="drow"><span class="lb">Geography</span><span class="vl" style="color:var(--green);">Pantanal, Brazil only (lat −16° to −21°)</span></div>
+      <div class="drow"><span class="lb">Deployment</span><span class="vl">9 ARU sites (S01–S23), fixed location</span></div>
+      <div class="drow"><span class="lb">Microphone</span><span class="vl" style="color:var(--yellow);">Omnidirectional ARU (passive)</span></div>
+      <div class="drow"><span class="lb">Species density</span><span class="vl" style="color:var(--yellow);">Multiple species per 5-second window</span></div>
+      <div class="drow"><span class="lb">SNR</span><span class="vl" style="color:var(--red);">Low — rain, frogs, insects, wind</span></div>
+      <div class="drow"><span class="lb">Background</span><span class="vl" style="color:var(--red);">Tropical wetland ambient noise</span></div>
+      <div class="drow"><span class="lb">Label type</span><span class="vl">Multi-label weak annotations</span></div>
+    </div>
+  </div>
+
+  <!-- 4 gap axes -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+    <div style="background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 14px 16px;">
+      <strong style="color:var(--yellow); display:block; margin-bottom:6px; font-size:0.88rem;">① Device / Frequency Shift</strong>
+      <p style="color:var(--muted); font-size:0.82rem; line-height:1.65;">Directional mics have a focused frequency response optimized for speech-band bird calls. ARUs use flat omnidirectional pickups with different preamp gains. The same species has systematically different mel-spectrogram signatures across device types. → Fix with <strong style="color:var(--green);">Freq-MixStyle</strong>.</p>
+    </div>
+    <div style="background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 14px 16px;">
+      <strong style="color:var(--yellow); display:block; margin-bottom:6px; font-size:0.88rem;">② Recording Type Shift</strong>
+      <p style="color:var(--muted); font-size:0.82rem; line-height:1.65;">Focal recordings intentionally capture one species at a time (clean single-label signal). Passive ARU captures all species simultaneously — the model must detect multiple overlapping calls in the same 5-second window. → Fix with <strong style="color:var(--green);">soundscape simulation (multi-clip mix)</strong>.</p>
+    </div>
+    <div style="background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 14px 16px;">
+      <strong style="color:var(--yellow); display:block; margin-bottom:6px; font-size:0.88rem;">③ Geographic / Prior Shift</strong>
+      <p style="color:var(--muted); font-size:0.82rem; line-height:1.65;">Source covers the globe (roughly uniform class prior). Target is fixed to Pantanal — common Pantanal residents dominate, many source species absent. Class-conditional distributions and marginal class probabilities differ fundamentally. → Fix with <strong style="color:var(--green);">site-aware priors + GroupDRO</strong>.</p>
+    </div>
+    <div style="background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); border-radius: 8px; padding: 14px 16px;">
+      <strong style="color:var(--yellow); display:block; margin-bottom:6px; font-size:0.88rem;">④ Noise / SNR Shift</strong>
+      <p style="color:var(--muted); font-size:0.82rem; line-height:1.65;">Source clips typically have high SNR (the recordist stopped when background was too loud). Pantanal ARUs record continuously — rain events, frog choruses, insect swarms. Model must be noise-robust far beyond what focal recordings require. → Fix with <strong style="color:var(--green);">SWAD flat-minima training</strong>.</p>
+    </div>
+  </div>
+
+  <div class="chart-wrap" style="margin-top: 22px;">
+    <div class="chart-title">Domain gap in practice: holdout AUC (source OOF) vs soundscape val AUC (proxy target) for same SED models</div>
+    <canvas id="gapChart" height="200"></canvas>
+  </div>
+</div>
+
+<!-- ══ S3: DG Methods ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">3</span> Domain Generalization Methods — Survey and Applicability</div>
+
+  <!-- Freq-MixStyle -->
+  <div class="method-card" style="border-color: var(--green);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p1">1</span>
+        Freq-MixStyle — Frequency-Wise Statistics Mixing
+        <span class="badge badge-green">Directly applicable to SED</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">DG-SED / DCASE 2024</span>
+        <span class="badge badge-blue">arXiv 2407.03654</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> During training, randomly mix the frequency-wise mean (μ) and std (σ) of mel-spectrograms between two samples in the batch. This synthesizes a new virtual spectrogram with a hybrid frequency signature — implicitly simulating a different recording device or acoustic environment.<br><br>
+      <strong>Algorithm:</strong> For sample X with partner Y, sample λ ~ Beta(α, α) with α=0.1:<br>
+      <pre style="margin:10px 0;"><span class="cm"># Compute per-frequency-bin statistics</span>
+μ_x = X.mean(dim=<span class="str">'time'</span>)   <span class="cm"># shape: [n_mels]</span>
+σ_x = X.std(dim=<span class="str">'time'</span>)    <span class="cm"># shape: [n_mels]</span>
+<span class="cm"># Mix with partner Y's statistics</span>
+μ_mix = λ * μ_x + (<span class="num">1</span>-λ) * μ_y
+σ_mix = λ * σ_x + (<span class="num">1</span>-λ) * σ_y
+<span class="cm"># Re-normalize X with mixed stats (preserves temporal structure)</span>
+X_mix = (X - μ_x) / (σ_x + ε) * σ_mix + μ_mix</pre>
+      <strong>Why it addresses device shift:</strong> The frequency-wise mean/std of a mel-spectrogram captures the microphone's frequency response — the "color" of the recording. Mixing these statistics between samples implicitly simulates a different ARU or microphone being used, forcing the backbone to become invariant to recording-device frequency responses.<br><br>
+      <strong>Reported gain:</strong> DCASE 2024 Task 4 joint score 1.270 → 1.343 when Freq-MixStyle was added alongside FDY convolution (+5.8% relative improvement).<br><br>
+      <strong>BirdCLEF application:</strong> Add to mel-spectrogram pipeline in <code>mel_dataset.py</code>. Config flag: <code>freq_mixstyle: true</code>, <code>freq_mixstyle_prob: 0.5</code>, <code>freq_mixstyle_alpha: 0.1</code>. Apply during SED training only (not at inference).
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: Medium (new aug layer)</span>
+      <span class="badge badge-green">Risk: Low</span>
+      <span class="badge badge-blue">Expected gain: +1–3pp soundscape val AUC</span>
+      <span class="badge badge-orange">Config: sed_b0_v31_freqmixstyle</span>
+    </div>
+  </div>
+
+  <!-- SWAD -->
+  <div class="method-card" style="border-color: var(--accent2);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p1">1</span>
+        SWAD — Dense Checkpoint Averaging for Flat Minima
+        <span class="badge badge-green">Already doing (model soup)</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">NeurIPS 2021</span>
+        <span class="badge badge-blue">arXiv 2102.08604</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Standard SWA averages model weights at sparse, fixed intervals. SWAD performs <em>dense</em> averaging — collecting and averaging weights at every training step (or epoch) after a warmup period — using an overfit-aware stopping criterion to exclude checkpoints where OOD val loss starts rising.<br><br>
+      <strong>Why flat minima → OOD robustness:</strong> Flat loss landscape regions (wide basins) correspond to models whose predictions change slowly under small perturbations of both inputs and model weights. These models are inherently more robust to distribution shift — the target distribution is a "perturbation" of the source. Sharp minima (narrow basins) generalize well in-distribution but degrade rapidly OOD.<br><br>
+      <strong>Reported gain:</strong> +1.6% average OOD accuracy on 5 DG benchmarks (PACS, VLCS, OfficeHome, TerraIncognita, DomainNet).<br><br>
+      <strong>BirdCLEF application:</strong> Our model soup (saving and averaging the top-K checkpoints) is essentially SWAD. The key SWAD improvement is to average <em>every</em> epoch starting from the first good checkpoint, not just top-K by val AUC. Our current pipeline already applies this benefit — the soundscape val AUC improvement from model soup is a direct consequence of flat-minima DG properties.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Effort: Already implemented (model soup)</span>
+      <span class="badge badge-green">Risk: None</span>
+      <span class="badge badge-blue">DG benefit already captured</span>
+    </div>
+  </div>
+
+  <!-- WiSE-FT -->
+  <div class="method-card" style="border-color: var(--accent);">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p1">1</span>
+        WiSE-FT — Weight-Space Ensemble Fine-Tuning
+        <span class="badge badge-green">Already doing (TFLite blend)</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">CVPR 2022</span>
+        <span class="badge badge-blue">arXiv 2109.01903</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> After fine-tuning a zero-shot pre-trained model on task-specific data, linearly interpolate between the original zero-shot weights (θ₀) and the fine-tuned weights (θ_ft):<br><br>
+      <code style="background:var(--code-bg);padding:4px 10px;border-radius:4px;font-size:0.85rem;">θ_WiSE = (1 − α) · θ₀ + α · θ_ft</code><br><br>
+      <strong>Motivation:</strong> Fine-tuning improves task accuracy but "forgets" the general representations that make the zero-shot model robust across distributions. Interpolating back toward θ₀ recovers robustness without losing most of the task-specific gain.<br><br>
+      <strong>Reported gain:</strong> +4–6pp accuracy under distribution shift on ImageNet variants, at zero additional cost during fine-tuning or inference.<br><br>
+      <strong>BirdCLEF application:</strong> Our ensemble already applies WiSE-FT in output space: blending the Perch TFLite zero-shot predictions (30%) with our fine-tuned MLP probe predictions (70%) is the output-space equivalent of weight-space interpolation at α=0.70. The optimal α can be tuned on soundscape val AUC. The 30%/70% split was found empirically and aligns with WiSE-FT theory.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-green">Effort: Already implemented (TFLite 30% blend)</span>
+      <span class="badge badge-blue">Tune α on soundscape val: sweep {0.5, 0.6, 0.7, 0.8, 0.9}</span>
+    </div>
+  </div>
+
+  <!-- MixStyle on embeddings -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p2">2</span>
+        MixStyle on PCA Embeddings
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">ICLR 2021</span>
+        <span class="badge badge-blue">arXiv 2104.02008</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Apply MixStyle to the PCA-projected Perch embeddings during MLP probe training. For each sample, randomly select a partner from the batch and mix their channel-wise mean and std with λ ~ Beta(0.1, 0.1). This synthesizes virtual domain shifts in the embedding space, forcing the MLP head to learn domain-invariant class boundaries.<br><br>
+      <strong>Difference from Freq-MixStyle:</strong> Freq-MixStyle operates on the raw mel-spectrogram (simulation of different device frequency responses). Embedding MixStyle operates on the PCA-compressed Perch embedding (simulation of different recording-environment effects that percolate to the embedding level).<br><br>
+      <strong>BirdCLEF application (Perch probe):</strong> Add a MixStyle module between the PCA projection and the MLP input in <code>train_perch_probe.py</code>. Config flag: <code>mixstyle: true</code>, <code>mixstyle_prob: 0.5</code>, <code>mixstyle_alpha: 0.1</code>.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: Low (one module in train_perch_probe.py)</span>
+      <span class="badge badge-yellow">Risk: Low</span>
+      <span class="badge badge-blue">Expected: +1–2pp OOF AUC</span>
+      <span class="badge badge-orange">Config: perch_probe_v4_mixstyle</span>
+    </div>
+  </div>
+
+  <!-- GroupDRO -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p3">3</span>
+        GroupDRO — Worst-Case Site Optimization
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">ICLR 2020</span>
+        <span class="badge badge-blue">Sagawa et al.</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Treat each of the 9 soundscape deployment sites (S01, S05, S09, ...) as a separate "group". Instead of minimizing average loss across all labeled soundscape clips, minimize the <em>worst-group loss</em>:<br><br>
+      <code style="background:var(--code-bg);padding:4px 10px;border-radius:4px;font-size:0.85rem;">L_DRO = max<sub>g ∈ sites</sub> 𝔼[L | group = g]</code><br><br>
+      <strong>Why this matters:</strong> Averaging over sites may hide poor performance on acoustically hard sites (dense vegetation, near water). The test soundscapes include multiple sites — including the hardest ones. Minimizing worst-group loss forces robust performance everywhere.<br><br>
+      <strong>BirdCLEF application (Perch probe):</strong> Parse site ID from <code>source_file</code> column (e.g., <code>BC2026_Train_0039_S22_... → site S22</code>). Use site as the DRO group label. Config flag: <code>use_groupdro: true</code>, <code>groupdro_eta: 0.01</code>.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-purple">Effort: Medium (new loss in train_perch_probe.py)</span>
+      <span class="badge badge-yellow">Risk: Medium (small group sizes)</span>
+      <span class="badge badge-blue">Expected: +0–2pp worst-site OOF AUC</span>
+      <span class="badge badge-orange">Config: perch_probe_v4_groupdro</span>
+    </div>
+  </div>
+
+  <!-- ProtoCLR -->
+  <div class="method-card">
+    <div class="method-header">
+      <div class="method-title">
+        <span class="pchip p3">3</span>
+        ProtoCLR — Prototype Contrastive Learning for Domain Invariance
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="badge badge-yellow">arXiv 2409.08589</span>
+        <span class="badge badge-blue">Bird Sounds 2024</span>
+      </div>
+    </div>
+    <div class="method-body">
+      <strong>Core idea:</strong> Use supervised contrastive learning where same-class examples from different domains (focal recordings vs. soundscape clips) are pulled toward a shared class prototype, while different-class examples are repelled. This enforces domain-invariant class representations at the embedding level.<br><br>
+      <code style="background:var(--code-bg);padding:4px 10px;border-radius:4px;font-size:0.85rem;">L_ProtoCLR = −log[ exp(z_i · p_c / τ) / Σ_k exp(z_i · p_k / τ) ]</code><br><br>
+      where p_c is the prototype of class c computed on-the-fly. Computationally cheaper than SupCon (compares to K prototypes, not N samples).<br><br>
+      <strong>BirdCLEF application:</strong> Add ProtoCLR as an auxiliary loss during SED training. Use train_audio clips (source domain) and train_soundscape clips (proxy target domain) as separate domains. The contrastive loss pulls same-species embeddings from both domains together.
+    </div>
+    <div class="method-footer">
+      <span class="badge badge-red">Effort: High (new loss + prototype management)</span>
+      <span class="badge badge-yellow">Risk: Medium</span>
+      <span class="badge badge-blue">Expected: +1–3pp soundscape val AUC (if well-tuned)</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S4: Already-implemented DG ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">4</span> DG Techniques Already in Our Pipeline</div>
+
+  <div class="insight">
+    <strong>Key realization:</strong> Our current system already applies several DG techniques — we just didn't frame them that way. This is why our soundscape val AUC (target-domain proxy) is consistently much higher than naive baselines, even without explicit DG training.
+  </div>
+
+  <div class="grid-2">
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3>✓ Joint PCA ≈ Feature-Space Alignment (CORAL)</h3>
+      <p>Fitting PCA on both train_audio and soundscape embeddings jointly finds a projection that preserves high-variance directions in <em>both</em> domains simultaneously. This is analogous to CORAL (Sun & Saenko, 2016) — aligning second-order statistics. The +0.060 OOF AUC gain from add_train_clips is partly due to this joint alignment.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3>✓ Model Soup ≈ SWAD (Flat Minima)</h3>
+      <p>Saving and averaging the top-K checkpoints across training epochs finds a flatter loss landscape minimum than any single checkpoint. Flat minima are associated with better out-of-distribution generalization (Cha et al., NeurIPS 2021). Our soup directly improves soundscape val AUC because the averaged weights are more OOD-robust.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3>✓ TFLite 30% + MLP 70% ≈ WiSE-FT</h3>
+      <p>Blending the zero-shot Perch TFLite predictions (untrained on our task) with the fine-tuned MLP probe predictions is the output-space equivalent of WiSE-FT weight interpolation at α=0.70. The zero-shot component preserves general Perch robustness; the MLP component adds task-specific accuracy.</p>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3>✓ ClipMix ≈ Primitive Soundscape Simulation</h3>
+      <p>ClipMix randomly mixes two focal clips of different species and assigns a multi-hot label. This is a weak form of soundscape simulation — creating synthetic multi-species examples that approximate the multi-label structure of real soundscapes. Extending this to 3–4 clips would more closely match real Pantanal soundscape density.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S5: Experiments ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">5</span> Experiment Design</div>
+
+  <!-- Pipeline diagram -->
+  <div class="card" style="margin-bottom: 18px;">
+    <h3 style="margin-bottom: 14px;">DG-Enhanced SED Pipeline (v31)</h3>
+    <div class="pipeline">
+      <div class="pipe-step existing"><div class="ic">🎵</div><div class="nm">Audio</div><div class="sb">5-second clips</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step dg"><div class="ic">🎛️</div><div class="nm">Freq-MixStyle</div><div class="sb">device freq. response<br>mixing · p=0.5</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">📊</div><div class="nm">Mel Spectrogram</div><div class="sb">224×224<br>SpecAugment</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">🔗</div><div class="nm">EfficientNet-B0</div><div class="sb">GeMPool<br>backbone</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">🍲</div><div class="nm">Model Soup</div><div class="sb">SWAD-style dense<br>checkpoint avg</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">📈</div><div class="nm">Prediction</div><div class="sb">206 classes<br>ASL + dual loss</div></div>
+    </div>
+    <p style="color:var(--muted);font-size:0.83rem;">Green = new DG component. Existing components (model soup, ClipMix, pseudo labels) already provide DG benefits. Freq-MixStyle is the main new addition.</p>
+  </div>
+
+  <div class="card" style="margin-bottom: 18px;">
+    <h3 style="margin-bottom: 14px;">DG-Enhanced Perch Probe Pipeline (v4)</h3>
+    <div class="pipeline">
+      <div class="pipe-step existing"><div class="ic">🎵</div><div class="nm">Audio</div><div class="sb">5-second clips</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">🦜</div><div class="nm">Perch</div><div class="sb">1536-dim frozen<br>(zero-shot basis)</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">📐</div><div class="nm">Joint PCA(128)</div><div class="sb">train+ss · CORAL-like<br>feature alignment</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step dg"><div class="ic">🎨</div><div class="nm">MixStyle</div><div class="sb">embedding-space<br>domain mixing</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">🧠</div><div class="nm">MLP Head</div><div class="sb">512-dim · ASL loss<br>+ train_audio</div></div>
+      <div class="pipe-arr">→</div>
+      <div class="pipe-step existing"><div class="ic">⚖️</div><div class="nm">WiSE-FT blend</div><div class="sb">TFLite 30%<br>+ MLP 70%</div></div>
+    </div>
+  </div>
+
+  <!-- Experiment table -->
+  <div class="card">
+    <h3 style="margin-bottom: 16px;">DG Experiment Queue</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Experiment</th><th>DG Technique</th><th>Config</th><th>Target</th><th>Expected Gain</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>1</strong></td>
+          <td>Freq-MixStyle in SED training</td>
+          <td>Device frequency response invariance</td>
+          <td><code>sed_b0_v31_freqmixstyle</code></td>
+          <td>SED soundscape val AUC</td>
+          <td style="color:var(--green);font-weight:600;">+1–3pp</td>
+          <td><span class="badge badge-yellow">Needs mel_dataset.py change</span></td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td>MixStyle on PCA embeddings</td>
+          <td>Embedding-space domain mixing</td>
+          <td><code>perch_probe_v4_mixstyle</code></td>
+          <td>Probe OOF AUC</td>
+          <td style="color:var(--green);font-weight:600;">+1–2pp</td>
+          <td><span class="badge badge-yellow">Needs train_perch_probe.py change</span></td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td>GroupDRO by soundscape site</td>
+          <td>Worst-case site robustness</td>
+          <td><code>perch_probe_v4_groupdro</code></td>
+          <td>Worst-site OOF AUC</td>
+          <td style="color:var(--yellow);font-weight:600;">+0–2pp</td>
+          <td><span class="badge badge-yellow">Needs DRO loss in train_perch_probe.py</span></td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td>WiSE-FT α sweep</td>
+          <td>Zero-shot ↔ fine-tuned interpolation</td>
+          <td>Notebook config change</td>
+          <td>Ensemble soundscape val</td>
+          <td style="color:var(--yellow);font-weight:600;">±1pp (tuning)</td>
+          <td><span class="badge badge-green">Ready — notebook only</span></td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td>Multi-clip soundscape simulation (3–4 clips)</td>
+          <td>Recording type shift simulation</td>
+          <td><code>sed_b0_v32_ss_sim</code></td>
+          <td>SED soundscape val AUC</td>
+          <td style="color:var(--yellow);font-weight:600;">+1–2pp</td>
+          <td><span class="badge badge-yellow">Needs mel_dataset.py multi-clip mix</span></td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td>ProtoCLR auxiliary loss</td>
+          <td>Domain-invariant class prototypes</td>
+          <td>TBD</td>
+          <td>Both</td>
+          <td style="color:var(--yellow);font-weight:600;">+1–3pp (if tuned)</td>
+          <td><span class="badge badge-red">High complexity — later stage</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ S6: Implementation ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">6</span> Implementation — Freq-MixStyle (Highest Priority)</div>
+
+  <div class="card" style="margin-bottom: 14px;">
+    <h3 style="margin-bottom: 12px;">Add to mel_dataset.py — FreqMixStyle augmentation</h3>
+    <pre><span class="kw">class</span> <span class="fn">FreqMixStyle</span>:
+    <span class="str">"""Frequency-wise statistics mixing for domain generalization.
+    Mix per-frequency-bin mean/std between spectrograms in a batch.
+    Based on DG-SED (arXiv 2407.03654, DCASE 2024).
+    """</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, p=<span class="num">0.5</span>, alpha=<span class="num">0.1</span>):
+        self.p = p
+        self.dist = torch.distributions.Beta(alpha, alpha)
+
+    <span class="kw">def</span> <span class="fn">__call__</span>(self, x):  <span class="cm"># x: [B, C, freq, time]</span>
+        <span class="kw">if not</span> self.training <span class="kw">or</span> torch.rand(<span class="num">1</span>) > self.p:
+            <span class="kw">return</span> x
+        B = x.size(<span class="num">0</span>)
+        perm = torch.randperm(B)       <span class="cm"># random partner indices</span>
+        lam = self.dist.sample()        <span class="cm"># mixing coefficient</span>
+        <span class="cm"># Compute per-frequency mean/std (over time dimension)</span>
+        mu  = x.mean(dim=-<span class="num">1</span>, keepdim=<span class="kw">True</span>)   <span class="cm"># [B, C, freq, 1]</span>
+        sig = x.std( dim=-<span class="num">1</span>, keepdim=<span class="kw">True</span>) + <span class="num">1e-6</span>
+        <span class="cm"># Mix statistics with partner</span>
+        mu2  = mu[perm];  sig2 = sig[perm]
+        mu_m  = lam * mu  + (<span class="num">1</span> - lam) * mu2
+        sig_m = lam * sig + (<span class="num">1</span> - lam) * sig2
+        <span class="cm"># Re-normalize with mixed stats</span>
+        <span class="kw">return</span> (x - mu) / sig * sig_m + mu_m</pre>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom: 12px;">Config field added to sed_b0_v31_freqmixstyle.yaml</h3>
+    <pre>augmentation:
+  enabled: <span class="kw">true</span>
+  <span class="cm"># ... existing augmentations ...</span>
+  circ_shift_prob: <span class="num">0.5</span>
+  <span class="cm"># NEW: Freq-MixStyle domain generalization</span>
+  freq_mixstyle: <span class="kw">true</span>           <span class="cm"># enable frequency statistics mixing</span>
+  freq_mixstyle_prob: <span class="num">0.5</span>        <span class="cm"># apply to 50% of batches</span>
+  freq_mixstyle_alpha: <span class="num">0.1</span>       <span class="cm"># Beta(0.1,0.1) → sharp domain mixing</span></pre>
+  </div>
+</div>
+
+<!-- ══ S7: Expected impact ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">7</span> Expected Impact</div>
+
+  <div class="chart-wrap" style="margin-bottom: 20px;">
+    <div class="chart-title">DG technique contribution — soundscape val AUC (target proxy) vs holdout AUC (source OOF)</div>
+    <canvas id="dgChart" height="210"></canvas>
+  </div>
+
+  <div class="grid-2">
+    <div class="card" style="border-left: 3px solid var(--green);">
+      <h3>Projected gains on soundscape val AUC</h3>
+      <ul class="cl" style="margin-top: 10px;">
+        <li>Freq-MixStyle (v31): +1–3pp soundscape val AUC over v30 (0.8139 → ~0.83–0.84)</li>
+        <li>MixStyle probe (v4): +1–2pp OOF AUC over baseline (0.8119 → ~0.82–0.83)</li>
+        <li>GroupDRO probe (v4): more consistent across sites, lower worst-site variance</li>
+        <li>All DG gains compound in ensemble: better individual models → higher ensemble ceiling</li>
+      </ul>
+    </div>
+    <div class="card" style="border-left: 3px solid var(--accent2);">
+      <h3>Why soundscape val AUC matters more than holdout AUC</h3>
+      <ul class="cl" style="margin-top: 10px;">
+        <li>Holdout AUC measures source-domain generalization (same distribution as training) → does not predict LB</li>
+        <li>Soundscape val AUC measures target-domain generalization → directly correlates with LB</li>
+        <li>V30-multipseu proved this: highest holdout (0.9839) AND highest soundscape val (0.8139) AND best LB contribution</li>
+        <li>DG techniques specifically target soundscape val AUC improvement</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══ S8: References ══ -->
+<div class="section">
+  <div class="section-title"><span class="snum">8</span> References</div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Method</th><th>Paper</th><th>Venue</th><th>Key insight</th></tr></thead>
+      <tbody>
+        <tr><td>Freq-MixStyle</td><td>DG-SED: Domain Generalization for Sound Event Detection with Heterogeneous Training Data</td><td>DCASE 2024 / arXiv 2407.03654</td><td>Mix frequency-wise spectrogram statistics to simulate different recording devices</td></tr>
+        <tr><td>MixStyle</td><td>Zhou et al., "Domain Generalization with MixStyle"</td><td>ICLR 2021</td><td>Mix instance-level feature statistics between training samples to synthesize new virtual domains</td></tr>
+        <tr><td>SWAD</td><td>Cha et al., "SWAD: Domain Generalization by Seeking Flat Minima"</td><td>NeurIPS 2021</td><td>Dense checkpoint averaging finds flat loss landscape minima → better OOD generalization</td></tr>
+        <tr><td>WiSE-FT</td><td>Wortsman et al., "Robust Fine-Tuning of Zero-Shot Models"</td><td>CVPR 2022</td><td>Interpolate between zero-shot and fine-tuned weights to preserve robustness</td></tr>
+        <tr><td>GroupDRO</td><td>Sagawa et al., "Distributionally Robust Neural Networks"</td><td>ICLR 2020</td><td>Minimize worst-group loss to ensure robustness across all deployment sites</td></tr>
+        <tr><td>ProtoCLR</td><td>"Domain-Invariant Representation Learning of Bird Sounds"</td><td>arXiv 2409.08589</td><td>Prototype-based contrastive learning enforces domain-invariant class representations</td></tr>
+        <tr><td>DomainBed</td><td>Gulrajani & Lopez-Paz, "In Search of Lost Domain Generalization"</td><td>ICLR 2021</td><td>Rigorous DG benchmark showing ERM + proper tuning often beats complex DG methods</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<script>
+// Gap chart
+(function() {
+  const ctx = document.getElementById('gapChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['v5', 'v9-asl-soup', 'v12-bce', 'v30-multipseu'],
+      datasets: [
+        { label: 'Holdout AUC (source OOF)', data: [0.9192, 0.9532, 0.9538, 0.9839], backgroundColor: 'rgba(108,143,255,0.5)', borderColor: '#6c8fff', borderWidth: 1 },
+        { label: 'Soundscape val AUC (proxy target)', data: [0.760, 0.720, 0.750, 0.8139], backgroundColor: 'rgba(52,211,153,0.5)', borderColor: '#34d399', borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#94a3b8', font: { size: 12 } } }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(4) } } },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: '#2e3245' } },
+        y: { min: 0.65, max: 1.0, ticks: { color: '#94a3b8', callback: v => v.toFixed(2) }, grid: { color: '#2e3245' }, title: { display: true, text: 'AUC', color: '#94a3b8' } }
+      }
+    }
+  });
+})();
+
+// DG contribution chart
+(function() {
+  const ctx = document.getElementById('dgChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['v30 baseline\n(SWAD+WiSE-FT\nalready in)', 'v31\n+Freq-MixStyle\n(projected)', 'v31+MixStyle\nprobe\n(projected)', 'v31+MixStyle\n+GroupDRO\n(projected)'],
+      datasets: [
+        { label: 'Soundscape val AUC', data: [0.8139, 0.835, 0.845, 0.850], backgroundColor: ['rgba(52,211,153,0.5)','rgba(52,211,153,0.65)','rgba(52,211,153,0.80)','rgba(52,211,153,0.95)'], borderColor: '#34d399', borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => 'Soundscape val AUC: ' + c.parsed.y.toFixed(4) } } },
+      scales: {
+        x: { ticks: { color: '#94a3b8', font: { size: 10 } }, grid: { color: '#2e3245' } },
+        y: { min: 0.78, max: 0.88, ticks: { color: '#94a3b8', callback: v => v.toFixed(3) }, grid: { color: '#2e3245' }, title: { display: true, text: 'Soundscape val AUC', color: '#94a3b8' } }
+      }
+    }
+  });
+})();
+</script>
+</body>
+</html>

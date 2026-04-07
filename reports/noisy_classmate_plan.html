@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Noisy Classmate: Multi-Architecture Co-Evolutionary Self-Training</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.7; }
+h1 { color: #1a5276; border-bottom: 3px solid #1a5276; padding-bottom: 10px; }
+h2 { color: #2c3e50; margin-top: 40px; border-left: 5px solid #3498db; padding-left: 15px; }
+h3 { color: #34495e; }
+.insight { background: #eaf2f8; border-left: 4px solid #2980b9; padding: 15px; margin: 15px 0; border-radius: 4px; }
+.warning { background: #fef9e7; border-left: 4px solid #f39c12; padding: 15px; margin: 15px 0; border-radius: 4px; }
+.evidence { background: #eafaf1; border-left: 4px solid #27ae60; padding: 15px; margin: 15px 0; border-radius: 4px; }
+.novel { background: #f4ecf7; border-left: 4px solid #8e44ad; padding: 15px; margin: 15px 0; border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th { background: #2c3e50; color: white; padding: 10px; text-align: left; }
+td { border: 1px solid #ddd; padding: 8px; }
+tr:nth-child(even) { background: #f9f9f9; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+pre { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 6px; overflow-x: auto; }
+.diagram { background: #fafafa; border: 2px solid #bdc3c7; padding: 20px; margin: 20px 0; border-radius: 8px; font-family: monospace; white-space: pre; line-height: 1.4; font-size: 0.85em; }
+.phase { background: #fff; border: 2px solid #3498db; border-radius: 8px; padding: 20px; margin: 20px 0; }
+.phase h3 { color: #2980b9; margin-top: 0; }
+</style>
+</head>
+<body>
+
+<h1>Noisy Classmate: Multi-Architecture Co-Evolutionary Self-Training</h1>
+<p><em>Research Plan &mdash; 2026-04-07 | Tom, Realtek Semiconductor Corp.</em></p>
+
+<h2>1. Deep Analysis of Existing Method: Why Does Noisy Student Work?</h2>
+
+<h3>1.1 Knowledge Flow Analysis</h3>
+
+<div class="diagram">
+                    +---------------+
+                    |  Perch Found. |  <-- External knowledge (pre-trained foundation model)
+                    |  Teacher      |
+                    +-------+-------+
+                            | Pseudo Labels (R0)
+                            v
+    +--------------------------------------------------+
+    |          B0 Chain (Self-Evolution)                 |
+    |                                                    |
+    |  R1 --> R2 --> ... --> R8 --> R12                  |
+    |  |       |                |                        |
+    |  |   Each round:                                   |
+    |  |   1. Train on previous round's pseudo labels    |
+    |  |   2. Generate new pseudo (own soundscape infer) |
+    |  |   3. EMA weight inheritance from prior round    |
+    |  |   4. Residual Corrector fixes systematic bias   |
+    |  +---------------------------------------------+  |
+    +--------------------------------------------------+
+                            |
+                    R4 pseudo (one-time seed)
+                            v
+    +--------------------------------------------------+
+    |          PVT Chain (Independent Self-Evolution)    |
+    |  R1 --> R2 --> ... --> R8                          |
+    |  (After seeding from B0 R4, NEVER exchanges       |
+    |   knowledge with B0 again)                        |
+    +--------------------------------------------------+
+</div>
+
+<h3>1.2 Learning Mechanism Per Round</h3>
+
+<table>
+<tr><th>Element</th><th>Role</th><th>What It Teaches</th></tr>
+<tr><td><strong>train_audio</strong></td><td>Labeled "textbook"</td><td>Core bird call recognition (clean, curated recordings)</td></tr>
+<tr><td><strong>Pseudo-labeled soundscapes</strong></td><td>"Past exam papers" (answers written by previous self)</td><td>Domain adaptation &mdash; from clean recordings to real-world environments</td></tr>
+<tr><td><strong>MixUp + SumixFreq</strong></td><td>"Noise" injection</td><td>Robustness &mdash; recognition under noise and interference</td></tr>
+<tr><td><strong>EMA inheritance</strong></td><td>"Review notes"</td><td>Knowledge retention, prevents catastrophic forgetting</td></tr>
+<tr><td><strong>Residual Corrector</strong></td><td>"Tutor"</td><td>Corrects systematic gap between SED and Perch predictions</td></tr>
+</table>
+
+<h3>1.3 Fundamental Limitations of Noisy Student</h3>
+
+<div class="warning">
+<strong>Confirmation Bias:</strong>
+<ul>
+<li>The model uses <strong>its own predictions</strong> as next round's labels &rarr; if R5 misclassifies a rare species, R6&ndash;R12 all inherit this error</li>
+<li>As rounds increase, the model becomes increasingly "confident" in its answers, even when wrong</li>
+<li>Manifested in B0 fold0 val AUC: R8=0.9016 &rarr; R9=0.9649 (sudden jump = pseudo label distribution shift, not genuine learning)</li>
+</ul>
+<strong>Knowledge Silos:</strong>
+<ul>
+<li>PVT recognizes some species better than B0 (PVT R8 mean=0.9545 vs B0 R8 mean=0.9383)</li>
+<li>But PVT's knowledge <strong>never flows back</strong> to the B0 chain</li>
+<li>B0 chain never sees PVT's unique insights</li>
+</ul>
+</div>
+
+<h2>2. Empirical Evidence: Why Diversity Matters More Than AUC</h2>
+
+<h3>2.1 Core Findings from LB Experiments</h3>
+
+<table>
+<tr><th>Config</th><th>Model 1</th><th>Model 2</th><th>Model 3</th><th>Avg AUC</th><th>LB</th></tr>
+<tr><td>0.941 &check;</td><td>B0 R12 f0 (0.965)</td><td>PVT R5 f4 (0.951)</td><td>B0 R8 f3 (0.960)</td><td>0.959</td><td><strong>0.941</strong></td></tr>
+<tr><td>0.940</td><td>B0 R12 f0 (0.965)</td><td>PVT R5 f4 (0.951)</td><td>B0 R12 f2 (0.957)</td><td>0.958</td><td>0.940</td></tr>
+<tr><td>0.938</td><td>B0 R8 f2 (0.929)</td><td>PVT R5 f4 (0.951)</td><td>B0 R8 f3 (0.960)</td><td>0.947</td><td>0.938</td></tr>
+<tr><td>0.937</td><td>B0 R9 f0 (0.965)</td><td>PVT R8 f2 (0.969)</td><td>B0 R6 f3 (0.966)</td><td>0.967</td><td>0.937</td></tr>
+</table>
+
+<div class="evidence">
+<strong>Observation 1: Avg AUC and LB are uncorrelated.</strong><br>
+The 0.937 config has the highest avg AUC (0.967) but the lowest LB. The 0.941 config has lower avg AUC (0.959) but highest LB.<br><br>
+
+<strong>Observation 2: Prediction Correlation is the real driver.</strong>
+<table>
+<tr><th>Config</th><th>Model Pair</th><th>Correlation</th><th>Mean Diff</th></tr>
+<tr><td>0.941 &check;</td><td>R12f0 vs R8f3</td><td>0.9828</td><td>0.01120</td></tr>
+<tr><td>0.940</td><td>R12f0 vs R12f2</td><td><strong>0.9867</strong></td><td>0.00984</td></tr>
+</table>
+<p>Same-round models (R12f0 vs R12f2) are too correlated (0.9867) &rarr; provide too little new information.<br>
+Different-round models (R12f0 vs R8f3) are less correlated (0.9828) &rarr; greater complementarity.</p>
+
+<strong>Observation 3: Three dimensions of diversity.</strong>
+<ol>
+<li><strong>Architecture diversity</strong>: CNN (B0) vs ViT (PVT) &rarr; different inductive biases</li>
+<li><strong>Round diversity</strong>: R8 vs R12 &rarr; different pseudo label training histories</li>
+<li><strong>Fold diversity</strong>: f0 vs f3 vs f4 &rarr; different train/val splits</li>
+</ol>
+<p>Maximizing all three dimensions simultaneously yields the highest LB.</p>
+</div>
+
+<h3>2.2 Mathematical Intuition: Why Diversity Works</h3>
+
+<p>Krogh &amp; Vedelsby (1995) Ambiguity Decomposition:</p>
+<pre>
+Ensemble Error = Avg Individual Error - Diversity
+
+where Diversity = Sum_i w_i * (f_i(x) - f_bar(x))^2
+</pre>
+<p>
+Diversity measures how much each model's prediction deviates from the ensemble mean. Greater deviation &rarr; higher diversity &rarr; lower ensemble error.
+This is why "three mediocre but different models" can outperform "three strong but similar models" in ensemble.
+</p>
+
+<h2>3. Noisy Classmate: Core Innovations</h2>
+
+<div class="novel">
+<strong>Core Philosophy:</strong> A group of students with different backgrounds and expertise (B0, PVT) stop studying only from their own notes. Instead, they share, discuss, and challenge each other's understanding, generating <strong>new knowledge through collective learning</strong> that none could achieve alone.
+</div>
+
+<h3>3.1 Fundamental Differences from Existing Methods</h3>
+
+<table>
+<tr><th>Method</th><th>Teacher</th><th>Student</th><th>Multi-round</th><th>Multi-arch</th><th>Knowledge Flow</th></tr>
+<tr><td>Noisy Student</td><td>Previous self</td><td>Same arch</td><td>&check;</td><td>&cross;</td><td>Unidirectional: past&rarr;present</td></tr>
+<tr><td>Co-Training</td><td>Other view</td><td>Same model</td><td>Typically 2 rounds</td><td>&cross;</td><td>Bidirectional but shallow</td></tr>
+<tr><td>Deep Mutual Learning</td><td>Peer</td><td>Same batch</td><td>&cross; (synchronous)</td><td>Sometimes</td><td>Synchronous bidirectional</td></tr>
+<tr><td>Mean Teacher</td><td>EMA of self</td><td>Same model</td><td>&cross;</td><td>&cross;</td><td>Self-smoothing</td></tr>
+<tr><td><strong>Noisy Classmate</strong></td><td><strong>Ensemble of peers</strong></td><td><strong>Different archs</strong></td><td><strong>&check; many</strong></td><td><strong>&check;</strong></td><td><strong>Multi-directional iterative</strong></td></tr>
+</table>
+
+<h3>3.2 Knowledge Flow Architecture</h3>
+
+<div class="diagram">
+    +-------------------------------------------------------------+
+    |                    Noisy Classmate Framework                  |
+    |                                                               |
+    |   B0 Chain:    ... R8 --> R12 --+                            |
+    |                                  +--> Blend --> NC Pseudo    |
+    |   PVT Chain:   ... R5 --> R8 --+        ^         |         |
+    |                                          |         |         |
+    |                              +-----------+         |         |
+    |                              |                     v         |
+    |                         Confidence         +-------------+   |
+    |                         Weighting          | PVT R9      |   |
+    |                         + Disagreement     | (NC Student) |  |
+    |                         Mining             +------+------+   |
+    |                                                   |          |
+    |                                                   v          |
+    |   PVT R9 probs --+                                           |
+    |                    +--> New Blend --> NC Pseudo R2            |
+    |   B0 R12 probs --+                       |                   |
+    |                                           v                  |
+    |                                    +-------------+           |
+    |                                    | PVT R10     |           |
+    |                                    | (NC Gen 2)  |           |
+    |                                    +-------------+           |
+    +-------------------------------------------------------------+
+</div>
+
+<h2>4. Five-Layer Progressive Innovation Stack</h2>
+
+<div class="phase">
+<h3>Phase 1: Ensemble Pseudo Labels (Foundation Layer) &mdash; Implemented</h3>
+
+<p><strong>Mechanism:</strong> Weighted average of multiple chains' soundscape predictions to generate shared pseudo labels.</p>
+
+<pre>pseudo_NC = w_B0 * B0_R12_probs + w_PVT * PVT_R8_probs</pre>
+
+<p><strong>Why it is sound:</strong></p>
+<ul>
+<li>B0 and PVT prediction errors are <em>partially independent</em> (different architectures, different inductive biases)</li>
+<li>Averaging effect &asymp; bagging: reduces variance without increasing bias</li>
+<li>Empirical: our ensemble consistently outperforms any single model on LB</li>
+</ul>
+
+<p><strong>Limitation:</strong> Simple averaging treats all predictions equally; does not leverage model uncertainty information.</p>
+</div>
+
+<div class="phase">
+<h3>Phase 2: Confidence-Aware Blending</h3>
+
+<p><strong>Problem:</strong> Phase 1's 50/50 average ignores a critical signal &mdash; how confident each model is about its prediction.</p>
+
+<p><strong>Mechanism:</strong> For each sample and each species, weight each model's contribution by its confidence (inverse entropy):</p>
+
+<pre>
+# Per-model confidence for sample i
+conf_B0[i] = 1 / H(B0_probs[i])    # H = entropy
+conf_PVT[i] = 1 / H(PVT_probs[i])
+
+# Normalize to weights
+w_B0[i] = conf_B0[i] / (conf_B0[i] + conf_PVT[i])
+w_PVT[i] = conf_PVT[i] / (conf_B0[i] + conf_PVT[i])
+
+# Per-sample weighted blend
+pseudo[i] = w_B0[i] * B0_probs[i] + w_PVT[i] * PVT_probs[i]
+</pre>
+
+<p><strong>Why it is sound:</strong></p>
+<ul>
+<li>Intuition: if B0 is very certain a sound is species X while PVT is unsure, we should trust B0</li>
+<li>Theory: calibrated model confidence correlates with accuracy &rarr; high confidence = more likely correct</li>
+<li>Effect: each sample automatically finds its most "expert" classmate as teacher</li>
+</ul>
+
+<p><strong>Why it should work:</strong></p>
+<div class="evidence">
+B0 and PVT have different strengths:
+<ul>
+<li>B0 (CNN) excels at spectral texture &rarr; higher confidence on species with clear frequency patterns (e.g., whistle-type calls)</li>
+<li>PVT (ViT) excels at global temporal context &rarr; higher confidence on species with rhythmic patterns (insects, frogs)</li>
+<li>Confidence weighting automatically delegates each sample to its specialist classmate</li>
+</ul>
+</div>
+</div>
+
+<div class="phase">
+<h3>Phase 3: Disagreement Mining (Core Innovation)</h3>
+
+<p><strong>Problem:</strong> Phases 1&ndash;2 address "how to blend" but not "which samples matter most for learning."</p>
+
+<p><strong>Core Insight: Learning happens at the point of disagreement.</strong></p>
+
+<div class="insight">
+When two classmates <strong>agree</strong> on a sample &rarr; this is "known knowledge"; re-learning it has no marginal value.<br>
+When two classmates <strong>disagree</strong> on a sample &rarr; one likely knows something the other doesn't &rarr; this is the <strong>source of new knowledge</strong>.
+</div>
+
+<p><strong>Mechanism:</strong></p>
+<pre>
+# Compute per-sample prediction variance across models
+variance[i] = Var(B0_probs[i], PVT_probs[i])  # per-species, then average
+
+# Disagreement score = mean variance across species
+disagreement[i] = mean(variance[i])
+
+# Training sample weight proportional to disagreement
+sample_weight[i] = 1.0 + alpha * (disagreement[i] / max_disagreement)
+# alpha = 2.0: max-disagreement samples get 3x weight of agreement samples
+</pre>
+
+<p><strong>Why it is sound (theoretical basis):</strong></p>
+<ol>
+<li><strong>Active Learning theory:</strong> In Query-by-Committee (QBC), samples with maximum committee disagreement have the highest information gain. Our classmates ARE the committee.</li>
+<li><strong>Boosting principle:</strong> AdaBoost upweights samples misclassified by previous rounds. Disagreement mining upweights samples where classmates are inconsistent &mdash; precisely the samples where one classmate "got it wrong."</li>
+<li><strong>Co-Training theory:</strong> Blum &amp; Mitchell proved: given two conditionally independent views, high-confidence samples from one view can teach the other. Disagreement is the method to identify these teachable samples.</li>
+</ol>
+
+<p><strong>Why it should work (empirical evidence):</strong></p>
+<div class="evidence">
+Our class-level analysis shows:
+<ul>
+<li>The 0.941 and 0.940 configs differ in AUC across 63 classes</li>
+<li>The class with the largest difference (bunibi1: +0.044) is precisely the class with highest inter-model disagreement</li>
+<li>These "boundary classes" are the key determinants of LB score</li>
+</ul>
+</div>
+
+<p><strong>Implementation sketch:</strong></p>
+<pre>
+# Modify PseudoSoundscapeDataset.__getitem__
+def __getitem__(self, idx):
+    audio, label = super().__getitem__(idx)
+    weight = self._disagreement_weights[idx]  # computed during pseudo label generation
+    return audio, label, weight
+
+# Modify training loop
+loss = criterion(out['clipwise_logit'], combined_labels)
+# Weight loss for pseudo samples by disagreement
+loss = (loss * sample_weights).mean()
+</pre>
+</div>
+
+<div class="phase">
+<h3>Phase 4: Soft Label Distillation</h3>
+
+<p><strong>Problem:</strong> Current pseudo labels undergo gamma=2.0 sharpening and 95th-percentile thresholding, becoming nearly binary hard labels. This discards substantial information.</p>
+
+<p><strong>Hinton's Dark Knowledge:</strong> A model's soft probability distribution encodes rich inter-class relationship information. For example, "this sound is 60% species A, 30% species B" carries far more information than "this is species A."</p>
+
+<p><strong>Mechanism:</strong></p>
+<pre>
+# Dual loss during training
+L = (1 - beta) * FocalBCE(logits, hard_labels)
+  + beta * KLD(sigma(logits / T), soft_ensemble_probs / T) * T^2
+
+# T = temperature (= 2.0), softens distributions
+# beta = distillation weight (= 0.3)
+# soft_ensemble_probs = raw ensemble blend BEFORE thresholding
+</pre>
+
+<p><strong>Why it is sound:</strong></p>
+<ul>
+<li>Hard labels ("yes/no") carry only 1 bit of information</li>
+<li>Soft labels preserve the complete class similarity structure (which species sound alike)</li>
+<li>Hinton et al. 2015 proved: soft distillation is especially effective in low-data regimes</li>
+<li>Our setting: pseudo labels are inherently soft predictions; binarization is unnecessary information loss</li>
+</ul>
+
+<p><strong>Why it should work:</strong></p>
+<div class="evidence">
+BirdCLEF contains many acoustically similar species. Soft labels can teach the student:
+<ul>
+<li>"This sound is primarily species A, but could also be species B"</li>
+<li>Rather than only "this is species A" &rarr; the student learns more reasonable decision boundaries</li>
+<li>Especially effective for ensemble blends: B0 thinks A, PVT thinks B &rarr; soft label teaches "both A and B are plausible" &rarr; more informative than randomly picking one</li>
+</ul>
+</div>
+</div>
+
+<div class="phase">
+<h3>Phase 5: Bidirectional Iterative Co-Evolution (Ultimate Goal)</h3>
+
+<p><strong>Phases 1&ndash;4 address "how to teach." Phase 5 addresses "who teaches whom" and "for how many generations."</strong></p>
+
+<p><strong>Mechanism:</strong></p>
+
+<div class="diagram">
+Generation 1:  B0 R12 + PVT R8 --> blend --> PVT R9 (student)
+                                                       |
+Generation 2:  B0 R12 + PVT R9 --> blend --> PVT R10   |
+                                                       |
+Generation 3:  B0 R12 + PVT R10 --> blend --> PVT R11  |
+               Simultaneously:                         |
+               PVT R10 + B0 R12 --> blend --> B0 R13   <-- Knowledge flows back!
+                                                       |
+Generation 4:  B0 R13 + PVT R11 --> blend --> PVT R12  |
+               PVT R11 + B0 R13 --> blend --> B0 R14   |
+               ... (continuous co-evolution)            |
+</div>
+
+<p><strong>Why it is sound (core argument):</strong></p>
+
+<div class="insight">
+<strong>The Noisy Classmate Knowledge Creation Cycle:</strong>
+<ol>
+<li>PVT R9 learns from B0's knowledge (things B0 excels at, e.g., certain Aves species)</li>
+<li>But PVT reinterprets this knowledge through its own architecture (ViT) &rarr; produces a <em>different</em> error pattern</li>
+<li>PVT R9's new error pattern teaches B0 R13 &rarr; B0 sees "the PVT perspective"</li>
+<li>B0 R13 integrates PVT's insights, then teaches PVT R10 &rarr; increasing cross-pollination</li>
+</ol>
+<p>Each generation, both models learn something new from the other. This is not simple "A teaches B" &mdash; it is "A and B's dialogue creates C (new knowledge)."</p>
+</div>
+
+<p><strong>Convergence analysis:</strong></p>
+<ul>
+<li>If both models eventually predict identically &rarr; diversity = 0 &rarr; improvement stops</li>
+<li>However, architectural inductive biases differ fundamentally &rarr; they will never fully converge &rarr; residual diversity always exists</li>
+<li>Expected: largest improvements in early generations, then plateau (similar to NS round diminishing returns)</li>
+</ul>
+</div>
+
+<h2>5. Why Noisy Classmate Is More Effective Than Simply Adding NS Rounds</h2>
+
+<div class="evidence">
+<strong>Empirical: B0 NS rounds show diminishing returns.</strong>
+<table>
+<tr><th>Round Range</th><th>Mean AUC Change</th><th>LB Effect</th></tr>
+<tr><td>R1 &rarr; R4</td><td>0.912 &rarr; 0.934 (+0.022)</td><td>Rapid improvement</td></tr>
+<tr><td>R4 &rarr; R8</td><td>0.934 &rarr; 0.938 (+0.004)</td><td>Slow improvement</td></tr>
+<tr><td>R8 &rarr; R12</td><td>0.938 &rarr; 0.947 (+0.009)</td><td>fold0/fold2 jump but fold3 declines</td></tr>
+</table>
+<p>Post-R8 improvement primarily comes from "pseudo label distribution shift" in certain folds (R9 fold0: 0.90 &rarr; 0.96), not genuine generalization improvement.</p>
+
+<strong>Why NC can break through this ceiling:</strong>
+<ol>
+<li><strong>NS bottleneck is confirmation bias</strong>: the model can only learn from its own mistakes, but certain systematic errors are invisible to itself</li>
+<li><strong>NC introduces external perspectives</strong>: PVT's error pattern differs from B0's &rarr; PVT can detect B0's blind spots</li>
+<li><strong>NC improvement is not round-limited</strong>: NS improvement comes from "better pseudo labels" (diminishing marginal returns); NC improvement comes from "differently-sourced pseudo labels" (new information source)</li>
+</ol>
+</div>
+
+<h2>6. Risk Analysis and Mitigation</h2>
+
+<table>
+<tr><th>Risk</th><th>Severity</th><th>Mitigation Strategy</th></tr>
+<tr><td>Blending degrades pseudo label quality (weak model drags down strong model)</td><td>Medium</td><td>Confidence weighting (Phase 2) lets the stronger model dominate in its areas of expertise</td></tr>
+<tr><td>Co-evolution converges to homogeneity (models become too similar)</td><td>High</td><td>Different architectures have inherently different inductive biases; monitor prediction correlation, stop if corr &gt; 0.99</td></tr>
+<tr><td>CV-LB inconsistency leads to wrong model selection</td><td>High</td><td>Monitor both CV AUC and prediction diversity; use minimal-variable experiments for LB decisions</td></tr>
+<tr><td>Soft distillation temperature too high/low</td><td>Low</td><td>T=2.0 is standard; grid search T in {1.5, 2.0, 3.0}</td></tr>
+<tr><td>Disagreement mining over-emphasizes outliers</td><td>Medium</td><td>Cap sample weight at 3x to prevent extreme outliers from dominating training</td></tr>
+</table>
+
+<h2>7. Implementation Roadmap</h2>
+
+<table>
+<tr><th>Phase</th><th>Scope of Change</th><th>Expected LB Impact</th><th>Status</th></tr>
+<tr><td>Phase 1: Ensemble Pseudo</td><td>gen_pseudo script</td><td>+0.000 ~ 0.002</td><td>Done</td></tr>
+<tr><td>Phase 2: Confidence Weighting</td><td>gen_pseudo script</td><td>+0.001 ~ 0.003</td><td>1 hour</td></tr>
+<tr><td>Phase 3: Disagreement Mining</td><td>Dataset + training loop</td><td>+0.002 ~ 0.005</td><td>2 hours</td></tr>
+<tr><td>Phase 4: Soft Distillation</td><td>Loss function + Dataset</td><td>+0.001 ~ 0.003</td><td>3 hours</td></tr>
+<tr><td>Phase 5: Bidirectional Loop</td><td>Pipeline scripts</td><td>+0.003 ~ 0.010</td><td>Automated (requires training time)</td></tr>
+</table>
+
+<div class="insight">
+<strong>Recommended execution order:</strong> Phase 3 (Disagreement Mining) &rarr; Phase 2 (Confidence Weighting) &rarr; Phase 4 (Soft Distillation) &rarr; Phase 5 (Bidirectional Loop).<br>
+Phase 3 has the highest expected payoff and simplest implementation; it should be validated first.
+</div>
+
+<h2>8. Success Metrics</h2>
+
+<ol>
+<li><strong>Prediction correlation decreases</strong>: After NC training, B0-PVT prediction correlation should be &lt; 0.98 (currently 0.9828)</li>
+<li><strong>Per-class AUC distribution becomes more uniform</strong>: NC should improve classes where both models currently struggle (long-tail species)</li>
+<li><strong>Ensemble AUC improves</strong>: Even if individual model AUC stays the same, ensemble AUC rises due to increased diversity</li>
+<li><strong>LB &gt; 0.941</strong>: Ultimate objective</li>
+</ol>
+
+<hr>
+<p><em>Generated: 2026-04-07 | Noisy Classmate v1.0 Research Plan</em></p>
+
+</body>
+</html>

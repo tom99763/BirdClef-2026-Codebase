@@ -1,0 +1,40 @@
+# Round 1 — Pseudo-label self-training (train audio with R0 predictions)
+# Val set = ALL labeled SS + train audio covering all 234 classes
+# Train set = train audio with pseudo labels: blend*R0_preds + (1-blend)*R0_preds = R0_preds
+
+round: 1
+output_name: perch_adapter_r1.pt
+prev_ckpt: weights/perch_adapter_r0.pt
+r0_ckpt: weights/perch_adapter_r0.pt
+
+# Model
+emb_dim: 1536
+bottleneck: 512
+n_blocks: 2
+use_seq_attn: false
+dropout: 0.15
+num_classes: 234
+
+# Training
+lr: 2e-4
+weight_decay: 1e-3
+n_epochs: 60
+batch_size: 256
+patience: 12
+
+# Loss (SupCon disabled for soft pseudo labels)
+focal_gamma: 2.0
+supcon_weight: 0.0
+
+# Pseudo-label settings
+pseudo_blend: 0.5         # 0.5*R0 + 0.5*prev  (R1: both are R0)
+val_per_missing_class: 3  # train audio clips per class absent from SS val
+
+# Data
+labeled_ss_npz: outputs/perch_labeled_ss.npz
+unlabeled_ss_npz: outputs/perch_emb_all_ss.npz
+train_audio_manifest: outputs/embeddings_cache_nohuman/manifest.csv
+train_audio_emb_dir: outputs/embeddings_cache_nohuman/train
+taxonomy_csv: birdclef-2026/taxonomy.csv
+output_dir: weights
+log_dir: outputs/logs

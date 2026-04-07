@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SED Improvement Plan — BirdCLEF 2026</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text2: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --orange: #f0883e;
+    --red: #f85149;
+    --purple: #bc8cff;
+    --teal: #39d353;
+    --pink: #ff79c6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px 24px;
+    max-width: 1160px;
+    margin: 0 auto;
+  }
+
+  /* ── Header ── */
+  .header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+  .header h1 { font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .header h1 span { color: var(--accent); }
+  .meta { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 10px; }
+  .meta-item { font-size: 13px; color: var(--text2); }
+  .meta-item strong { color: var(--text); }
+
+  /* ── Nav Tabs ── */
+  .tabs { display: flex; gap: 4px; margin-bottom: 28px; flex-wrap: wrap; }
+  .tab {
+    padding: 6px 14px; border-radius: 6px; cursor: pointer;
+    font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+    color: var(--text2); background: var(--bg2); transition: all 0.15s;
+    text-decoration: none;
+  }
+  .tab:hover { color: var(--text); border-color: var(--text2); }
+  .tab.active { background: var(--accent); color: #0d1117; border-color: var(--accent); }
+
+  /* ── Goal Banner ── */
+  .goal-banner {
+    background: linear-gradient(135deg, #1a2332 0%, #1c2128 100%);
+    border: 1px solid #264f78;
+    border-left: 4px solid var(--accent);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: center;
+  }
+  .goal-item { text-align: center; }
+  .goal-item .label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; }
+  .goal-item .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .blue { color: var(--accent); } .orange { color: var(--orange); }
+  .green { color: var(--green); } .purple { color: var(--purple); }
+  .gold { color: #d29922; } .teal { color: var(--teal); }
+  .goal-arrow { font-size: 28px; color: var(--text2); margin: 0 4px; align-self: center; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 40px; }
+  .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .phase-badge {
+    border-radius: 20px; padding: 3px 12px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+    background: var(--bg3); border: 1px solid var(--border);
+  }
+  .pb-research { border-color: #58a6ff; color: #58a6ff; }
+  .pb-p1 { border-color: var(--green); color: var(--green); }
+  .pb-p2 { border-color: var(--yellow); color: var(--yellow); }
+  .pb-p3 { border-color: var(--orange); color: var(--orange); }
+  .pb-p4 { border-color: var(--red); color: var(--red); }
+  .pb-p5 { border-color: var(--purple); color: var(--purple); }
+  .pb-1st { border-color: #d29922; color: #d29922; }
+  .pb-2nd { border-color: #8b949e; color: #8b949e; }
+  .section h2 { font-size: 18px; font-weight: 600; color: var(--text); }
+  .section-desc { color: var(--text2); font-size: 13px; margin-bottom: 16px; }
+
+  /* ── Anchor targets ── */
+  .anchor { scroll-margin-top: 20px; }
+
+  /* ── Solution Overview Cards ── */
+  .solution-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 760px) { .solution-grid { grid-template-columns: 1fr; } }
+  .solution-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 18px;
+  }
+  .solution-card.gold-border { border-color: #d29922; }
+  .solution-card.silver-border { border-color: #8b949e; }
+  .sol-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sol-medal { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .medal-gold { background: #d29922; color: #0d1117; }
+  .medal-silver { background: #8b949e; color: #0d1117; }
+  .sol-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .sol-score { font-size: 11px; color: var(--text2); }
+  .sol-score strong { color: var(--green); }
+  .kv-list { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv-key { color: var(--text2); }
+  .kv-val { color: var(--text); }
+  .kv-val code { font-family: monospace; font-size: 11px; background: var(--bg3); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); }
+
+  /* ── Score Progression ── */
+  .progression {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; margin: 12px 0;
+  }
+  .prog-title { font-size: 12px; color: var(--text2); margin-bottom: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .prog-steps { display: flex; gap: 0; align-items: stretch; overflow-x: auto; }
+  .prog-step {
+    flex: 1; min-width: 120px; padding: 10px 12px;
+    border-right: 1px solid var(--border);
+    position: relative;
+  }
+  .prog-step:last-child { border-right: none; }
+  .prog-step .ps-label { font-size: 10px; color: var(--text2); margin-bottom: 4px; }
+  .prog-step .ps-score { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .prog-step .ps-desc { font-size: 10px; color: var(--text2); margin-top: 4px; line-height: 1.4; }
+  .prog-step.highlight { background: #0d2137; }
+  .prog-step.highlight .ps-score { color: var(--teal); }
+
+  /* ── Ranking Grid ── */
+  .ranking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  @media (max-width: 700px) { .ranking-grid { grid-template-columns: 1fr; } }
+  .rank-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; display: flex; gap: 12px; align-items: flex-start;
+  }
+  .rank-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+  .rank-1 { background: #d29922; color: #0d1117; }
+  .rank-2 { background: #8b949e; color: #0d1117; }
+  .rank-3 { background: #b87333; color: #fff; }
+  .rank-other { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .rank-info h4 { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .rank-info .gain { font-size: 12px; color: var(--green); font-weight: 600; }
+  .rank-info .source { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+  /* ── Tech Cards ── */
+  .tech-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 8px; }
+  @media (max-width: 900px) { .tech-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 600px) { .tech-grid { grid-template-columns: 1fr; } }
+  .tech-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+  }
+  .tech-card .tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .tc-gain {
+    display: inline-block; border-radius: 4px; padding: 1px 7px;
+    font-size: 12px; font-weight: 700; margin-bottom: 8px;
+    background: #1a3a1a; color: var(--green); border: 1px solid #2d5a2d;
+  }
+  .tc-gain.yellow { background: #2d2100; color: var(--yellow); border-color: #5a4200; }
+  .tc-gain.orange { background: #2d1a00; color: var(--orange); border-color: #5a3a00; }
+  .tc-gain.purple { background: #1f1a3a; color: var(--purple); border-color: #3d3060; }
+  .tc-gain.red { background: #2d0a0a; color: var(--red); border-color: #5a1a1a; }
+  .tech-card p { font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .tech-card .source-tag { font-size: 11px; color: var(--text2); margin-top: 6px; border-top: 1px solid var(--border); padding-top: 5px; }
+  .new-badge {
+    display: inline-block; background: #1a3a1a; color: var(--teal);
+    border: 1px solid #2d6a2d; border-radius: 3px; font-size: 10px;
+    font-weight: 700; padding: 0 5px; margin-left: 6px; vertical-align: middle;
+  }
+
+  /* ── Code Blocks ── */
+  pre {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+    padding: 14px 16px; overflow-x: auto; margin: 12px 0;
+    font-size: 12px; line-height: 1.6;
+  }
+  code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+  .comment { color: #8b949e; } .kw { color: #ff7b72; } .str { color: #a5d6ff; }
+  .fn { color: #d2a8ff; } .num { color: #79c0ff; }
+
+  /* ── Subsections ── */
+  .subsection { margin-bottom: 22px; }
+  .subsection h3 {
+    font-size: 14px; font-weight: 600; color: var(--accent);
+    margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  }
+  .subsection p { color: var(--text2); font-size: 13px; margin-bottom: 8px; }
+  .subsection ul { list-style: none; padding: 0; }
+  .subsection ul li {
+    color: var(--text2); font-size: 13px; padding: 3px 0;
+    padding-left: 16px; position: relative;
+  }
+  .subsection ul li::before { content: "▸"; position: absolute; left: 0; color: var(--accent); }
+  .subsection ul li strong { color: var(--text); }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+  th {
+    background: var(--bg3); color: var(--text2); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 12px;
+    text-align: left; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:hover td { background: var(--bg2); }
+  .current-row td { background: #1a2332; }
+  .recommended-row td { background: #1a2a1a; }
+  td code { font-size: 11px; background: var(--bg3); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); }
+
+  /* ── Timeline ── */
+  .timeline { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .timeline th { background: var(--bg3); color: var(--text2); padding: 10px 14px; font-size: 11px; text-transform: uppercase; }
+  .timeline td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .timeline tr:last-child td { border-bottom: none; }
+  .priority-now { color: var(--red); font-weight: 700; }
+  .priority-high { color: var(--red); }
+  .priority-next { color: var(--yellow); }
+  .priority-later { color: var(--orange); }
+  .gain-badge { display: inline-block; background: #1a3a1a; color: var(--green); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 600; }
+  .gain-badge.big { background: #0d2a0d; color: var(--teal); font-size: 12px; }
+
+  /* ── Pseudo Pipeline ── */
+  .pipeline { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin: 12px 0; }
+  .pipeline-step { display: flex; align-items: flex-start; gap: 12px; padding: 7px 0; }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #0d1117;
+    font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+  }
+  .step-done .step-num { background: var(--green); }
+  .step-next .step-num { background: var(--yellow); color: #0d1117; }
+  .pipeline-step .step-text { font-size: 13px; }
+  .pipeline-step .step-text .st-label { font-weight: 600; color: var(--text); }
+  .pipeline-step .step-text .st-note { color: var(--text2); font-size: 12px; }
+  .pipeline-arrow { text-align: center; color: var(--text2); font-size: 18px; padding: 2px 0; }
+
+  /* ── Config Block ── */
+  .config-block {
+    background: var(--bg3); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 6px; padding: 14px 16px; margin: 12px 0;
+    font-family: monospace; font-size: 12px; line-height: 1.8;
+  }
+  .cfg-key { color: #79c0ff; } .cfg-val { color: #a5d6ff; }
+  .cfg-comment { color: #8b949e; } .cfg-new { color: var(--green); font-weight: 600; }
+  .cfg-section { color: var(--orange); font-weight: 600; }
+
+  /* ── Notice Boxes ── */
+  .warning-box {
+    background: #2d1a00; border: 1px solid #5a3a00; border-left: 4px solid var(--orange);
+    border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--text);
+  }
+  .warning-box strong { color: var(--orange); }
+  .info-box {
+    background: #0d2137; border: 1px solid #1a4a7a; border-left: 4px solid var(--accent);
+    border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--text);
+  }
+  .info-box strong { color: var(--accent); }
+  .success-box {
+    background: #0d2a0d; border: 1px solid #1a5a1a; border-left: 4px solid var(--green);
+    border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--text);
+  }
+  .success-box strong { color: var(--green); }
+  .highlight-box {
+    background: #1f1a3a; border: 1px solid #3d3060; border-left: 4px solid var(--purple);
+    border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: var(--text);
+  }
+  .highlight-box strong { color: var(--purple); }
+
+  /* ── Comparison Row ── */
+  .compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+  @media (max-width: 700px) { .compare-row { grid-template-columns: 1fr; } }
+  .compare-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+  }
+  .compare-card h4 { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .compare-card .cc-model { font-size: 13px; font-weight: 600; color: var(--text); }
+  .compare-card ul { list-style: none; padding: 0; margin-top: 6px; }
+  .compare-card ul li { font-size: 12px; color: var(--text2); padding: 2px 0; padding-left: 12px; position: relative; }
+  .compare-card ul li::before { content: "•"; position: absolute; left: 0; color: var(--text2); }
+  .compare-card ul li strong { color: var(--text); }
+  .compare-card.theirs { border-color: #d29922; }
+  .compare-card.ours { border-color: var(--accent); }
+
+  /* ── Spec diff table ── */
+  .diff-tag-better { color: var(--green); font-size: 11px; font-weight: 600; }
+  .diff-tag-worse { color: var(--red); font-size: 11px; font-weight: 600; }
+  .diff-tag-same { color: var(--text2); font-size: 11px; }
+  .diff-tag-try { color: var(--yellow); font-size: 11px; font-weight: 600; }
+
+  /* ── Ensemble Weights ── */
+  .weight-grid { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+  .weight-card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 16px; text-align: center; min-width: 120px;
+  }
+  .weight-card .wc-model { font-size: 11px; color: var(--text2); }
+  .weight-card .wc-weight { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .weight-card .wc-auc { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .weight-card.primary { border-color: var(--accent); background: #0d2137; }
+
+  /* ── References ── */
+  .refs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 600px) { .refs { grid-template-columns: 1fr; } }
+  .ref-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-size: 12px; color: var(--text2); }
+  .ref-card strong { color: var(--text); display: block; margin-bottom: 3px; }
+  .ref-card a { color: var(--accent); text-decoration: none; font-size: 11px; }
+  .ref-card a:hover { text-decoration: underline; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+  .footer { color: var(--text2); font-size: 12px; text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .tag { display: inline-block; border-radius: 3px; padding: 1px 6px; font-size: 10px; font-weight: 600; margin-left: 4px; vertical-align: middle; }
+  .tag-new { background: #1a3a1a; color: var(--teal); border: 1px solid #2d6a2d; }
+  .tag-key { background: #2d0a2d; color: var(--pink); border: 1px solid #5a1a5a; }
+  .tag-risk { background: #2d1a00; color: var(--orange); border: 1px solid #5a3a00; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>SED Improvement Plan: From LB 0.862 to <span>LB 0.90+</span></h1>
+  <div class="meta">
+    <div class="meta-item"><strong>Date:</strong> 2026-03-16</div>
+    <div class="meta-item"><strong>Baseline:</strong> sed-b0-v5 (EfficientNet-B0, BCE, ep4/20)</div>
+    <div class="meta-item"><strong>Reference:</strong> Competitor SED — holdout 0.9883 / LB 0.862</div>
+    <div class="meta-item"><strong>Top Target:</strong> BirdCLEF 2025 1st place — LB 0.930 (private)</div>
+  </div>
+</div>
+
+<!-- Nav -->
+<div class="tabs">
+  <a class="tab active" href="#top-solutions">2025 Top Solutions</a>
+  <a class="tab" href="#gap-analysis">Gap Analysis</a>
+  <a class="tab" href="#phase1">Phase 1: Inference</a>
+  <a class="tab" href="#phase2">Phase 2: Training v6</a>
+  <a class="tab" href="#phase3">Phase 3: Backbone</a>
+  <a class="tab" href="#phase4">Phase 4: Pseudo-Label</a>
+  <a class="tab" href="#phase5">Phase 5: Ensemble</a>
+  <a class="tab" href="#roadmap">Roadmap</a>
+</div>
+
+<!-- Goal Banner -->
+<div class="goal-banner">
+  <div class="goal-item"><div class="label">Our Best LB</div><div class="value orange">0.849</div></div>
+  <div class="goal-arrow">→</div>
+  <div class="goal-item"><div class="label">Competitor LB</div><div class="value blue">0.862</div></div>
+  <div class="goal-arrow">→</div>
+  <div class="goal-item"><div class="label">Phase 1–2 Target</div><div class="value green">0.880</div></div>
+  <div class="goal-arrow">→</div>
+  <div class="goal-item"><div class="label">Phase 4 Target</div><div class="value purple">0.910</div></div>
+  <div class="goal-arrow">→</div>
+  <div class="goal-item"><div class="label">2025 1st Place</div><div class="value gold">0.930</div></div>
+</div>
+
+<!-- ══════════════════════════════════════
+     SECTION: 2025 Top Solutions Deep Dive
+     ══════════════════════════════════════ -->
+<div id="top-solutions" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-research">2025 Research</div>
+    <h2>BirdCLEF 2025 Top Solution Deep Dive</h2>
+  </div>
+
+  <!-- Solution overview cards -->
+  <div class="solution-grid">
+    <!-- 1st Place -->
+    <div class="solution-card gold-border">
+      <div class="sol-header">
+        <div class="sol-medal medal-gold">1</div>
+        <div>
+          <div class="sol-name">Nikita Babych — "Multi-Iterative Noisy Student Is All You Need"</div>
+          <div class="sol-score">Public <strong>0.933</strong> · Private <strong>0.930</strong></div>
+        </div>
+      </div>
+      <div class="kv-list">
+        <span class="kv-key">Backbones</span><span class="kv-val">EfficientNet-L0, B4, B3, RegNetY-016/008, B0 (insects)</span>
+        <span class="kv-key">Loss</span><span class="kv-val">CrossEntropy → <strong>SoftAUCLoss</strong></span>
+        <span class="kv-key">Key trick</span><span class="kv-val">PowerTransform pseudo-labels × 4 rounds</span>
+        <span class="kv-key">Extra data</span><span class="kv-val">5,489 Xeno-Canto + 17,197 insect/amphibian</span>
+        <span class="kv-key">Augmentation</span><span class="kv-val">MixUp + StochasticDepth</span>
+        <span class="kv-key">Inference</span><span class="kv-val">OpenVINO CPU + TTA shifts</span>
+      </div>
+    </div>
+
+    <!-- 2nd Place -->
+    <div class="solution-card silver-border">
+      <div class="sol-header">
+        <div class="sol-medal medal-silver">2</div>
+        <div>
+          <div class="sol-name">VSydorskyy / Gonçalves — "Transfer Learning + Semi-Supervised Distillation"</div>
+          <div class="sol-score">Public <strong>0.925</strong> · Private <strong>0.928</strong></div>
+        </div>
+      </div>
+      <div class="kv-list">
+        <span class="kv-key">Backbones</span><span class="kv-val"><code>eca_nfnet_l0</code> + <code>tf_efficientnetv2_s_in21k</code></span>
+        <span class="kv-key">Loss</span><span class="kv-val">BCE + Focal, label smoothing α=0.05</span>
+        <span class="kv-key">Key trick</span><span class="kv-val">Pretrain on 819K recordings / 7,489 species</span>
+        <span class="kv-key">Pseudo</span><span class="kv-val">OOF 3-round, threshold 0.5, soft labels</span>
+        <span class="kv-key">Pooling</span><span class="kv-val">GeM (Generalized Mean) across frequency</span>
+        <span class="kv-key">Augmentation</span><span class="kv-val">MixUp (audio) + SpecAugment + RandomFiltering</span>
+        <span class="kv-key">Postproc</span><span class="kv-val">TopN(N=1) × file-level max multiplication</span>
+        <span class="kv-key">Ensemble</span><span class="kv-val">15 models (3 experiments × 5 folds), Optuna</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Score Progressions -->
+  <div class="compare-row">
+    <div>
+      <div class="progression">
+        <div class="prog-title">1st Place — Score Progression</div>
+        <div class="prog-steps">
+          <div class="prog-step"><div class="ps-label">Baseline</div><div class="ps-score">0.872</div><div class="ps-desc">EfficientNet-0 + RegNetY + CE</div></div>
+          <div class="prog-step"><div class="ps-label">+ Pseudo I + MixUp</div><div class="ps-score">0.898</div><div class="ps-desc">10 models, StochasticDepth</div></div>
+          <div class="prog-step"><div class="ps-label">+ PowerTransform × 4</div><div class="ps-score">0.930</div><div class="ps-desc">Power-scaled pseudo-labels, 4 rounds</div></div>
+          <div class="prog-step highlight"><div class="ps-label">+ Insect/Amphibian</div><div class="ps-score">0.933</div><div class="ps-desc">Dedicated B0 sub-pipeline</div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="progression">
+        <div class="prog-title">2nd Place — Score Progression (Private)</div>
+        <div class="prog-steps">
+          <div class="prog-step"><div class="ps-label">NFNet-L0 Base</div><div class="ps-score">0.868</div><div class="ps-desc">No extras</div></div>
+          <div class="prog-step"><div class="ps-label">+ Enhancements</div><div class="ps-score">0.875</div><div class="ps-desc">Label smooth, balancing</div></div>
+          <div class="prog-step"><div class="ps-label">+ EfficientNetV2-S</div><div class="ps-score">0.889</div><div class="ps-desc">in21k pretrain</div></div>
+          <div class="prog-step"><div class="ps-label">+ Pseudo × 3</div><div class="ps-score">0.913</div><div class="ps-desc">OOF pseudo-labels</div></div>
+          <div class="prog-step highlight"><div class="ps-label">+ TopN + Ensemble</div><div class="ps-score">0.928</div><div class="ps-desc">Optuna weights, 15 models</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1st Place Deep Dive -->
+  <div class="section-header" style="margin-top:24px">
+    <div class="phase-badge pb-1st">1st Place Details</div>
+    <h2>Nikita Babych — Key Technical Insights</h2>
+  </div>
+
+  <div class="highlight-box">
+    <strong>Core Innovation: PowerTransform Pseudo-Labeling</strong><br>
+    After generating pseudo-label probabilities from the ensemble "teacher", apply a power transform pʸ (power scaling) to sharpen/recalibrate the soft labels before the next student training round. This prevents probability collapse across 4 iterations and maintains discriminative signal. Combined with MixUp, StochasticDepth regularization creates a robust noisy student framework.
+  </div>
+
+  <div class="tech-grid">
+    <div class="tech-card">
+      <div class="tc-title">SoftAUCLoss <span class="new-badge">KEY</span></div>
+      <div class="tc-gain purple">Direct AUC</div>
+      <p>Computes pairwise probability differences and applies log-loss. Directly optimizes the competition metric (macro ROC-AUC) instead of a proxy. Supports soft pseudo-labels. Resistant to overfitting in later training rounds.</p>
+      <pre><code><span class="comment"># Pairwise AUC approximation</span>
+<span class="comment"># loss = E[log(sigmoid(p_pos - p_neg))]</span>
+<span class="comment"># Works with soft label targets</span></code></pre>
+      <div class="source-tag">2025 1st & 4th place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">PowerTransform on Pseudo-Labels <span class="new-badge">KEY</span></div>
+      <div class="tc-gain red">+0.032 LB</div>
+      <p>After generating ensemble pseudo probabilities, apply power transform p^γ to sharpen predictions. γ&gt;1 sharpens, γ&lt;1 softens. Applied iteratively across 4 pseudo-labeling rounds to prevent probability collapse.</p>
+<pre><code><span class="comment"># Sharpen pseudo-label probabilities</span>
+pseudo_probs = pseudo_probs ** gamma
+<span class="comment"># Re-normalize to sum=1 if needed</span>
+pseudo_probs /= pseudo_probs.<span class="fn">sum</span>(axis=<span class="num">1</span>, keepdims=<span class="kw">True</span>)</code></pre>
+      <div class="source-tag">2025 1st place (core innovation)</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">StochasticDepth Regularization <span class="new-badge">NEW</span></div>
+      <div class="tc-gain yellow">regularization</div>
+      <p>Randomly drop entire residual blocks during training (survival probability p_s). Acts as strong regularizer during pseudo-label training where overfitting risk is high. Implemented via timm's <code>drop_path_rate</code>.</p>
+<pre><code><span class="comment"># timm config</span>
+model = timm.<span class="fn">create_model</span>(
+  <span class="str">'tf_efficientnet_b2'</span>,
+  drop_path_rate=<span class="num">0.2</span>,  <span class="comment"># StochasticDepth</span>
+  pretrained=<span class="kw">True</span>
+)</code></pre>
+      <div class="source-tag">2025 1st place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">Separate Non-Bird Pipeline <span class="new-badge">NEW</span></div>
+      <div class="tc-gain yellow">+0.003 LB</div>
+      <p>Dedicated EfficientNet-B0 models trained exclusively on amphibian and insect species (17,197 extra entries from Xeno-Canto). Separate because bird/non-bird feature distributions differ significantly.</p>
+      <div class="source-tag">2025 1st place (BirdCLEF 2026 has amphibians too!)</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">SED for Frame-Level Annotation</div>
+      <div class="tc-gain yellow">annotation quality</div>
+      <p>Use SED models to refine weak (clip-level) labels to strong (frame-level) pseudo-labels on soundscapes. Identifies precise temporal event boundaries within 5s clips, enabling more accurate pseudo-label targets.</p>
+      <div class="source-tag">2025 1st place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">Model Soup <span class="new-badge">NEW</span></div>
+      <div class="tc-gain yellow">stability</div>
+      <p>Weight averaging across multiple checkpoints (different epochs or random seeds) before inference. Free performance boost with no additional compute at inference time. Can combine last-N epoch checkpoints.</p>
+<pre><code><span class="comment"># Average weights of last 3 checkpoints</span>
+soup_state = {}
+<span class="kw">for</span> k <span class="kw">in</span> ckpt1.keys():
+  soup_state[k] = (ckpt1[k]+ckpt2[k]+ckpt3[k])/<span class="num">3</span></code></pre>
+      <div class="source-tag">2025 1st & 3rd place</div>
+    </div>
+  </div>
+
+  <!-- 2nd Place Deep Dive -->
+  <div class="section-header" style="margin-top:24px">
+    <div class="phase-badge pb-2nd">2nd Place Details</div>
+    <h2>VSydorskyy — Key Technical Insights</h2>
+  </div>
+
+  <div class="tech-grid">
+    <div class="tech-card">
+      <div class="tc-title">MixUp in Audio Domain <span class="new-badge">KEY</span></div>
+      <div class="tc-gain red">+0.036 Private!</div>
+      <p>Mix two raw waveforms before mel extraction (not in spectrogram domain). Targets combined as element-wise maximum. Ablation: Private LB 0.835 → 0.871 without vs with MixUp — massive gap.</p>
+<pre><code><span class="comment"># Audio-domain MixUp (50% probability)</span>
+<span class="kw">if</span> random() < <span class="num">0.5</span>:
+  lam = Beta(<span class="num">0.5</span>, <span class="num">0.5</span>).<span class="fn">sample</span>()
+  audio = lam*audio1 + (<span class="num">1</span>-lam)*audio2
+  target = <span class="fn">max</span>(target1, target2)  <span class="comment"># elem-wise</span></code></pre>
+      <div class="source-tag">2025 2nd place (confirmed +3.6% Private)</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">RandomFiltering Augmentation <span class="new-badge">NEW</span></div>
+      <div class="tc-gain yellow">+~1% Private</div>
+      <p>Simplified random equalizer simulating channel/microphone distortions. Apply random IIR/FIR frequency response to audio before mel extraction. Improves robustness to recording device variation across soundscapes.</p>
+<pre><code><span class="comment"># Random frequency response simulation</span>
+<span class="comment"># Apply random biquad filter to waveform</span>
+b, a = <span class="fn">random_biquad_coeffs</span>()
+audio = scipy.signal.<span class="fn">lfilter</span>(b, a, audio)</code></pre>
+      <div class="source-tag">2025 2nd place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">ESC-50 Background Noise Mixing <span class="new-badge">NEW</span></div>
+      <div class="tc-gain yellow">domain robustness</div>
+      <p>Mix in background noise from ESC-50 dataset + prior-year competition soundscapes at 50% probability. Drawn equally from both sources. Helps model ignore non-bird environmental sounds.</p>
+<pre><code><span class="comment"># Background noise mixing</span>
+<span class="kw">if</span> random() < <span class="num">0.5</span>:
+  bg = <span class="fn">load_random_bg</span>()  <span class="comment"># ESC-50 or soundscape</span>
+  snr = uniform(<span class="num">5</span>, <span class="num">20</span>)   <span class="comment"># dB</span>
+  audio = audio + bg * <span class="fn">snr_scale</span>(snr)</code></pre>
+      <div class="source-tag">2025 2nd place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">OOF Pseudo-Labeling <span class="new-badge">KEY</span></div>
+      <div class="tc-gain red">+0.024 Private</div>
+      <p>Out-of-Fold pseudo-labeling: each fold's held-out model generates pseudo-labels for a subset, then <strong>refreshes every round</strong>. Avoids label leakage vs. full-dataset pseudo-labeling. 3 iterations.</p>
+<pre><code><span class="comment"># Iteration structure</span>
+<span class="comment"># Iter 1: 4,430 files → 19,405 chunks</span>
+<span class="comment"># Iter 2:   483 files →  3,750 chunks</span>
+<span class="comment"># Iter 3: 1,437 files →  4,108 chunks</span>
+<span class="comment"># Refresh labels each round with stronger model</span></code></pre>
+      <div class="source-tag">2025 2nd place</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">TopN Postprocessing <span class="new-badge">NEW</span></div>
+      <div class="tc-gain red">+0.011 LB</div>
+      <p>For each species in a segment, multiply by the top-1 probability of that species across all segments in the same audio file. Boosts consistent species, suppresses spurious detections.</p>
+<pre><code><span class="comment"># TopN (N=1) postprocessing</span>
+<span class="comment"># prob[audio, segment, class]</span>
+top1 = prob.<span class="fn">max</span>(axis=<span class="num">1</span>, keepdims=<span class="kw">True</span>)  <span class="comment"># per audio, per class</span>
+postproc = prob * top1</code></pre>
+      <div class="source-tag">2025 2nd place (confirmed +1.1 LB)</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">819K-Recording Pretraining <span class="new-badge">NEW</span></div>
+      <div class="tc-gain orange">+0.014 LB</div>
+      <p>Collected all previous BirdCLEF competition taxonomies → 16,607 unique species → downloaded 819,032 recordings. Excluded 2025 target species. Pretrained CNN backbone for 50 epochs, then replaced head for fine-tuning.</p>
+      <div class="source-tag">2025 2nd place (backbone pretrain before fine-tune)</div>
+    </div>
+  </div>
+
+  <!-- Confirmed Spectrogram Params -->
+  <div class="subsection" style="margin-top:16px">
+    <h3>Confirmed Spectrogram Parameters (2nd Place Paper — Appendix B)</h3>
+    <table>
+      <thead><tr><th>Parameter</th><th>2025 2nd Place</th><th>Our sed-b0-v5</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Sample rate</td><td>32,000 Hz</td><td>32,000 Hz</td><td><span class="diff-tag-same">✓ same</span></td></tr>
+        <tr><td>n_mels</td><td>128</td><td>224</td><td><span class="diff-tag-try">△ we use 224 — more detail but heavier</span></td></tr>
+        <tr><td>f_min</td><td>20 Hz</td><td>0 Hz</td><td><span class="diff-tag-try">△ try f_min=20 (removes DC noise)</span></td></tr>
+        <tr><td>n_fft</td><td>2,048</td><td>2,048</td><td><span class="diff-tag-same">✓ same</span></td></tr>
+        <tr><td>hop_length</td><td>512</td><td>512</td><td><span class="diff-tag-same">✓ same</span></td></tr>
+        <tr><td>top_db</td><td>80</td><td>80</td><td><span class="diff-tag-same">✓ same</span></td></tr>
+        <tr><td>Normalization</td><td>[0,1] per clip</td><td>[0,1] per clip</td><td><span class="diff-tag-same">✓ same</span></td></tr>
+        <tr><td>Library</td><td>nnAudio (GPU)</td><td>torchaudio</td><td><span class="diff-tag-same">equivalent</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Gap Analysis
+     ══════════════════════════════════════ -->
+<div id="gap-analysis" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-research">Gap Analysis</div>
+    <h2>What Separates Us from Top Solutions</h2>
+  </div>
+
+  <div class="compare-row">
+    <div class="compare-card theirs">
+      <h4>🥇 2025 Top Solutions</h4>
+      <ul>
+        <li><strong>Loss:</strong> SoftAUCLoss / CE — direct metric optimization</li>
+        <li><strong>Pseudo:</strong> 3–4 rounds with OOF refresh + PowerTransform</li>
+        <li><strong>Pretrain:</strong> 819K recordings / 7,489 species (2nd place)</li>
+        <li><strong>Augment:</strong> Audio-domain MixUp + RandomFiltering + ESC-50 BG</li>
+        <li><strong>Pooling:</strong> GeM pooling (2nd place)</li>
+        <li><strong>Postproc:</strong> TopN(N=1) file-level multiplication</li>
+        <li><strong>Backbone:</strong> NFNet-L0, EfficientNetV2-S, RegNetY-016</li>
+        <li><strong>Regularize:</strong> StochasticDepth during pseudo-label training</li>
+        <li><strong>Ensemble:</strong> 15 models, Optuna-selected weights</li>
+      </ul>
+    </div>
+    <div class="compare-card ours">
+      <h4>🔵 Our Current Pipeline</h4>
+      <ul>
+        <li><strong>Loss:</strong> BCE only (FocalBCE had issues)</li>
+        <li><strong>Pseudo:</strong> Round 1 Perch only, no soundscape pseudo-labels yet</li>
+        <li><strong>Pretrain:</strong> Standard ImageNet (ns_jft_in1k)</li>
+        <li><strong>Augment:</strong> Time masking + mixup + gain — no freq mask, no BG mixing</li>
+        <li><strong>Pooling:</strong> GEMFreqPool ✓ (already have this)</li>
+        <li><strong>Postproc:</strong> Simple threshold 0.02</li>
+        <li><strong>Backbone:</strong> EfficientNet-B0 (5.3M params)</li>
+        <li><strong>Regularize:</strong> Dropout only</li>
+        <li><strong>Ensemble:</strong> 3 Perch + 1 SED (4 models total)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="success-box">
+    <strong>What We Already Have Right:</strong> GEMFreqPool ✓ · Dual clip+frame SED loss ✓ · File-level soundscape split (no leak) ✓ · Human voice removal (Silero VAD, used by 5th place too) ✓ · 3-model Perch ensemble for pseudo-label cross-validation ✓
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Phase 1 — Inference Wins
+     ══════════════════════════════════════ -->
+<div id="phase1" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p1">Phase 1</div>
+    <h2>Quick Wins — Inference Improvements (No Retraining)</h2>
+  </div>
+  <p class="section-desc">Applies directly to sed-b0-v5 checkpoint. &lt;1 hour each. Combined potential: <strong>+0.025–0.040 LB</strong></p>
+
+  <div class="tech-grid">
+    <div class="tech-card">
+      <div class="tc-title">1.1 TTA: 2.5s Temporal Shifts</div>
+      <div class="tc-gain">+0.012 LB</div>
+      <p>Run each 5s clip 3 times (no shift, −2.5s, +2.5s) then average predictions.</p>
+<pre><code>shifts = [<span class="num">0</span>, -CLIP_SAMPLES//<span class="num">2</span>, +CLIP_SAMPLES//<span class="num">2</span>]
+preds = [<span class="fn">model</span>(get_clip(audio, start+s)) <span class="kw">for</span> s <span class="kw">in</span> shifts]
+final = np.<span class="fn">mean</span>(preds, axis=<span class="num">0</span>)</code></pre>
+      <div class="source-tag">2025 2nd place confirmed</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">1.2 Temporal Smoothing</div>
+      <div class="tc-gain">+0.010 LB</div>
+      <p>Apply Gaussian-like kernel across adjacent clip predictions in a soundscape file.</p>
+<pre><code>kernel = np.<span class="fn">array</span>([<span class="num">0.1</span>,<span class="num">0.2</span>,<span class="num">0.4</span>,<span class="num">0.2</span>,<span class="num">0.1</span>])
+<span class="kw">for</span> c <span class="kw">in</span> range(num_classes):
+  preds[:,c] = np.<span class="fn">convolve</span>(preds[:,c], kernel, <span class="str">'same'</span>)</code></pre>
+      <div class="source-tag">2024 3rd place confirmed</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">1.3 TopN Postprocessing <span class="tag tag-new">NEW</span></div>
+      <div class="tc-gain">+0.011 LB</div>
+      <p>Multiply each segment's probability by the file-level max of that class. Confirmed +1.1 LB by 2025 2nd place. Easy to add to inference_sed.py.</p>
+<pre><code><span class="comment"># preds: (n_clips, n_classes)</span>
+file_max = preds.<span class="fn">max</span>(axis=<span class="num">0</span>, keepdims=<span class="kw">True</span>)  <span class="comment"># (1, C)</span>
+preds_pp = preds * file_max
+<span class="comment"># Use preds_pp for submission</span></code></pre>
+      <div class="source-tag">2025 2nd place confirmed +1.1 LB</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">1.4 10s Context Windows</div>
+      <div class="tc-gain">+0.015 LB</div>
+      <p>Concatenate adjacent 5s clips (10s total), run model, use attention output for target window.</p>
+<pre><code>chunk = audio[
+  start - CLIP_SAMPLES//<span class="num">2</span> :
+  start + CLIP_SAMPLES * <span class="num">3</span>//<span class="num">2</span>]
+<span class="comment"># extract target-5s attention output</span></code></pre>
+      <div class="source-tag">2024 1st place confirmed</div>
+    </div>
+
+    <div class="tech-card">
+      <div class="tc-title">1.5 Model Soup <span class="tag tag-new">NEW</span></div>
+      <div class="tc-gain yellow">free stability</div>
+      <p>Average the weights of last 3–5 epoch checkpoints. Zero inference cost. Reduces checkpoint selection sensitivity. Can apply to sed-b0-v5 if multiple epoch checkpoints are saved.</p>
+<pre><code><span class="comment"># Average last 3 checkpoints</span>
+states = [torch.<span class="fn">load</span>(f) <span class="kw">for</span> f <span class="kw">in</span> [ep18, ep19, ep20]]
+soup = {k: <span class="fn">sum</span>(s[k] <span class="kw">for</span> s <span class="kw">in</span> states)/<span class="num">3</span>
+        <span class="kw">for</span> k <span class="kw">in</span> states[<span class="num">0</span>]}</code></pre>
+      <div class="source-tag">2025 1st & 3rd place</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Phase 2 — Training v6
+     ══════════════════════════════════════ -->
+<div id="phase2" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p2">Phase 2</div>
+    <h2>Training Improvements — sed-b0-v6</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>2.1 CrossEntropyLoss → SoftAUCLoss Progression <span class="tag tag-key">KEY</span></h3>
+    <p>Start with CE loss (step 1), then switch to SoftAUCLoss in later rounds (step 2). This matches what 2025 1st place did.</p>
+    <div class="info-box">
+      <strong>Step 1 (sed-b0-v6):</strong> CrossEntropy with label smoothing 0.05 — known +0.044 over BCE (2024 1st place)<br>
+      <strong>Step 2 (sed-b0-v7+):</strong> Switch to SoftAUCLoss for pseudo-label rounds — directly optimizes competition metric
+    </div>
+<pre><code><span class="comment"># Phase 1: CE with label smoothing</span>
+loss = F.<span class="fn">cross_entropy</span>(logits, hard_labels, label_smoothing=<span class="num">0.05</span>)
+
+<span class="comment"># Phase 2: SoftAUC for later rounds (pseudo-label training)</span>
+<span class="kw">def</span> <span class="fn">soft_auc_loss</span>(pred, target, margin=<span class="num">1.0</span>):
+    <span class="comment"># Pairwise positive-negative difference → log-sigmoid loss</span>
+    pos = pred[target > <span class="num">0.5</span>]; neg = pred[target < <span class="num">0.5</span>]
+    diffs = pos.<span class="fn">unsqueeze</span>(<span class="num">1</span>) - neg.<span class="fn">unsqueeze</span>(<span class="num">0</span>)
+    <span class="kw">return</span> -F.<span class="fn">logsigmoid</span>(diffs * margin).<span class="fn">mean</span>()</code></pre>
+    <div class="warning-box">
+      <strong>⚠ CE Risk:</strong> Most 5s clips in BirdCLEF are single-species dominant — CE works here. But test on holdout before committing. If CE hurts, fall back to BCE+Focal combo (2nd place approach).
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>2.2 Audio-Domain MixUp <span class="tag tag-key">KEY</span></h3>
+    <p>Mix in waveform domain before mel extraction (not spectrogram domain). 2025 2nd place confirmed massive +3.6% Private LB advantage. Target: element-wise max of both labels.</p>
+<pre><code><span class="comment"># Audio-domain MixUp (current: spectrogram domain)</span>
+<span class="kw">if</span> torch.rand(<span class="num">1</span>) < <span class="num">0.5</span>:
+    lam = torch.<span class="fn">distributions</span>.<span class="fn">Beta</span>(<span class="num">0.5</span>, <span class="num">0.5</span>).<span class="fn">sample</span>()
+    audio = lam * audio1 + (<span class="num">1</span> - lam) * audio2
+    target = torch.<span class="fn">max</span>(target1, target2)  <span class="comment"># elem-wise max</span>
+mel = <span class="fn">mel_transform</span>(audio)  <span class="comment"># then extract spectrogram</span></code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>2.3 SpecAugment: Frequency Masking <span class="tag tag-new">NEW</span></h3>
+    <p>Add frequency masking to existing time masking. +0.013 LB combined (2024 1st place). Our current config has time_masking only.</p>
+<pre><code>mel = torchaudio.transforms.<span class="fn">FrequencyMasking</span>(freq_mask_param=<span class="num">30</span>)(mel)
+mel = torchaudio.transforms.<span class="fn">TimeMasking</span>(time_mask_param=<span class="num">40</span>)(mel)</code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>2.4 Background Noise Mixing (ESC-50) <span class="tag tag-new">NEW</span></h3>
+    <p>Mix ESC-50 environmental sounds + prior competition soundscapes into training audio. Improves robustness to recording environment variation. 2nd place used 50% probability.</p>
+<pre><code><span class="comment"># Add to augment.py</span>
+<span class="kw">if</span> self.use_bg_mixing <span class="kw">and</span> random() < <span class="num">0.5</span>:
+    bg = self.<span class="fn">load_random_background</span>()  <span class="comment"># ESC-50 or soundscape</span>
+    snr_db = uniform(<span class="num">10</span>, <span class="num">30</span>)
+    bg_scale = audio.<span class="fn">abs</span>().<span class="fn">mean</span>() / (bg.<span class="fn">abs</span>().<span class="fn">mean</span>() * <span class="num">10</span>**(snr_db/<span class="num">20</span>))
+    audio = audio + bg * bg_scale</code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>2.5 RandomFiltering Augmentation <span class="tag tag-new">NEW</span></h3>
+    <p>Simulates microphone/channel frequency response variation. Confirmed +~1% Private LB (2nd place). Simple to add: random biquad filter on waveform.</p>
+<pre><code><span class="kw">import</span> torchaudio.functional <span class="kw">as</span> F_audio
+
+<span class="kw">def</span> <span class="fn">random_filtering</span>(audio, prob=<span class="num">0.5</span>):
+    <span class="kw">if</span> random() > prob: <span class="kw">return</span> audio
+    <span class="comment"># Random biquad EQ: random center freq, gain ±6dB</span>
+    central_freq = uniform(<span class="num">200</span>, <span class="num">8000</span>)
+    gain = uniform(<span class="num">-6</span>, <span class="num">6</span>)
+    <span class="kw">return</span> F_audio.<span class="fn">equalizer_biquad</span>(audio, <span class="num">32000</span>, central_freq, gain)</code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>2.6 StochasticDepth During Pseudo-Label Training <span class="tag tag-new">NEW</span></h3>
+    <p>Add drop_path_rate=0.2 during pseudo-label training rounds (sed-b0-v6+). Prevents overfitting to noisy pseudo-labels. Used by 2025 1st place specifically in pseudo-labeling stages.</p>
+<pre><code>model = timm.<span class="fn">create_model</span>(
+    <span class="str">'tf_efficientnet_b2.ns_jft_in1k'</span>,
+    drop_path_rate=<span class="num">0.2</span>,   <span class="comment"># StochasticDepth — NEW for pseudo rounds</span>
+    pretrained=<span class="kw">True</span>
+)</code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>2.7 Square-Root Class Balancing + RAdam for NFNet</h3>
+    <p>2nd place used: NFNet → RAdam LR=1e-3 · EfficientNetV2 → AdamW LR=1e-4 · class weight γ=−0.5. Rare species upsampled to minimum 100 samples.</p>
+<pre><code>class_counts = train_df[<span class="str">'primary_label'</span>].<span class="fn">value_counts</span>()
+weights = (class_counts / class_counts.<span class="fn">sum</span>()) ** (-<span class="num">0.5</span>)
+<span class="comment"># Upsample classes with < 100 samples to reach 100</span>
+rare = class_counts[class_counts < <span class="num">100</span>].index
+train_df = <span class="fn">upsample_rare</span>(train_df, rare, min_count=<span class="num">100</span>)</code></pre>
+  </div>
+
+  <!-- Config block for v6 -->
+  <div class="info-box"><strong>Recommended sed-b0-v6 Config:</strong></div>
+  <div class="config-block">
+    <span class="cfg-section">experiment:</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">name:</span> <span class="cfg-val">sed-b0-v6</span><br><br>
+    <span class="cfg-section">training:</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">epochs:</span> <span class="cfg-val">30</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">loss:</span> <span class="cfg-new">ce</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># CrossEntropy (+0.044 over BCE)</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">label_smoothing:</span> <span class="cfg-new">0.05</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># Matches 2025 2nd place</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">mixup_alpha:</span> <span class="cfg-val">0.5</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">mixup_domain:</span> <span class="cfg-new">audio</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># Audio-domain MixUp (NEW)</span><br><br>
+    <span class="cfg-section">augmentation:</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">freq_masking:</span> <span class="cfg-new">true</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># NEW: +0.013 combined</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">freq_mask_param:</span> <span class="cfg-new">30</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># NEW</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">time_masking:</span> <span class="cfg-val">true</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">time_mask_ratio:</span> <span class="cfg-val">0.15</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">bg_mixing:</span> <span class="cfg-new">true</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cfg-comment"># NEW: ESC-50 + soundscapes</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">bg_snr_range:</span> <span class="cfg-new">[10, 30]</span>&nbsp;&nbsp;<span class="cfg-comment"># NEW</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">random_filtering:</span> <span class="cfg-new">true</span>&nbsp;&nbsp;<span class="cfg-comment"># NEW: microphone variation</span><br>
+    &nbsp;&nbsp;<span class="cfg-key">random_filter_prob:</span> <span class="cfg-new">0.5</span>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Phase 3 — Backbone
+     ══════════════════════════════════════ -->
+<div id="phase3" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p3">Phase 3</div>
+    <h2>Backbone Upgrade — sed-b2-v1 / sed-nfnet-v1</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>3.1 Backbone Comparison</h3>
+    <table>
+      <thead><tr><th>Backbone</th><th>Params</th><th>2025 Usage</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr class="current-row">
+          <td><code>tf_efficientnet_b0.ns_jft_in1k</code></td><td>5.3M</td><td>Our current</td><td>Fast, good baseline</td>
+        </tr>
+        <tr class="recommended-row">
+          <td><code>tf_efficientnet_b2.ns_jft_in1k</code></td><td>9.1M</td><td>2025 1st/3rd ⭐</td><td>Recommended step-up, CPU-feasible</td>
+        </tr>
+        <tr>
+          <td><code>tf_efficientnetv2_s.in21k</code></td><td>24M</td><td>2025 2nd ⭐</td><td>Best accuracy, slower inference</td>
+        </tr>
+        <tr>
+          <td><code>eca_nfnet_l0</code></td><td>24M</td><td>2025 2nd ⭐</td><td>Top performer, uses RAdam LR=1e-3</td>
+        </tr>
+        <tr>
+          <td><code>regnetY_016</code></td><td>11M</td><td>2025 1st</td><td>Complementary to EfficientNet family</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="info-box">
+      <strong>Recommended path:</strong> B2 first (same family, manageable risk) → EfficientNetV2-S (bigger jump, requires more GPU time) → NFNet-L0 (complementary for ensemble diversity)
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Phase 4 — Pseudo-Labeling
+     ══════════════════════════════════════ -->
+<div id="phase4" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p4">Phase 4</div>
+    <h2>Multi-Round Pseudo-Labeling — Highest Total Impact</h2>
+  </div>
+  <p class="section-desc">The <strong>#1 technique</strong> in all 2025 top solutions. 2025 1st: 0.872 → 0.930 over 4 rounds. Expected: <strong>+0.04–0.06 LB</strong></p>
+
+  <div class="pipeline">
+    <div class="pipeline-step step-done">
+      <div class="step-num">✓</div>
+      <div class="step-text"><span class="st-label">Round 1 (DONE):</span> <span class="st-note">Perch pseudo-labels on individual recordings — 2,421 extra clips</span></div>
+    </div>
+    <div class="pipeline-arrow">↓</div>
+    <div class="pipeline-step step-next">
+      <div class="step-num">2</div>
+      <div class="step-text"><span class="st-label">Round 2 (NEXT):</span> <span class="st-note">SED + Perch ensemble pseudo-labels on all 66 training soundscapes → OOF filtering</span></div>
+    </div>
+    <div class="pipeline-arrow">↓</div>
+    <div class="pipeline-step">
+      <div class="step-num">3</div>
+      <div class="step-text"><span class="st-label">Round 3:</span> <span class="st-note">Retrain with round-2 pseudo → PowerTransform → re-label soundscapes + expand to external XC data</span></div>
+    </div>
+    <div class="pipeline-arrow">↓</div>
+    <div class="pipeline-step">
+      <div class="step-num">4</div>
+      <div class="step-text"><span class="st-label">Round 4:</span> <span class="st-note">Final SoftAUCLoss training on full pseudo corpus with StochasticDepth regularization</span></div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>4.1 OOF Pseudo-Labeling Strategy (2025 2nd Place) <span class="tag tag-new">NEW</span></h3>
+    <p>Generate pseudo-labels using out-of-fold models to avoid label leakage. Refresh labels every round with the stronger model.</p>
+<pre><code><span class="comment"># OOF pseudo-labeling loop</span>
+<span class="kw">for</span> fold <span class="kw">in</span> range(<span class="num">5</span>):
+    val_model = <span class="fn">load_model</span>(fold_checkpoint[fold])
+    val_soundscapes = soundscapes_for_fold[fold]
+    preds = val_model.<span class="fn">predict</span>(val_soundscapes)
+
+    <span class="comment"># Filter: max prob >= 0.5, suppress < 0.1</span>
+    mask = preds.<span class="fn">max</span>(axis=<span class="num">1</span>) >= <span class="num">0.5</span>
+    preds[preds < <span class="num">0.1</span>] = <span class="num">0</span>
+    pseudo_labels[fold] = preds[mask]  <span class="comment"># soft targets</span></code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>4.2 PowerTransform Before Each Round (2025 1st Place) <span class="tag tag-key">KEY</span></h3>
+    <p>Apply power scaling to pseudo probabilities before feeding as targets in next round. Prevents probability collapse across iterations.</p>
+<pre><code><span class="comment"># After generating pseudo-label probs from ensemble teacher:</span>
+gamma = <span class="num">2.0</span>  <span class="comment"># sharpen: values > 0.5 increase, < 0.5 decrease</span>
+pseudo_probs = pseudo_probs ** gamma
+
+<span class="comment"># Sampling strategy (2nd place): for each training sample,</span>
+<span class="comment"># if class exists in pseudo set, sample pseudo with 40% prob</span>
+<span class="kw">if</span> class_in_pseudo <span class="kw">and</span> random() < <span class="num">0.4</span>:
+    use_pseudo_sample = <span class="kw">True</span></code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>4.3 Multi-Model Agreement Filtering (Our Strategy)</h3>
+    <ul>
+      <li>Accept labels where <strong>both Perch ensemble AND SED agree</strong> (IoU &gt; 0.5 on top-3 species)</li>
+      <li>Discard disagreements — our Perch holdout=0.9780 is a strong cross-validator</li>
+      <li>Apply PowerTransform before each SED training round</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Phase 5 — Ensemble
+     ══════════════════════════════════════ -->
+<div id="phase5" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p5">Phase 5</div>
+    <h2>Ensemble Strategy Upgrade</h2>
+  </div>
+
+  <div class="subsection">
+    <h3>5.1 Ensemble Diversity (Key Insight from 2025 Top Teams)</h3>
+    <p>All top solutions used architecturally diverse ensembles. Target: 3–4 distinct backbone families.</p>
+    <div class="weight-grid">
+      <div class="weight-card"><div class="wc-model">label-pseudo</div><div class="wc-weight">1.0×</div><div class="wc-auc">holdout 0.9453</div></div>
+      <div class="weight-card"><div class="wc-model">label-soundscape</div><div class="wc-weight">1.0×</div><div class="wc-auc">holdout 0.9550</div></div>
+      <div class="weight-card"><div class="wc-model">embedding-soundscape</div><div class="wc-weight">1.0×</div><div class="wc-auc">holdout 0.9537</div></div>
+      <div class="weight-card primary"><div class="wc-model">SED (EfficientNet-B0→B2)</div><div class="wc-weight">2.0×</div><div class="wc-auc">holdout TBD</div></div>
+    </div>
+  </div>
+
+  <div class="subsection">
+    <h3>5.2 TopN Postprocessing on Ensemble Output <span class="tag tag-new">NEW</span></h3>
+    <p>Apply TopN(N=1) after ensemble averaging. Confirmed +0.011 LB from 2025 2nd place. Apply to the averaged ensemble predictions, not per-model.</p>
+<pre><code><span class="comment"># After averaging all model predictions per soundscape file:</span>
+<span class="comment"># ensemble_preds: (n_clips, n_classes)</span>
+file_top1 = ensemble_preds.<span class="fn">max</span>(axis=<span class="num">0</span>, keepdims=<span class="kw">True</span>)  <span class="comment"># (1, C)</span>
+final_preds = ensemble_preds * file_top1
+<span class="comment"># Submit final_preds</span></code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>5.3 Optuna Ensemble Weight Search <span class="tag tag-new">NEW</span></h3>
+    <p>Use Optuna to find optimal per-model weights on holdout set. 2025 2nd place used this for their 15-model ensemble. Simple to implement with existing holdout eval.</p>
+<pre><code><span class="kw">import</span> optuna
+
+<span class="kw">def</span> <span class="fn">objective</span>(trial):
+    w_perch1 = trial.<span class="fn">suggest_float</span>(<span class="str">'w_perch1'</span>, <span class="num">0.5</span>, <span class="num">2.0</span>)
+    w_perch2 = trial.<span class="fn">suggest_float</span>(<span class="str">'w_perch2'</span>, <span class="num">0.5</span>, <span class="num">2.0</span>)
+    w_sed    = trial.<span class="fn">suggest_float</span>(<span class="str">'w_sed'</span>,    <span class="num">1.0</span>, <span class="num">4.0</span>)
+    ensemble = (w_perch1*p1 + w_perch2*p2 + w_sed*p_sed) / (w_perch1+w_perch2+w_sed)
+    <span class="kw">return</span> <span class="fn">roc_auc_score</span>(y_holdout, ensemble)
+
+study = optuna.<span class="fn">create_study</span>(direction=<span class="str">'maximize'</span>)
+study.<span class="fn">optimize</span>(objective, n_trials=<span class="num">200</span>)</code></pre>
+  </div>
+
+  <div class="subsection">
+    <h3>5.4 min() vs mean() Ensemble</h3>
+    <p>For CE-trained models, <code>min()</code> over model predictions outperforms <code>mean()</code> (2024 1st place). Penalizes uncertain predictions more aggressively.</p>
+<pre><code><span class="comment"># CE-trained models: try min() instead of mean()</span>
+final_pred = np.<span class="fn">stack</span>([pred_sed1, pred_sed2, pred_sed3]).<span class="fn">min</span>(axis=<span class="num">0</span>)</code></pre>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: Roadmap
+     ══════════════════════════════════════ -->
+<div id="roadmap" class="section anchor">
+  <div class="section-header">
+    <div class="phase-badge pb-p1">Roadmap</div>
+    <h2>Implementation Priority &amp; Timeline</h2>
+  </div>
+
+  <table class="timeline">
+    <thead>
+      <tr><th>Priority</th><th>Task</th><th>Est. LB Gain</th><th>GPU</th><th>Est. Time</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="priority-now">🔴 NOW</td>
+        <td>Wait for sed-b0-v5 holdout AUC (watcher active, ~4h)</td>
+        <td>—</td><td>—</td><td>~4h</td>
+      </tr>
+      <tr>
+        <td class="priority-high">🔴 HIGH</td>
+        <td>Add TTA + TopN postprocessing to inference_sed.py</td>
+        <td><span class="gain-badge">+0.012–0.023</span></td><td>CPU</td><td>2h</td>
+      </tr>
+      <tr>
+        <td class="priority-high">🔴 HIGH</td>
+        <td>Temporal smoothing across clips in inference_sed.py</td>
+        <td><span class="gain-badge">+0.010</span></td><td>CPU</td><td>1h</td>
+      </tr>
+      <tr>
+        <td class="priority-next">🟡 NEXT</td>
+        <td>Train sed-b0-v6: CE + freq mask + audio MixUp + bg noise + RandomFiltering + 30ep</td>
+        <td><span class="gain-badge big">+0.04–0.06</span></td><td>GPU1</td><td>9h</td>
+      </tr>
+      <tr>
+        <td class="priority-next">🟡 NEXT</td>
+        <td>OOF SED pseudo-labels on 66 soundscapes (threshold=0.5, soft targets)</td>
+        <td><span class="gain-badge">+0.01–0.02</span></td><td>GPU0</td><td>2h</td>
+      </tr>
+      <tr>
+        <td class="priority-next">🟡 NEXT</td>
+        <td>Implement TopN postprocessing + Optuna ensemble weights</td>
+        <td><span class="gain-badge">+0.011–0.015</span></td><td>CPU</td><td>2h</td>
+      </tr>
+      <tr>
+        <td class="priority-later">🟠 LATER</td>
+        <td>Upgrade to EfficientNet-B2 (sed-b2-v1) + StochasticDepth</td>
+        <td><span class="gain-badge">+0.01–0.02</span></td><td>GPU1</td><td>12h</td>
+      </tr>
+      <tr>
+        <td class="priority-later">🟠 LATER</td>
+        <td>Multi-round noisy student (rounds 2–4) + PowerTransform</td>
+        <td><span class="gain-badge big">+0.03–0.05</span></td><td>Both</td><td>days</td>
+      </tr>
+      <tr>
+        <td class="priority-later">🟠 LATER</td>
+        <td>SoftAUCLoss for final pseudo-label training round</td>
+        <td><span class="gain-badge">+0.01–0.02</span></td><td>GPU1</td><td>10h</td>
+      </tr>
+      <tr>
+        <td class="priority-later">🟠 LATER</td>
+        <td>Separate amphibian/insect sub-pipeline (if BirdCLEF 2026 includes them)</td>
+        <td><span class="gain-badge">+0.003</span></td><td>GPU0</td><td>6h</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Expected cumulative gains -->
+  <div class="progression" style="margin-top:16px">
+    <div class="prog-title">Expected Cumulative LB Progression</div>
+    <div class="prog-steps">
+      <div class="prog-step"><div class="ps-label">Now</div><div class="ps-score orange">0.849</div><div class="ps-desc">3-model Perch ensemble best</div></div>
+      <div class="prog-step"><div class="ps-label">+TTA+TopN+Smooth</div><div class="ps-score">~0.875</div><div class="ps-desc">Phase 1 inference wins</div></div>
+      <div class="prog-step"><div class="ps-label">+sed-b0-v6</div><div class="ps-score">~0.890</div><div class="ps-desc">CE + all augments + 30ep</div></div>
+      <div class="prog-step"><div class="ps-label">+Pseudo round 2</div><div class="ps-score">~0.905</div><div class="ps-desc">OOF soundscape pseudo</div></div>
+      <div class="prog-step highlight"><div class="ps-label">+Pseudo rounds 3–4</div><div class="ps-score">~0.920</div><div class="ps-desc">PowerTransform + SoftAUC</div></div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- ══════════════════════════════════════
+     SECTION: References
+     ══════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header"><h2>References</h2></div>
+  <div class="refs">
+    <div class="ref-card">
+      <strong>BirdCLEF 2025 1st Place (Public 0.933)</strong>
+      Nikita Babych — "Multi-Iterative Noisy Student Is All You Need"<br>
+      PowerTransform pseudo-labeling × 4 rounds, SoftAUCLoss, separate non-bird pipeline
+    </div>
+    <div class="ref-card">
+      <strong>BirdCLEF 2025 2nd Place (Private 0.928)</strong>
+      VSydorskyy & Gonçalves — "Transfer Learning + Semi-Supervised Distillation"<br>
+      <a href="https://github.com/VSydorskyy/BirdCLEF_2025_2nd_place">github.com/VSydorskyy/BirdCLEF_2025_2nd_place</a><br>
+      NFNet-L0 + EfficientNetV2-S-in21k, OOF pseudo × 3, TopN postproc, 819K pretrain
+    </div>
+    <div class="ref-card">
+      <strong>BirdCLEF 2025 5th Place</strong>
+      myso1987 — "Self-Distillation Is All You Need"<br>
+      <a href="https://github.com/myso1987/BirdCLEF-2025-5th-place-solution">GitHub repo</a><br>
+      Silero VAD + 13-model ensemble (EfficientNetV2-S/B3/B0)
+    </div>
+    <div class="ref-card">
+      <strong>CLEF Working Notes 2025 — Paper 256</strong>
+      VSydorskyy & Gonçalves — Full paper with ablation tables and Appendix B spectrogram params<br>
+      <a href="https://ceur-ws.org/Vol-4038/paper_256.pdf">ceur-ws.org/Vol-4038/paper_256.pdf</a>
+    </div>
+    <div class="ref-card">
+      <strong>BirdCLEF 2024 1st Place</strong>
+      CE loss (+0.044 over BCE) + 10s context windows + min() ensemble
+    </div>
+    <div class="ref-card">
+      <strong>BirdCLEF 2024 3rd Place</strong>
+      2-level cascade pseudo-labeling + temporal smoothing across clips
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  BirdCLEF 2026 — SED Improvement Plan · Research: 2025 Top-5 Solutions · Generated 2026-03-16
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- LIVE_RESULTS_START -->
+<hr>
+<div id="live-results" style="scroll-margin-top:20px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <span style="background:#161b22;border:1px solid #3fb950;color:#3fb950;border-radius:20px;padding:3px 12px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Live Results</span>
+    <h2 style="font-size:18px;font-weight:600;color:#e6edf3">Experiment Progress &amp; Results</h2>
+    <span style="font-size:11px;color:#8b949e;margin-left:auto">Updated: 2026-03-16 22:19</span>
+  </div>
+
+  <!-- KPI Summary Cards -->
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+    
+        <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">3-Model Perch Ensemble</div>
+          <div style="font-size:22px;font-weight:700;color:#f0883e">0.9780</div>
+          <div style="font-size:11px;color:#8b949e">Holdout AUC (baseline)</div>
+        </div>
+        <div style="background:#0d2137;border:1px solid #1a4a7a;border-radius:8px;padding:14px;text-align:center">
+          <div style="font-size:11px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px">4-Model Ensemble Holdout</div>
+          <div style="font-size:22px;font-weight:700;color:#58a6ff">0.9870</div>
+          <div style="font-size:11px;color:#8b949e">Perch×3 + SED</div>
+        </div>
+  </div>
+
+  <!-- Active training progress bars -->
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:16px"><div style="font-size:11px;color:#d29922;font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Active Training</div>
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="color:#e6edf3;font-weight:600">sed-b0-v6</span>
+                <span style="color:#8b949e">ep2/30  best=0.6484</span>
+              </div>
+              <div style="background:#30363d;border-radius:4px;height:6px">
+                <div style="background:#58a6ff;width:6%;height:6px;border-radius:4px"></div>
+              </div>
+            </div>
+            <div style="margin-bottom:10px">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="color:#e6edf3;font-weight:600">sed-b2-v1</span>
+                <span style="color:#8b949e">ep4/30  best=0.7104</span>
+              </div>
+              <div style="background:#30363d;border-radius:4px;height:6px">
+                <div style="background:#58a6ff;width:13%;height:6px;border-radius:4px"></div>
+              </div>
+            </div></div>
+
+  <!-- SED experiment table -->
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:8px;overflow:hidden;margin-bottom:16px">
+    <div style="padding:10px 14px;border-bottom:1px solid #30363d;font-size:11px;color:#8b949e;font-weight:600;text-transform:uppercase;letter-spacing:.5px">
+      SED Experiments (SS Val AUC)
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr>
+        <th style="background:#1c2128;color:#8b949e;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #30363d">Experiment</th>
+        <th style="background:#1c2128;color:#8b949e;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #30363d">Status</th>
+        <th style="background:#1c2128;color:#8b949e;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #30363d">Best Val AUC</th>
+        <th style="background:#1c2128;color:#8b949e;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #30363d">Last 5 epochs</th>
+        <th style="background:#1c2128;color:#8b949e;padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #30363d">Trend</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">nohuman-embedding-soundscape</span></td>
+          <td><span style="background:#3fb950;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Done</span></td>
+          <td style="color:#79c0ff">0.9537 @ep66</td>
+          <td style="color:#8b949e;font-size:12px">0.9487 → 0.9484 → 0.9482 → 0.9486 → 0.9486</td>
+          <td><span style="color:#f85149">↓0.0000</span></td>
+        </tr>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">nohuman-label-pseudo</span></td>
+          <td><span style="background:#3fb950;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Done</span></td>
+          <td style="color:#79c0ff">0.9748 @ep15</td>
+          <td style="color:#8b949e;font-size:12px">0.9450 → 0.9445 → 0.9448 → 0.9451 → 0.9451</td>
+          <td><span style="color:#f85149">↓0.0000</span></td>
+        </tr>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">nohuman-label-soundscape-train</span></td>
+          <td><span style="background:#3fb950;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Done</span></td>
+          <td style="color:#79c0ff">0.9535 @ep21</td>
+          <td style="color:#8b949e;font-size:12px">0.9474 → 0.9471 → 0.9488 → 0.9482 → 0.9489</td>
+          <td><span style="color:#3fb950">↑0.0007</span></td>
+        </tr>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">sed-b0-v5</span></td>
+          <td><span style="background:#3fb950;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">✅ Done</span></td>
+          <td style="color:#79c0ff">0.7527 @ep7</td>
+          <td style="color:#8b949e;font-size:12px">0.6977 → 0.6898 → 0.6909 → 0.6908 → 0.6863</td>
+          <td><span style="color:#f85149">↓0.0045</span></td>
+        </tr>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">sed-b0-v6</span></td>
+          <td><span style="background:#d29922;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">🔄 ep2/30</span></td>
+          <td style="color:#79c0ff">0.6484 @ep1</td>
+          <td style="color:#8b949e;font-size:12px">0.6484 → 0.6655</td>
+          <td><span style="color:#3fb950">↑0.0171</span></td>
+        </tr>
+        <tr>
+          <td><span style="color:#e6edf3;font-weight:600">sed-b2-v1</span></td>
+          <td><span style="background:#d29922;color:#0d1117;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700">🔄 ep4/30</span></td>
+          <td style="color:#79c0ff">0.7104 @ep2</td>
+          <td style="color:#8b949e;font-size:12px">0.6947 → 0.7104 → 0.6696 → 0.6351</td>
+          <td><span style="color:#f85149">↓0.0345</span></td>
+        </tr></tbody>
+    </table>
+  </div>
+
+  
+  
+        <div style="margin-top:20px">
+          <div style="font-size:13px;font-weight:600;color:#58a6ff;margin-bottom:10px">
+            ✅ 4-Model Ensemble v3 Holdout Results</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr>
+              <th style="background:#1c2128;color:#8b949e;padding:6px 10px;text-align:left;border-bottom:1px solid #30363d">Model</th>
+              <th style="background:#1c2128;color:#8b949e;padding:6px 10px;text-align:left;border-bottom:1px solid #30363d">Holdout AUC</th>
+            </tr></thead>
+            <tbody>
+            <tr style="background:#0d2137">
+              <td style="color:#58a6ff">ensemble(label×2+emb+SED)  ⭐</td>
+              <td style="color:#79c0ff;font-weight:700">0.9870</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">ensemble(label×2+emb)</td>
+              <td style="color:#79c0ff;font-weight:400">0.9856</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">ensemble(label×2+SED)</td>
+              <td style="color:#79c0ff;font-weight:400">0.9814</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">ensemble(label×2)</td>
+              <td style="color:#79c0ff;font-weight:400">0.9778</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">label-soundscape-train</td>
+              <td style="color:#79c0ff;font-weight:400">0.9742</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">embedding-soundscape</td>
+              <td style="color:#79c0ff;font-weight:400">0.9727</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">label-pseudo</td>
+              <td style="color:#79c0ff;font-weight:400">0.9675</td>
+            </tr>
+            <tr>
+              <td style="color:#e6edf3">sed-b0-v5</td>
+              <td style="color:#79c0ff;font-weight:400">0.9193</td>
+            </tr></tbody>
+          </table>
+        </div>
+</div>
+<!-- LIVE_RESULTS_END -->
+
+</body>
+</html>

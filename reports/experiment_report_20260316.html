@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Data Split & Validation Experiment Report</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #222533;
+    --border: #2e3147;
+    --accent: #5c7cfa;
+    --accent2: #74c0fc;
+    --green: #69db7c;
+    --red: #ff6b6b;
+    --yellow: #ffd43b;
+    --orange: #ff922b;
+    --text: #c9d1d9;
+    --text-dim: #768390;
+    --text-bright: #e6edf3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+  /* Header */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 36px;
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 6px;
+  }
+  .header .subtitle { color: var(--text-dim); font-size: 13px; }
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .badge-green  { background: rgba(105,219,124,0.15); color: var(--green); border: 1px solid rgba(105,219,124,0.3); }
+  .badge-red    { background: rgba(255,107,107,0.15); color: var(--red);   border: 1px solid rgba(255,107,107,0.3); }
+  .badge-yellow { background: rgba(255,212,59,0.15);  color: var(--yellow);border: 1px solid rgba(255,212,59,0.3); }
+  .badge-blue   { background: rgba(92,124,250,0.15);  color: var(--accent);border: 1px solid rgba(92,124,250,0.3); }
+  .badge-orange { background: rgba(255,146,43,0.15);  color: var(--orange);border: 1px solid rgba(255,146,43,0.3); }
+
+  /* Section */
+  .section { margin-bottom: 44px; }
+  .section-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .num {
+    background: var(--accent);
+    color: white;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-grid { display: grid; gap: 16px; }
+  .card-grid-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .card-title { font-size: 13px; font-weight: 700; color: var(--accent2); margin-bottom: 10px; }
+
+  /* Stats row */
+  .stat-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .stat {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    text-align: center;
+    flex: 1; min-width: 120px;
+  }
+  .stat-val { font-size: 22px; font-weight: 700; color: var(--text-bright); }
+  .stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: var(--surface2);
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+    vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono { font-family: 'Cascadia Code', 'Fira Code', monospace; }
+  .val-good  { color: var(--green);  font-weight: 600; }
+  .val-warn  { color: var(--yellow); font-weight: 600; }
+  .val-bad   { color: var(--red);    font-weight: 600; }
+  .val-dim   { color: var(--text-dim); }
+
+  /* Chart */
+  .chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  svg text { font-family: 'Segoe UI', sans-serif; }
+
+  /* Alert boxes */
+  .alert {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    border-left: 3px solid;
+  }
+  .alert-red    { background: rgba(255,107,107,0.08); border-color: var(--red);    color: var(--text); }
+  .alert-green  { background: rgba(105,219,124,0.08); border-color: var(--green);  color: var(--text); }
+  .alert-yellow { background: rgba(255,212,59,0.08);  border-color: var(--yellow); color: var(--text); }
+  .alert-blue   { background: rgba(92,124,250,0.08);  border-color: var(--accent); color: var(--text); }
+  .alert strong { color: var(--text-bright); }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .flow-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .flow-box.green  { border-color: var(--green);  color: var(--green); }
+  .flow-box.red    { border-color: var(--red);    color: var(--red); }
+  .flow-box.yellow { border-color: var(--yellow); color: var(--yellow); }
+  .flow-box.blue   { border-color: var(--accent); color: var(--accent); }
+  .flow-arrow { color: var(--text-dim); font-size: 16px; }
+
+  /* Code */
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 12px;
+    color: var(--accent2);
+  }
+  pre {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text);
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+
+  /* Timeline */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--border);
+  }
+  .tl-item { position: relative; margin-bottom: 20px; }
+  .tl-dot {
+    position: absolute;
+    left: -21px; top: 4px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid;
+  }
+  .tl-dot.red    { background: rgba(255,107,107,0.3); border-color: var(--red); }
+  .tl-dot.green  { background: rgba(105,219,124,0.3); border-color: var(--green); }
+  .tl-dot.blue   { background: rgba(92,124,250,0.3);  border-color: var(--accent); }
+  .tl-title { font-weight: 700; color: var(--text-bright); font-size: 13px; margin-bottom: 4px; }
+  .tl-body  { color: var(--text-dim); font-size: 12px; }
+
+  @media (max-width: 700px) {
+    .card-grid-2, .card-grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>BirdCLEF 2026 — Data Split &amp; Validation Experiment Report</h1>
+    <div class="subtitle">
+      2026-03-16 &nbsp;|&nbsp; Macro ROC-AUC over 234 species (Pantanal soundscapes) &nbsp;|&nbsp;
+      <span class="badge badge-blue">In Progress</span>
+    </div>
+  </div>
+
+  <!-- 1. Dataset Overview -->
+  <div class="section">
+    <div class="section-title"><span class="num">1</span>Dataset Overview</div>
+
+    <div class="stat-row">
+      <div class="stat"><div class="stat-val">35,549</div><div class="stat-label">train_audio files</div></div>
+      <div class="stat"><div class="stat-val">66</div><div class="stat-label">train_soundscapes</div></div>
+      <div class="stat"><div class="stat-val">234</div><div class="stat-label">target species</div></div>
+      <div class="stat"><div class="stat-val">5s</div><div class="stat-label">clip duration</div></div>
+    </div>
+
+    <div class="card-grid card-grid-2">
+      <div class="card">
+        <div class="card-title">train_audio — Individual Recordings</div>
+        <table>
+          <tr><td class="val-dim">Total files</td><td>35,549</td></tr>
+          <tr><td class="val-dim">Train split (80%)</td><td>28,512 files / 85,536 clips</td></tr>
+          <tr><td class="val-dim">Holdout split (20%)</td><td>7,037 files / 21,111 clips</td></tr>
+          <tr><td class="val-dim">Label type</td><td>Single primary label per clip</td></tr>
+          <tr><td class="val-dim">Species coverage</td><td>206 / 234 (88%)</td></tr>
+          <tr><td class="val-dim">Split strategy</td><td>Stratified by species, seed=42</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">train_soundscapes — Field Recordings</div>
+        <table>
+          <tr><td class="val-dim">Total files</td><td>66 recordings</td></tr>
+          <tr><td class="val-dim">Labeled segments</td><td>1,478 × 5s clips</td></tr>
+          <tr><td class="val-dim">After nohuman filter</td><td>739 clips (50% retained)</td></tr>
+          <tr><td class="val-dim">Label type</td><td>Multi-label (avg 4.22 species/clip)</td></tr>
+          <tr><td class="val-dim">Species coverage</td><td>75 / 234 (32%)</td></tr>
+          <tr><td class="val-dim">Domain</td><td>Same as test (Pantanal soundscapes)</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Taxonomy Breakdown (234 target species)</div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;">
+        <div class="badge badge-blue">Aves 162</div>
+        <div class="badge badge-green">Amphibia 35</div>
+        <div class="badge badge-orange">Insecta 28</div>
+        <div class="badge badge-yellow">Mammalia 8</div>
+        <div class="badge badge-red">Reptilia 1</div>
+      </div>
+      <div style="margin-top:12px; color:var(--text-dim); font-size:12px;">
+        Non-bird taxa (Amphibia + Insecta + Mammalia + Reptilia) represent 31% of target species.
+        These are systematically underrepresented in individual recording datasets but may be present
+        in soundscape recordings from Pantanal.
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Data Split History & Leak Discovery -->
+  <div class="section">
+    <div class="section-title"><span class="num">2</span>Data Split History &amp; Leak Discovery</div>
+
+    <div class="timeline">
+      <div class="tl-item">
+        <div class="tl-dot red"></div>
+        <div class="tl-title">Pre-2026-03-16 — Leaked Validation (All Experiments)</div>
+        <div class="tl-body">
+          All 35,549 <code>train_audio</code> files were in <code>split=train</code> inside every embedding cache.
+          <code>train_soundscapes</code> used for both training (<code>use_soundscapes_in_train=True</code>) and validation.
+          Local val metrics reached 0.97–0.99 — entirely fabricated.
+          LB submissions (0.849 best) were the only reliable indicators.
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot green"></div>
+        <div class="tl-title">2026-03-16 — Clean Split Reset</div>
+        <div class="tl-body">
+          Stratified 80/20 split of <code>train.csv</code> by species (seed=42) → 7,037 holdout files stored in
+          <code>configs/holdout_val_files.csv</code>. All 8 embedding cache manifests updated:
+          holdout files relabelled <code>split=holdout</code>. <code>CachedEmbeddingDataset</code> already
+          filters <code>split=train</code> only, so no training code changes required.
+          Zero overlap between train (85,536 clips) and holdout (21,111 clips) confirmed.
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot blue"></div>
+        <div class="tl-title">2026-03-16 — Soundscape Leak Identified in nohuman-label-pseudo</div>
+        <div class="tl-body">
+          Despite the train_audio holdout fix, <code>nohuman-label-pseudo</code> still uses
+          <code>use_soundscapes_in_train=True</code> with all 66 soundscapes in both training
+          and validation (no soundscape split file exists). Soundscape val score 0.97+ is inflated.
+          Root cause: <code>soundscapes_split.csv</code> not created → <code>sc_split_csv=None</code>
+          → all soundscapes in both splits.
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-dot green"></div>
+        <div class="tl-title">2026-03-16 — Fix: val_mode=holdout for Soundscape Training</div>
+        <div class="tl-body">
+          New experiment <code>nohuman-label-soundscape-train</code> uses <code>val_mode: holdout</code>
+          — validation is the 7,037 train_audio holdout files (206 species), completely disjoint from
+          train_soundscapes. Soundscapes are used for training only.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Validation Strategy Comparison -->
+  <div class="section">
+    <div class="section-title"><span class="num">3</span>Validation Strategy Comparison</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Strategy</th>
+          <th>Val Source</th>
+          <th>Species Coverage</th>
+          <th>Data Leak</th>
+          <th>Domain Match (Test)</th>
+          <th>Reliability</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Legacy soundscape val</strong><br><span class="val-dim mono" style="font-size:11px">pre-2026-03-16</span></td>
+          <td>train_soundscapes (all 66)</td>
+          <td>75 / 234</td>
+          <td><span class="val-bad">YES — same as train</span></td>
+          <td><span class="val-good">High</span></td>
+          <td><span class="val-bad">Useless (0.97–0.99 inflated)</span></td>
+        </tr>
+        <tr>
+          <td><strong>Soundscape val (no train)</strong><br><span class="val-dim mono" style="font-size:11px">nohuman-label-pseudo</span></td>
+          <td>train_soundscapes (739 clips)</td>
+          <td>75 / 234</td>
+          <td><span class="val-bad">YES — soundscapes in both</span></td>
+          <td><span class="val-good">High</span></td>
+          <td><span class="val-warn">Inflated, low species coverage</span></td>
+        </tr>
+        <tr style="background: rgba(105,219,124,0.04);">
+          <td><strong>Holdout val</strong><br><span class="val-dim mono" style="font-size:11px">nohuman-label-soundscape-train</span></td>
+          <td>train_audio holdout (7,037 files)</td>
+          <td>206 / 234</td>
+          <td><span class="val-good">NO</span></td>
+          <td><span class="val-warn">Moderate (individual recordings)</span></td>
+          <td><span class="val-good">Clean — best local metric</span></td>
+        </tr>
+        <tr>
+          <td><strong>Leaderboard (LB)</strong><br><span class="val-dim mono" style="font-size:11px">Kaggle submission</span></td>
+          <td>Test soundscapes (Pantanal)</td>
+          <td>234 / 234</td>
+          <td><span class="val-good">NO</span></td>
+          <td><span class="val-good">Perfect</span></td>
+          <td><span class="val-good">Ground truth (1/day limit)</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="alert alert-yellow" style="margin-top:16px;">
+      <strong>Domain Gap Warning:</strong> Holdout uses individual recordings (single-label, studio/field conditions),
+      while test uses continuous soundscape recordings (multi-label, 4+ species per 5s window, Pantanal environment).
+      Holdout reliably ranks same-architecture variants but may under-estimate gains from soundscape-specific techniques.
+    </div>
+  </div>
+
+  <!-- 4. Current Experiments -->
+  <div class="section">
+    <div class="section-title"><span class="num">4</span>Current Experiments</div>
+
+    <div class="card-grid card-grid-2">
+      <div class="card">
+        <div class="card-title">nohuman-label-pseudo &nbsp;<span class="badge badge-yellow">Running (ep 71/80)</span></div>
+        <table>
+          <tr><td class="val-dim">Architecture</td><td>Perch v2 → 234-dim → FC(256) → FC(234)</td></tr>
+          <tr><td class="val-dim">Val source</td><td><span class="val-warn">Soundscape (leaky)</span></td></tr>
+          <tr><td class="val-dim">Best soundscape val</td><td><span class="val-warn">0.9748 @ ep15 (inflated)</span></td></tr>
+          <tr><td class="val-dim">Confirmed LB</td><td><span class="val-good">0.849 (+PP)</span></td></tr>
+          <tr><td class="val-dim">Human voice filter</td><td>Yes (Silero VAD)</td></tr>
+          <tr><td class="val-dim">Pseudo labels</td><td>Yes (round 1, 2,421 clips)</td></tr>
+          <tr><td class="val-dim">Soundscapes in train</td><td>Yes (739 clips × oversample=3)</td></tr>
+          <tr><td class="val-dim">Clean holdout eval</td><td><span class="val-warn">Pending (watcher active)</span></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">sed-b0-v3 &nbsp;<span class="badge badge-blue">Running (ep 4/30)</span></div>
+        <table>
+          <tr><td class="val-dim">Architecture</td><td>EfficientNet-B0 → GEMPool → AttentionSED</td></tr>
+          <tr><td class="val-dim">Val source</td><td><span class="val-good">Soundscape (clean — not in train)</span></td></tr>
+          <tr><td class="val-dim">Best soundscape val</td><td>0.6234 @ ep2 (warmup phase)</td></tr>
+          <tr><td class="val-dim">Mel params</td><td>N_MELS=224, HOP=512, N_FFT=2048</td></tr>
+          <tr><td class="val-dim">Input channels</td><td>3 (RGB mel replication)</td></tr>
+          <tr><td class="val-dim">Loss</td><td>BCEPosWeight (fixes focal collapse)</td></tr>
+          <tr><td class="val-dim">Peak normalization</td><td>Yes (v2 bug fix)</td></tr>
+          <tr><td class="val-dim">ETA</td><td>~4.5h remaining</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">nohuman-label-soundscape-train &nbsp;<span class="badge badge-blue">Queued</span></div>
+      <p style="color:var(--text-dim); font-size:12px; margin-bottom:12px;">
+        Starts automatically after <code>nohuman-label-pseudo</code> finishes. Key design change:
+        <code>val_mode=holdout</code> — the first experiment with a fully clean, leak-free local metric.
+      </p>
+      <div class="flow">
+        <div class="flow-box green">train_audio (80%) — 85,536 clips</div>
+        <div class="flow-arrow">+</div>
+        <div class="flow-box blue">train_soundscapes — 739 clips × 5</div>
+        <div class="flow-arrow">+</div>
+        <div class="flow-box yellow">pseudo labels — 2,421 clips</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box">Train</div>
+      </div>
+      <div class="flow">
+        <div class="flow-box green">Holdout — 7,037 files (206 species)</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-box">Val (clean)</div>
+      </div>
+      <p style="color:var(--text-dim); font-size:12px; margin-top:10px;">
+        Hypothesis: Expert-annotated soundscape labels (ground truth) + same domain as test → LB improvement over pseudo-label-only approach.
+      </p>
+    </div>
+  </div>
+
+  <!-- 5. Training Curve -->
+  <div class="section">
+    <div class="section-title"><span class="num">5</span>nohuman-label-pseudo — Training Curve</div>
+    <div class="chart-wrap">
+      <svg viewBox="0 0 900 280" width="100%" style="display:block;">
+        <!-- Grid -->
+        <defs>
+          <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5c7cfa" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#5c7cfa" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <!-- Background -->
+        <rect width="900" height="280" fill="#1a1d27" rx="4"/>
+        <!-- Y-axis grid lines -->
+        <line x1="60" y1="20" x2="880" y2="20" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="24" fill="#768390" font-size="10" text-anchor="end">1.00</text>
+        <line x1="60" y1="70" x2="880" y2="70" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="74" fill="#768390" font-size="10" text-anchor="end">0.97</text>
+        <line x1="60" y1="120" x2="880" y2="120" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="124" fill="#768390" font-size="10" text-anchor="end">0.94</text>
+        <line x1="60" y1="170" x2="880" y2="170" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="174" fill="#768390" font-size="10" text-anchor="end">0.91</text>
+        <line x1="60" y1="220" x2="880" y2="220" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="224" fill="#768390" font-size="10" text-anchor="end">0.88</text>
+        <line x1="60" y1="255" x2="880" y2="255" stroke="#2e3147" stroke-width="1"/>
+        <text x="50" y="259" fill="#768390" font-size="10" text-anchor="end">0.86</text>
+
+        <!-- LB reference line -->
+        <line x1="60" y1="213" x2="880" y2="213" stroke="#ff922b" stroke-width="1.5" stroke-dasharray="6,4"/>
+        <text x="884" y="217" fill="#ff922b" font-size="10">LB=0.849</text>
+
+        <!-- Data points: val_roc_auc, mapped from 0.4..1.0 to y=255..20 -->
+        <!-- scale: y = 255 - (val - 0.4) / 0.6 * 235, x = 60 + (ep-1)/70 * 820 -->
+        <polyline
+          points="60,209 71,124 83,72 94,37 105,21 116,18 127,11 138,13 150,11 161,2 172,1 183,3 194,0 205,1 216,2 227,1 238,4 249,3 260,4 271,5 282,7 293,10 304,9 315,6 326,7 337,9 348,12 359,7 370,8 381,7 392,9 403,9 414,10 425,9 436,10 447,10 458,10 469,11 480,11 491,10 502,10 513,10 524,10 535,10 546,10 557,11 568,12 579,14 590,14 601,15 612,15 623,16 634,16 645,17 656,17 667,17 678,17 689,18 700,18 711,18"
+          fill="none" stroke="#5c7cfa" stroke-width="2.5" stroke-linejoin="round"/>
+
+        <!-- Best point marker ep15 -->
+        <circle cx="216" cy="2" r="5" fill="#69db7c" stroke="#1a1d27" stroke-width="2"/>
+        <text x="220" y="-4" fill="#69db7c" font-size="10">Best 0.9748 @ep15</text>
+
+        <!-- Epoch axis labels -->
+        <text x="60"  y="275" fill="#768390" font-size="10" text-anchor="middle">1</text>
+        <text x="176" y="275" fill="#768390" font-size="10" text-anchor="middle">10</text>
+        <text x="293" y="275" fill="#768390" font-size="10" text-anchor="middle">20</text>
+        <text x="409" y="275" fill="#768390" font-size="10" text-anchor="middle">30</text>
+        <text x="525" y="275" fill="#768390" font-size="10" text-anchor="middle">40</text>
+        <text x="641" y="275" fill="#768390" font-size="10" text-anchor="middle">50</text>
+        <text x="711" y="275" fill="#768390" font-size="10" text-anchor="middle">60</text>
+        <text x="450" y="278" fill="#768390" font-size="10" text-anchor="middle">Epoch</text>
+      </svg>
+      <div style="color:var(--text-dim); font-size:11px; margin-top:8px; text-align:center;">
+        Soundscape val ROC-AUC (y-axis clipped, values above 0.97 compressed) · Orange dashed = LB=0.849 reference ·
+        <span style="color: var(--red)">Note: val metric is inflated due to soundscape data leak</span>
+      </div>
+    </div>
+
+    <div class="alert alert-yellow">
+      <strong>Key observation:</strong> Best checkpoint is at ep15 (0.9748), but the model continues training for 80 epochs
+      with soundscape val oscillating between 0.94–0.97. The plateau after ep15 indicates the leaky soundscape val
+      is too noisy/easy to provide useful gradient signal for early stopping.
+      <strong>True performance (LB=0.849) was confirmed only via submission.</strong>
+    </div>
+  </div>
+
+  <!-- 6. Confirmed LB Anchors -->
+  <div class="section">
+    <div class="section-title"><span class="num">6</span>Confirmed Leaderboard Results</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>Architecture</th>
+          <th>LB Raw</th>
+          <th>LB +PP</th>
+          <th>Nohuman</th>
+          <th>Val Source</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="background: rgba(105,219,124,0.05);">
+          <td><strong>nohuman-label-pseudo</strong></td>
+          <td class="mono" style="font-size:11px">label-head FC(256)</td>
+          <td class="val-good">0.837</td>
+          <td class="val-good"><strong>0.849 ★</strong></td>
+          <td><span class="val-good">Yes</span></td>
+          <td><span class="val-warn">Soundscape (leaky)</span></td>
+          <td><span class="badge badge-green">Best</span></td>
+        </tr>
+        <tr>
+          <td>nohuman-label-head</td>
+          <td class="mono" style="font-size:11px">label-head FC(256)</td>
+          <td class="val-dim">—</td>
+          <td>0.834</td>
+          <td><span class="val-good">Yes</span></td>
+          <td><span class="val-warn">Soundscape (leaky)</span></td>
+          <td><span class="badge badge-blue">Baseline</span></td>
+        </tr>
+        <tr>
+          <td>nohuman-os3-pseudo-r5</td>
+          <td class="mono" style="font-size:11px">label-head FC(256)</td>
+          <td class="val-dim">—</td>
+          <td>0.828</td>
+          <td><span class="val-good">Yes</span></td>
+          <td><span class="val-warn">Soundscape (leaky)</span></td>
+          <td><span class="badge badge-blue">Variant</span></td>
+        </tr>
+        <tr>
+          <td>perch-label-head</td>
+          <td class="mono" style="font-size:11px">label-head FC(256)</td>
+          <td class="val-dim">—</td>
+          <td>0.827</td>
+          <td><span class="val-bad">No</span></td>
+          <td><span class="val-warn">Soundscape (leaky)</span></td>
+          <td><span class="val-dim">No nohuman</span></td>
+        </tr>
+        <tr>
+          <td>os3-soundscape-combined</td>
+          <td class="mono" style="font-size:11px">embedding-head FC(512)</td>
+          <td class="val-dim">—</td>
+          <td class="val-warn">0.761</td>
+          <td><span class="val-good">Yes</span></td>
+          <td><span class="val-warn">Soundscape (leaky)</span></td>
+          <td><span class="badge badge-red">Dead end</span></td>
+        </tr>
+        <tr>
+          <td>sed-b0-v2</td>
+          <td class="mono" style="font-size:11px">EfficientNet-B0 SED</td>
+          <td class="val-dim">—</td>
+          <td class="val-warn">0.728</td>
+          <td><span class="val-bad">No</span></td>
+          <td><span class="val-good">Soundscape (clean)</span></td>
+          <td><span class="badge badge-red">Wrong params</span></td>
+        </tr>
+        <tr>
+          <td>sed-b0-v3</td>
+          <td class="mono" style="font-size:11px">EfficientNet-B0 SED v3</td>
+          <td class="val-dim">—</td>
+          <td class="val-dim">—</td>
+          <td><span class="val-bad">No</span></td>
+          <td><span class="val-good">Soundscape (clean)</span></td>
+          <td><span class="badge badge-yellow">Training ep4/30</span></td>
+        </tr>
+        <tr>
+          <td>nohuman-label-soundscape-train</td>
+          <td class="mono" style="font-size:11px">label-head FC(256)</td>
+          <td class="val-dim">—</td>
+          <td class="val-dim">—</td>
+          <td><span class="val-good">Yes</span></td>
+          <td><span class="val-good">Holdout (clean)</span></td>
+          <td><span class="badge badge-blue">Queued</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 7. Key Findings -->
+  <div class="section">
+    <div class="section-title"><span class="num">7</span>Key Findings</div>
+
+    <div class="card-grid card-grid-2">
+      <div class="card">
+        <div class="card-title">Architecture Gap (+0.07 LB)</div>
+        <p style="font-size:12px; color:var(--text-dim); margin-bottom:10px;">
+          The single largest performance factor discovered.
+        </p>
+        <div class="flow">
+          <div class="flow-box green">label-head (234-dim)</div>
+          <div class="flow-arrow">0.825–0.849</div>
+        </div>
+        <div class="flow">
+          <div class="flow-box red">embedding-head (1536-dim)</div>
+          <div class="flow-arrow">0.761</div>
+        </div>
+        <p style="font-size:12px; color:var(--text-dim); margin-top:8px;">
+          Perch's own 234-dim species predictions (task-aligned) are far more informative
+          than raw 1536-dim acoustic embeddings for this classification task.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title">Human Voice Removal (+0.039 LB)</div>
+        <p style="font-size:12px; color:var(--text-dim);">
+          Silero VAD truncates audio before first speech segment ≥2s (starting after 8s).
+          Removes human narration common in citizen-science recordings.
+          Consistent +0.039 improvement across architectures tested.
+        </p>
+        <div style="margin-top:10px;">
+          <div class="badge badge-green">perch-label-head: 0.827</div>
+          &nbsp;→&nbsp;
+          <div class="badge badge-green">nohuman-label-head: 0.834</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Post-Processing (+0.012 LB)</div>
+        <pre style="font-size:11px; padding:10px;">predictions[predictions &lt; 0.02] = 0.0
+predictions = sliding_max_blend(
+    predictions, w=0.5, window=9
+)</pre>
+        <p style="font-size:12px; color:var(--text-dim);">
+          Zero-out noise floor + temporal smoothing. Consistent +0.012 gain.
+          SED uses quantile_mix(α=0.5) + slide_max instead.
+        </p>
+      </div>
+      <div class="card">
+        <div class="card-title">Pseudo Labels (+0.003 LB)</div>
+        <p style="font-size:12px; color:var(--text-dim);">
+          Generated from high-confidence model predictions on train_soundscapes
+          (threshold=0.5). 2,421 pseudo-labeled clips from round 1.
+          Small but consistent effect. Ground-truth soundscape labels
+          (to be tested in <code>soundscape-train</code>) expected to outperform pseudo labels.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Bottlenecks -->
+  <div class="section">
+    <div class="section-title"><span class="num">8</span>Bottlenecks &amp; Open Problems</div>
+
+    <div class="alert alert-red">
+      <strong>Bottleneck 1 — No clean local metric until today.</strong>
+      All local metrics before 2026-03-16 were data-leaked and unusable.
+      The holdout eval for <code>nohuman-label-pseudo</code> (currently pending) will be the
+      first honest comparison against LB=0.849. Without this calibration,
+      every experiment decision was made blind — relying solely on LB submissions (limited to ~1/day).
+    </div>
+
+    <div class="alert alert-red">
+      <strong>Bottleneck 2 — Soundscape val still leaky in current best model.</strong>
+      <code>nohuman-label-pseudo</code> uses <code>use_soundscapes_in_train=True</code> without a
+      soundscape train/val split. The absence of <code>soundscapes_split.csv</code> causes all
+      739 soundscape clips to appear in both training and validation simultaneously.
+      Result: val plateau at 0.97+ is uninformative for early stopping.
+      Fixed in <code>nohuman-label-soundscape-train</code> via <code>val_mode=holdout</code>.
+    </div>
+
+    <div class="alert alert-yellow">
+      <strong>Bottleneck 3 — Domain gap between holdout and test.</strong>
+      Even the clean holdout (train_audio) differs from test (soundscapes) in:
+      label density (single vs. multi-label), acoustic conditions, and recording length.
+      Methods that specifically improve soundscape performance (domain adaptation,
+      soundscape training data) may show smaller gains on holdout than on LB.
+    </div>
+
+    <div class="alert alert-yellow">
+      <strong>Bottleneck 4 — SED v2 wrong hyperparameters lost a submission.</strong>
+      sed-b0-v2 used N_MELS=128 (should be 224), HOP=320 (should be 512),
+      IN_CHANS=1 (should be 3), no peak normalization → LB=0.728 vs. reference 0.862.
+      All 4 issues now fixed in sed-b0-v3. Wasted 1 submission + ~5h training time.
+      Root cause: mel parameters not validated against the reference notebook before training.
+    </div>
+
+    <div class="alert alert-blue">
+      <strong>Bottleneck 5 — Non-bird species coverage.</strong>
+      72 non-bird species (Amphibia 35, Insecta 28, Mammalia 8, Reptilia 1) represent 31% of targets.
+      These species have fewer training recordings and different acoustic characteristics.
+      No species-aware class weighting or taxon auxiliary loss is currently active.
+      Could be a significant source of macro ROC-AUC loss.
+    </div>
+  </div>
+
+  <!-- 9. Next Steps -->
+  <div class="section">
+    <div class="section-title"><span class="num">9</span>Recommended Next Steps</div>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Action</th><th>Expected Impact</th><th>Dependency</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><strong>Get clean holdout score for nohuman-label-pseudo</strong><br>
+          <span class="val-dim" style="font-size:11px">Run evaluate_holdout.py → calibrate holdout ↔ LB=0.849</span></td>
+          <td><span class="val-good">Enables all future local comparisons</span></td>
+          <td>Watcher (auto, ~now)</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><strong>Evaluate nohuman-label-soundscape-train (holdout)</strong><br>
+          <span class="val-dim" style="font-size:11px">First experiment with holdout val — test soundscape domain hypothesis</span></td>
+          <td><span class="val-good">+0.005–0.015 LB (estimated)</span></td>
+          <td>After nohuman-label-pseudo</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><strong>Submit sed-b0-v3 to LB when training completes</strong><br>
+          <span class="val-dim" style="font-size:11px">Validate fixed SED params; target ≥0.84</span></td>
+          <td><span class="val-warn">Estimate 0.84+ (reference: 0.862)</span></td>
+          <td>~4.5h remaining</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><strong>Ensemble: nohuman-label-pseudo + sed-b0-v3</strong><br>
+          <span class="val-dim" style="font-size:11px">Average predictions from complementary architectures</span></td>
+          <td><span class="val-good">+0.01–0.02 LB (typical ensemble gain)</span></td>
+          <td>After step 3</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><strong>Non-bird species boost</strong><br>
+          <span class="val-dim" style="font-size:11px">Taxon-aware class weights or auxiliary loss for Amphibia/Insecta</span></td>
+          <td><span class="val-warn">Unknown — high potential upside</span></td>
+          <td>After holdout calibration</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div style="border-top:1px solid var(--border); padding-top:20px; color:var(--text-dim); font-size:11px;">
+    BirdCLEF 2026 Experiment Report · Generated 2026-03-16 ·
+    All LB scores are official Kaggle scores · Holdout eval pending ·
+    Current best: <strong style="color:var(--green)">LB=0.849</strong> (nohuman-label-pseudo + PP)
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLAP Cross-Domain Contrastive Bridge — BirdCLEF 2026 Experiment Design</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 0 auto; padding: 24px; background: #f8f9fa; color: #212529; }
+  h1 { color: #1a237e; border-bottom: 3px solid #3f51b5; padding-bottom: 10px; }
+  h2 { color: #283593; border-left: 5px solid #3f51b5; padding-left: 12px; margin-top: 36px; }
+  h3 { color: #37474f; margin-top: 24px; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  .highlight { background: #e8eaf6; border-left: 4px solid #3f51b5; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .warning { background: #fff3e0; border-left: 4px solid #ff9800; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .success { background: #e8f5e9; border-left: 4px solid #4caf50; padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th { background: #3f51b5; color: white; padding: 10px 14px; text-align: left; }
+  td { padding: 9px 14px; border-bottom: 1px solid #e0e0e0; }
+  tr:hover { background: #f5f5f5; }
+  code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+  pre { background: #263238; color: #cfd8dc; padding: 18px; border-radius: 8px; overflow-x: auto; font-size: 0.88em; line-height: 1.6; }
+  .arch-box { background: #263238; color: #80cbc4; padding: 20px; border-radius: 8px; font-family: monospace; font-size: 0.9em; line-height: 1.8; white-space: pre; overflow-x: auto; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8em; font-weight: bold; }
+  .badge-high { background: #c8e6c9; color: #1b5e20; }
+  .badge-mid { background: #fff9c4; color: #f57f17; }
+  .badge-low { background: #ffcdd2; color: #b71c1c; }
+  .timeline { position: relative; padding-left: 24px; border-left: 3px solid #3f51b5; }
+  .timeline-item { margin-bottom: 20px; position: relative; }
+  .timeline-item::before { content: ""; position: absolute; left: -31px; top: 5px; width: 14px; height: 14px; border-radius: 50%; background: #3f51b5; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1>🔊 CLAP Cross-Domain Contrastive Bridge<br><small style="font-size:0.55em;color:#666">BirdCLEF 2026 Experiment Design — 2026-03-30</small></h1>
+
+<div class="card">
+  <h3>Motivation</h3>
+  <p>The core challenge of BirdCLEF 2026 is <strong>domain gap</strong>: training data (<code>train_audio</code>) consists of clean close-range recordings, while evaluation data (soundscapes) are complex wild-field recordings with multiple overlapping species, background noise, and distant sources.</p>
+  <div class="arch-box">train_audio:  clean vocalizations, single species, high SNR, studio-like quality
+soundscape:   multi-species overlap, low SNR, distant recording, background noise
+              → 66.8% Amphibia, 32.2% Aves
+              → current best val AUC ~0.919 (SED + Perch ensemble)</div>
+  <p>Goal: train a <strong>domain-invariant audio encoder</strong> so that embeddings of the same species in clean vs. wild domains are as close as possible in latent space.</p>
+</div>
+
+<h2>1. Understanding CLAP</h2>
+
+<div class="card">
+  <h3>1.1 Original CLAP Architecture</h3>
+  <div class="arch-box">         ┌─────────────────┐         ┌─────────────────┐
+         │   Audio Input   │         │   Text Input    │
+         │  (mel spectrogram)│        │ "sound of bird" │
+         └────────┬────────┘         └────────┬────────┘
+                  │                           │
+         ┌────────▼────────┐         ┌────────▼────────┐
+         │  Audio Encoder  │         │  Text Encoder   │
+         │  HTSAT-base     │         │  RoBERTa        │
+         │  27.5M params   │         │  124.6M params  │
+         └────────┬────────┘         └────────┬────────┘
+                  │                           │
+         ┌────────▼────────┐         ┌────────▼────────┐
+         │  Projection MLP │         │  Projection MLP │
+         │  → 512-dim      │         │  → 512-dim      │
+         └────────┬────────┘         └────────┬────────┘
+                  │                           │
+                  └──────── cosine sim ───────┘
+                         InfoNCE Loss (symmetric)</div>
+
+  <h3>1.2 HTSAT Audio Encoder</h3>
+  <table>
+    <tr><th>Component</th><th>Detail</th></tr>
+    <tr><td>Architecture</td><td>Hierarchical Token-Semantic Audio Transformer (Swin-like)</td></tr>
+    <tr><td>Input sample rate</td><td><strong>48 kHz</strong> (BirdCLEF is 32 kHz → must resample)</td></tr>
+    <tr><td>Input length</td><td>10 s max (chunk_length_s=10)</td></tr>
+    <tr><td>Mel bins</td><td>64 (num_mel_bins)</td></tr>
+    <tr><td>n_fft / hop</td><td>1024 / 480</td></tr>
+    <tr><td>freq range</td><td>50 – 14000 Hz</td></tr>
+    <tr><td>Stages (depths)</td><td>[2, 2, 6, 2] — freeze stages 0-1, fine-tune stages 2-3</td></tr>
+    <tr><td>Attention heads</td><td>[4, 8, 16, 32]</td></tr>
+    <tr><td>Hidden size</td><td>768</td></tr>
+    <tr><td>Parameters</td><td>27.5M</td></tr>
+  </table>
+
+  <div class="warning">
+    <strong>⚠ Sample Rate Mismatch:</strong> CLAP expects 48 kHz; BirdCLEF audio is 32 kHz.
+    We resample to 48 kHz using <code>torchaudio.functional.resample(wav, 32000, 48000)</code> before the ClapProcessor.
+    The text encoder (RoBERTa, 124.6M params) is <strong>always frozen</strong> — set to <code>eval()</code> with <code>torch.no_grad()</code>.
+  </div>
+
+  <h3>1.3 InfoNCE Loss</h3>
+  <pre>L = (1/2N) × Σᵢ [
+    -log( exp(zᵢᵃ · zᵢᵗ / τ) / Σⱼ exp(zᵢᵃ · zⱼᵗ / τ) )   # audio → text
+    -log( exp(zᵢᵗ · zᵢᵃ / τ) / Σⱼ exp(zᵢᵗ · zⱼᵃ / τ) )   # text → audio
+]
+τ = learnable temperature (init: 1/0.07 ≈ 14.3)</pre>
+</div>
+
+<h2>2. Core Innovation: Audio-Audio Cross-Domain Contrastive</h2>
+
+<div class="card">
+  <div class="highlight">
+    <strong>Key Insight:</strong> Replace audio-text pairs with <strong>audio-audio cross-domain pairs</strong>.
+    Same species in clean domain (train_audio) and wild domain (soundscape pseudo clip) form a positive pair.
+    No text encoder needed during training — only the audio encoder is fine-tuned.
+  </div>
+
+  <h3>2.1 Positive / Negative Pair Definition</h3>
+  <div class="arch-box">Positive pair (same species, different domain):
+  anchor:   train_audio/Thraupis_sayaca/XC123456.ogg   (clean, Thraupis sayaca)
+  positive: soundscape clip @ t=25s                    (wild, pseudo label: Thraupis sayaca, conf > 0.8)
+
+Negative pair (different species — in-batch negatives):
+  train_audio/Furnarius_rufus/XC789.ogg                (different species)
+  any soundscape clip of a different species</div>
+
+  <h3>2.2 Full Architecture</h3>
+  <div class="highlight"><strong>Design Principle: CLAP is purely a frozen feature extractor.</strong> Both the audio encoder (HTSAT, 27.5M) and text encoder (RoBERTa, 124.6M) are completely frozen — <code>eval()</code> + <code>torch.no_grad()</code> at all times. Only the lightweight projection head and classifier are trained. CLAP features can be pre-extracted and cached to disk for fast training.</div>
+  <div class="arch-box">   CLAP Audio Encoder (HTSAT, 27.5M) — FULLY FROZEN, eval+no_grad
+          ↓ 512-dim audio embedding (pre-computed & cached)
+   ════════════════════════════════════════════════════════
+   TRAINABLE COMPONENTS ONLY:
+   ┌─────────────────────────────────────────────────────┐
+   │          Projection Head (512 → 256)                │
+   │          BatchNorm → ReLU → Linear → L2 norm        │
+   │          ~200K params — cross-domain SupCon         │
+   └──────────────────────┬──────────────────────────────┘
+                          │
+   ┌──────────────────────▼──────────────────────────────┐
+   │          Classification Head (512 → 234)            │
+   │          Dropout(0.1) → Linear                      │
+   │          ~120K params — FocalBCE                    │
+   └──────────────────────┬──────────────────────────────┘
+                          │
+   Loss = λ₁ × SupConLoss(proj, labels)
+        + λ₂ × FocalBCE(logits, labels)</div>
+
+  <div class="success"><strong>Benefits of frozen CLAP:</strong> (1) No risk of destroying pretrained features. (2) Pre-compute all embeddings once → training is just MLP forward passes, very fast. (3) Much lower GPU memory. (4) No 48 kHz resample overhead at training time (only at feature extraction time).</div>
+
+  <h3>2.3 SupConLoss (Supervised Contrastive)</h3>
+  <pre># Stronger than SimCLR: uses species labels to define all positives
+L_SupCon = Σᵢ (-1/|P(i)|) × Σ_{p∈P(i)} log[
+    exp(zᵢ · z_p / τ) / Σ_{k≠i} exp(zᵢ · z_k / τ)
+]
+# P(i) = all samples with the same species as i (across both domains)
+# τ = 0.07 (fixed or learnable)</pre>
+
+  <h3>2.4 Difference from Original CLAP</h3>
+  <table>
+    <tr><th>Aspect</th><th>Original CLAP</th><th>This Experiment</th></tr>
+    <tr><td>Positive definition</td><td>Same audio-text pair</td><td><strong>Same species, cross-domain audio pair</strong></td></tr>
+    <tr><td>Text encoder</td><td>RoBERTa (required)</td><td><strong>Only used for text prompt encoding (frozen, eval+no_grad)</strong></td></tr>
+    <tr><td>Audio encoder</td><td>HTSAT (trained from scratch)</td><td><strong>HTSAT (CLAP pretrained, partial fine-tune)</strong></td></tr>
+    <tr><td>Training data</td><td>LAION-Audio-630K</td><td>BirdCLEF train_audio + soundscape pseudo labels</td></tr>
+    <tr><td>Objective</td><td>Audio-language alignment</td><td><strong>Domain-invariant species embedding</strong></td></tr>
+  </table>
+</div>
+
+<h2>3. Metadata-Enriched Text Prompts</h2>
+
+<div class="card">
+  <div class="highlight">
+    <strong>Key Idea:</strong> When using CLAP's text encoder to encode species descriptions, enrich the prompts with all available metadata from train.csv. Richer text → more accurate audio-text alignment → better learned features.
+  </div>
+
+  <h3>3.1 Available Metadata (BirdCLEF 2026 train.csv)</h3>
+  <table>
+    <tr><th>Field</th><th>Coverage</th><th>Example</th><th>Acoustic Relevance</th></tr>
+    <tr><td>primary_label</td><td>100%</td><td>Thraupis sayaca</td><td>Main species identity</td></tr>
+    <tr><td>secondary_labels</td><td><strong>12.3%</strong></td><td>['Furnarius rufus']</td><td>Background species in audio</td></tr>
+    <tr><td>type</td><td><strong>63.5%</strong></td><td>advertisement call, alarm call</td><td>Call type determines acoustic features</td></tr>
+    <tr><td>latitude / longitude</td><td>100%</td><td>-19.5, -56.3</td><td>Geographic dialect variation</td></tr>
+    <tr><td>scientific_name / common_name</td><td>100%</td><td>Sayaca Tanager</td><td>Species name semantics</td></tr>
+    <tr><td>class_name</td><td>100%</td><td>Aves, Amphibia</td><td>Taxonomic group</td></tr>
+  </table>
+
+  <h3>3.2 Effect Analysis per Metadata Field</h3>
+  <div class="two-col">
+    <div>
+      <h4>✅ Secondary Labels (High Value)</h4>
+      <p>12.3% of recordings contain background species. Including them makes text accurately reflect the audio content, improving audio-text alignment quality.</p>
+      <pre>"sound of Sayaca Tanager
+ with background sounds of
+ Rufous Hornero, Great Kiskadee"</pre>
+    </div>
+    <div>
+      <h4>✅ Call Type (High Value)</h4>
+      <p>Advertisement call vs. alarm call of the same species sound dramatically different. CLAP's RoBERTa understands these semantic differences, enabling the encoder to learn finer-grained acoustic features.</p>
+      <pre>"advertisement call of
+ Sayaca Tanager"
+"alarm call of Sayaca Tanager"</pre>
+    </div>
+    <div>
+      <h4>🔶 Location (Medium Value)</h4>
+      <p>BirdCLEF 2026 is all in Pantanal — limited geographic variation. Adding "Pantanal, Brazil" as a fixed anchor is useful; converting lat/lon to fine-grained text has limited benefit.</p>
+    </div>
+    <div>
+      <h4>🔶 Time of Day (Meaningful but Missing)</h4>
+      <p>Dawn chorus is a key bird behavior feature, but train.csv has no time field. Soundscape filenames may encode time — worth investigating later.</p>
+    </div>
+  </div>
+
+  <h3>3.3 Prompt Template</h3>
+  <pre>def build_text_prompt(row, taxonomy_df):
+    sp = taxonomy_df.loc[row.primary_label]
+
+    # 1. Primary species (always present)
+    prompt = (f"sound of {sp['common_name']} "
+              f"({sp['scientific_name']}, {sp['class_name']})")
+
+    # 2. Call type (if available and not 'uncertain')
+    if row['type'] not in ['[]', "['uncertain']", '']:
+        call_type = eval(row['type'])[0]
+        prompt += f", {call_type}"
+
+    # 3. Secondary species (up to 2)
+    if row['secondary_labels'] != '[]':
+        secs = eval(row['secondary_labels'])
+        sec_names = [taxonomy_df.loc[s]['common_name']
+                     for s in secs[:2] if s in taxonomy_df.index]
+        if sec_names:
+            prompt += f", with background sounds of {' and '.join(sec_names)}"
+
+    # 4. Location anchor (fixed)
+    prompt += ", recorded in Pantanal, Brazil"
+
+    return prompt
+
+# Example outputs:
+# "sound of Sayaca Tanager (Thraupis sayaca, Aves),
+#  advertisement call, with background sounds of Rufous Hornero,
+#  recorded in Pantanal, Brazil"
+#
+# "sound of Rufous-bellied Thrush (Turdus rufiventris, Aves),
+#  recorded in Pantanal, Brazil"  (when type/secondary unavailable)</pre>
+
+  <h3>3.4 Soundscape Text Prompt (Wild Domain)</h3>
+  <pre>def build_soundscape_prompt(pseudo_scores, taxonomy_df, conf_thr=0.8):
+    """Build text from pseudo labels for a soundscape window."""
+    top = pseudo_scores.nlargest(3)
+    primary = top.index[0]
+    sp = taxonomy_df.loc[primary]
+
+    prompt = (f"wild soundscape recording containing "
+              f"{sp['common_name']} ({sp['scientific_name']})")
+
+    others = [taxonomy_df.loc[s]['common_name']
+              for s in top.index[1:] if top[s] > conf_thr
+              and s in taxonomy_df.index]
+    if others:
+        prompt += f" and {', '.join(others)}"
+
+    prompt += ", in Pantanal, Brazil wetland environment"
+    return prompt
+
+# Example:
+# "wild soundscape recording containing Sayaca Tanager (Thraupis sayaca)
+#  and Rufous Hornero, in Pantanal, Brazil wetland environment"</pre>
+
+  <div class="success">
+    <strong>Key Design Choice:</strong> Clean and wild text prompts are intentionally written differently —
+    clean: <em>"clear recording of {species}"</em>, wild: <em>"wild soundscape containing {species}"</em>.
+    This teaches the text encoder the domain distinction while forcing the audio encoder to learn
+    domain-invariant species representations.
+  </div>
+
+  <h3>3.5 Prompt Variant Experiments</h3>
+  <table>
+    <tr><th>Version</th><th>Text Prompt Content</th><th>Expected Gain</th><th>Priority</th></tr>
+    <tr><td><strong>v1</strong></td><td><code>"sound of {common_name}"</code></td><td>Baseline</td><td><span class="badge badge-high">First</span></td></tr>
+    <tr><td><strong>v2</strong></td><td><code>"sound of {common_name} ({scientific_name}, {class_name})"</code></td><td>Small (+species semantics)</td><td><span class="badge badge-high">First</span></td></tr>
+    <tr><td><strong>v3 ★</strong></td><td><code>v2 + call_type + secondary_labels + "Pantanal, Brazil"</code></td><td><strong>Medium (recommended)</strong></td><td><span class="badge badge-high">Key experiment</span></td></tr>
+    <tr><td><strong>v4</strong></td><td><code>v3 + T5 caption augmentation</code></td><td>Medium-large</td><td><span class="badge badge-mid">Second</span></td></tr>
+    <tr><td><strong>v5</strong></td><td><code>v3 + time-of-day (if extracted from soundscape)</code></td><td>Small-medium</td><td><span class="badge badge-low">Later</span></td></tr>
+  </table>
+</div>
+
+<h2>4. Data Preparation</h2>
+
+<div class="card">
+  <h3>4.1 Clean Domain (train_audio)</h3>
+  <table>
+    <tr><th>Attribute</th><th>Detail</th></tr>
+    <tr><td>Species count</td><td>206 species with train_audio</td></tr>
+    <tr><td>Recordings</td><td>~35,549 total</td></tr>
+    <tr><td>Clip length</td><td>5 s (random crop), resampled to 48 kHz for CLAP</td></tr>
+    <tr><td>Augmentation</td><td>SumixFreq, Mixup (lam=0.5), time shift</td></tr>
+  </table>
+
+  <h3>4.2 Wild Domain (soundscape pseudo clips)</h3>
+  <table>
+    <tr><th>Attribute</th><th>Detail</th></tr>
+    <tr><td>Source</td><td>R4 pseudo labels (cleanest, threshold pct=94)</td></tr>
+    <tr><td>Filter</td><td>confidence ≥ 0.8, max 200 clips per species</td></tr>
+    <tr><td>Clip length</td><td>5 s centered on pseudo label offset, resampled to 48 kHz</td></tr>
+    <tr><td>Augmentation</td><td>Background noise injection, EQ, time stretch</td></tr>
+  </table>
+
+  <div class="warning">
+    <strong>Dependency:</strong> Wild clips require R4 pseudo labels. For early experiments, R1/R2 pseudo labels can be used with a higher confidence threshold (≥ 0.85) to compensate for lower quality.
+  </div>
+
+  <h3>4.3 Batch Construction</h3>
+  <pre>for species in batch_species:
+    anchor   = random_sample(clean_clips[species])     # train_audio 5s clip
+    positive = random_sample(wild_clips[species])      # soundscape pseudo 5s clip
+    # negatives = all other (species, domain) combos in the batch (in-batch)</pre>
+</div>
+
+<h2>5. Training Strategy</h2>
+
+<div class="card">
+  <h3>5.1 Two-Stage Training</h3>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <strong>Stage 1 — Contrastive Pre-training (2–3 weeks)</strong>
+      <ul>
+        <li>Load HTSAT from <code>laion/clap-htsat-unfused</code></li>
+        <li>Text encoder: <strong>eval() + torch.no_grad() always</strong></li>
+        <li>HTSAT stages 0–1: frozen; stages 2–3 + projection head: fine-tuned</li>
+        <li>Loss = SupConLoss (cross-domain)</li>
+        <li>LR = 1e-4, warmup 500 steps, cosine decay</li>
+        <li>Batch size = 128 (large batch critical for contrastive)</li>
+        <li>Input: 32 kHz → resample to 48 kHz → ClapProcessor → HTSAT</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <strong>Stage 2 — Classification Fine-tuning (1–2 weeks)</strong>
+      <ul>
+        <li>Add classification head (768 → 234) on top of Stage 1 checkpoint</li>
+        <li>Loss = FocalBCE (primary) + SupConLoss × 0.1 (auxiliary, preserves domain invariance)</li>
+        <li>LR = 5e-5 (smaller to avoid destroying contrastive features)</li>
+        <li>Use full BirdCLEF train_audio + R4 pseudo labels</li>
+      </ul>
+    </div>
+    <div class="timeline-item">
+      <strong>Inference</strong>
+      <ul>
+        <li>Stage 2 fine-tuned model in eval() + no_grad()</li>
+        <li>Sliding window: 20 s → 5 s per window (4 overlapping chunks, same as SED NS)</li>
+        <li>5-fold ensemble</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>5.2 Loss Weights</h3>
+  <pre>L_total = L_FocalBCE + λ_con × L_SupCon
+
+Stage 1: λ_con = 1.0  (pure contrastive)
+Stage 2: λ_con = 0.1  (regularizer during fine-tuning)</pre>
+</div>
+
+<h2>6. Experiment Variants</h2>
+
+<div class="card">
+  <table>
+    <tr><th>Experiment</th><th>Description</th><th>Expected AUC</th><th>Priority</th></tr>
+    <tr>
+      <td><strong>Baseline</strong></td>
+      <td>Current SED NS R4 (EfficientNet-B0)</td>
+      <td>~0.92</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td><strong>CLAP-v1</strong></td>
+      <td>HTSAT backbone (CLAP pretrained) + direct fine-tune (no contrastive)</td>
+      <td>0.91–0.93</td>
+      <td><span class="badge badge-high">First</span></td>
+    </tr>
+    <tr>
+      <td><strong>CLAP-v2</strong></td>
+      <td>HTSAT + SupCon Stage 1 + FocalBCE Stage 2</td>
+      <td>0.93–0.95</td>
+      <td><span class="badge badge-high">Key</span></td>
+    </tr>
+    <tr>
+      <td><strong>CLAP-v2+prompt</strong></td>
+      <td>CLAP-v2 with enriched text prompts (v3: call_type + secondary)</td>
+      <td>0.93–0.95+</td>
+      <td><span class="badge badge-high">Key</span></td>
+    </tr>
+    <tr>
+      <td><strong>CLAP-v3</strong></td>
+      <td>CLAP-v2 + Noisy Student (use CLAP model to generate better pseudo labels)</td>
+      <td>0.95+</td>
+      <td><span class="badge badge-mid">Second</span></td>
+    </tr>
+    <tr>
+      <td><strong>BioLingual</strong></td>
+      <td>BioLingual pretrained (bioacoustics-specific CLAP) + fine-tune</td>
+      <td>0.92–0.94</td>
+      <td><span class="badge badge-mid">Second</span></td>
+    </tr>
+    <tr>
+      <td><strong>Ensemble</strong></td>
+      <td>CLAP-v2 + SED NS R4 + Perch (3-model ensemble)</td>
+      <td>0.95+</td>
+      <td><span class="badge badge-high">Target</span></td>
+    </tr>
+  </table>
+</div>
+
+<h2>7. Implementation Plan</h2>
+
+<div class="card">
+  <div class="two-col">
+    <div>
+      <h3>Week 1 (Apr 1–7)</h3>
+      <ul>
+        <li>Verify HTSAT with BirdCLEF 32 kHz → 48 kHz resample</li>
+        <li>Implement <code>CrossDomainDataset</code></li>
+        <li>Implement <code>build_text_prompt()</code> with metadata</li>
+        <li>CLAP-v1 baseline (direct fine-tune)</li>
+        <li>Soundscape val AUC evaluation</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Week 2 (Apr 8–14)</h3>
+      <ul>
+        <li>Implement <code>SupConLoss</code></li>
+        <li>Stage 1 contrastive pre-training</li>
+        <li>t-SNE visualization (clean vs wild embeddings)</li>
+        <li>CLAP-v2 Stage 2 fine-tuning</li>
+        <li>Compare v1 vs v2 on val AUC</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Week 3 (Apr 15–21)</h3>
+      <ul>
+        <li>Ablation: SupCon importance, λ tuning</li>
+        <li>Prompt variant experiments (v1 → v3)</li>
+        <li>Retrain with R4 pseudo labels (cleaner)</li>
+        <li>5-fold cross-validation</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Week 4 (Apr 22–30)</h3>
+      <ul>
+        <li>3-model ensemble: CLAP-v2 + SED NS + Perch</li>
+        <li>Ensemble weight search</li>
+        <li>Kaggle submission (if val AUC > 0.9193)</li>
+        <li>Analysis and next steps</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>8. Key Code Design</h2>
+
+<div class="card">
+  <h3>8.1 CLAP Feature Extractor (Frozen) + Trainable Head</h3>
+  <pre>from transformers import ClapModel, ClapProcessor
+import torch, torch.nn as nn, torch.nn.functional as F
+
+# ── Step 1: Frozen CLAP feature extractor ────────────────────────────────
+class ClapExtractor:
+    """Frozen CLAP — always eval() + no_grad(). Never call .train()."""
+    def __init__(self, pretrained="laion/clap-htsat-unfused", device="cuda"):
+        clap = ClapModel.from_pretrained(pretrained).to(device)
+        clap.eval()
+        for p in clap.parameters():
+            p.requires_grad = False
+        self.audio_model      = clap.audio_model
+        self.audio_projection = clap.audio_projection
+        self.text_model       = clap.text_model
+        self.text_projection  = clap.text_projection
+        self.processor        = ClapProcessor.from_pretrained(pretrained)
+        self.device           = device
+
+    @torch.no_grad()
+    def extract_audio(self, wav_48k_np: np.ndarray) -> torch.Tensor:
+        """wav_48k_np: (T,) numpy float32 at 48 kHz → (512,) embedding."""
+        inputs = self.processor(audios=wav_48k_np, sampling_rate=48000,
+                                return_tensors="pt")
+        feat = inputs['input_features'].to(self.device)
+        out  = self.audio_model(input_features=feat)
+        emb  = self.audio_projection(out.pooler_output)  # (1, 512)
+        return F.normalize(emb, dim=-1).squeeze(0)       # (512,)
+
+    @torch.no_grad()
+    def extract_text(self, text: str) -> torch.Tensor:
+        """text → (512,) embedding."""
+        inputs = self.processor(text=text, return_tensors="pt",
+                                padding=True, truncation=True)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        out  = self.text_model(**inputs)
+        emb  = self.text_projection(out.pooler_output)  # (1, 512)
+        return F.normalize(emb, dim=-1).squeeze(0)      # (512,)
+
+
+# ── Step 2: Trainable head (only this is updated during training) ─────────
+class ClapBirdHead(nn.Module):
+    """Lightweight trainable head on top of frozen CLAP embeddings."""
+    def __init__(self, embed_dim=512, proj_dim=256,
+                 num_classes=234, dropout=0.1):
+        super().__init__()
+        # Projection head for SupConLoss
+        self.proj = nn.Sequential(
+            nn.Linear(embed_dim, proj_dim),
+            nn.BatchNorm1d(proj_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(proj_dim, proj_dim),
+        )
+        # Classification head for FocalBCE
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim, num_classes),
+        )
+
+    def forward(self, emb: torch.Tensor):
+        """emb: (B, 512) pre-computed frozen CLAP embedding."""
+        logits = self.classifier(emb)
+        proj   = F.normalize(self.proj(emb), dim=-1)
+        return {'logits': logits, 'proj': proj}</pre>
+
+  <h3>8.2 Pre-compute and Cache CLAP Embeddings</h3>
+  <pre>import torchaudio, numpy as np
+from pathlib import Path
+
+def precompute_clap_embeddings(audio_files, extractor, cache_dir,
+                               sr_in=32000, sr_out=48000, clip_dur=5):
+    """
+    Pre-extract CLAP embeddings for all audio files and cache to disk.
+    Only needs to run ONCE — CLAP is frozen so embeddings never change.
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    for fpath in audio_files:
+        cache_path = cache_dir / (Path(fpath).stem + ".npy")
+        if cache_path.exists():
+            continue
+        wav, sr = torchaudio.load(fpath)
+        if sr != sr_out:
+            wav = torchaudio.functional.resample(wav, sr, sr_out)
+        # Random crop to clip_dur seconds
+        max_start = max(0, wav.shape[1] - sr_out * clip_dur)
+        start = np.random.randint(0, max_start + 1)
+        clip = wav[0, start:start + sr_out * clip_dur].numpy()
+        emb = extractor.extract_audio(clip)  # (512,)
+        np.save(cache_path, emb.cpu().numpy())
+
+# Usage:
+# extractor = ClapExtractor(device="cuda:1")
+# precompute_clap_embeddings(train_audio_files, extractor,
+#                            "outputs/clap_embeddings/train_audio/")</pre>
+
+  <h3>8.3 CrossDomainEmbeddingDataset (loads pre-cached embeddings)</h3>
+  <pre>class CrossDomainEmbeddingDataset(Dataset):
+    """
+    Loads pre-computed CLAP embeddings from disk.
+    Training is just MLP forward passes — very fast.
+    Each item: (clean_emb, wild_emb, label)
+    """
+    def __init__(self, clean_emb_dir, wild_emb_dir,
+                 clean_meta, wild_meta, taxonomy_df):
+        # clean_meta: DataFrame with columns [filename, primary_label]
+        # wild_meta:  DataFrame with columns [cache_file, primary_label, conf]
+        self.clean_dir = Path(clean_emb_dir)
+        self.wild_dir  = Path(wild_emb_dir)
+
+        # Build per-species lists of cached embedding files
+        self.clean = defaultdict(list)
+        for _, row in clean_meta.iterrows():
+            stem = Path(row.filename).stem
+            p = self.clean_dir / f"{stem}.npy"
+            if p.exists():
+                self.clean[row.primary_label].append(p)
+
+        self.wild = defaultdict(list)
+        for _, row in wild_meta[wild_meta.conf >= 0.8].iterrows():
+            p = self.wild_dir / row.cache_file
+            if p.exists():
+                self.wild[row.primary_label].append(p)
+
+        # Only species with both clean and wild embeddings
+        self.species = sorted(set(self.clean) & set(self.wild))
+        self.sp2idx  = {sp: i for i, sp in enumerate(self.species)}
+        print(f"CrossDomainDataset: {len(self.species)} species, "
+              f"{sum(len(v) for v in self.clean.values())} clean, "
+              f"{sum(len(v) for v in self.wild.values())} wild embeddings")
+
+    def __len__(self):
+        return len(self.species) * 8  # oversample
+
+    def __getitem__(self, idx):
+        sp = self.species[idx % len(self.species)]
+        clean_emb = np.load(random.choice(self.clean[sp]))  # (512,)
+        wild_emb  = np.load(random.choice(self.wild[sp]))   # (512,)
+        label = self.sp2idx[sp]
+        return (torch.from_numpy(clean_emb).float(),
+                torch.from_numpy(wild_emb).float(),
+                label)</pre>
+
+  <h3>8.4 SupConLoss (Cross-Domain)</h3>
+  <pre>class CrossDomainSupConLoss(nn.Module):
+    def __init__(self, temperature=0.07):
+        super().__init__()
+        self.temp = temperature
+
+    def forward(self, z_clean, z_wild, labels):
+        """
+        z_clean, z_wild: (B, D) L2-normalized embeddings
+        labels: (B,) species indices
+        """
+        # Concatenate both domains: (2B, D)
+        z = torch.cat([z_clean, z_wild], dim=0)
+        labels_2x = labels.repeat(2)
+
+        # Similarity matrix (2B, 2B)
+        sim = torch.mm(z, z.T) / self.temp
+        sim.fill_diagonal_(-1e9)  # exclude self
+
+        # Positive mask: same species (cross-domain included)
+        pos_mask = (labels_2x.unsqueeze(0) == labels_2x.unsqueeze(1))
+        pos_mask.fill_diagonal_(False)
+
+        # SupCon loss
+        log_prob = sim - torch.logsumexp(sim, dim=1, keepdim=True)
+        n_pos = pos_mask.sum(1).clamp(min=1).float()
+        loss = -(log_prob * pos_mask).sum(1) / n_pos
+        return loss.mean()</pre>
+</div>
+
+<h2>9. Expected Outcomes and Risks</h2>
+
+<div class="card">
+  <div class="two-col">
+    <div>
+      <h3>✅ Expected Outcomes</h3>
+      <ul>
+        <li>Domain-invariant embedding: clean/wild same-species closer in latent space</li>
+        <li>Soundscape val AUC improvement (+0.01 ~ +0.03 estimated)</li>
+        <li>Larger gain for rare species (when pseudo label quality is sufficient)</li>
+        <li>Complementary to SED NS + Perch ensemble (different feature space)</li>
+        <li>3-model ensemble target: LB > 0.935</li>
+      </ul>
+    </div>
+    <div>
+      <h3>⚠ Key Risks</h3>
+      <ul>
+        <li>Noisy pseudo labels → noisy positive pairs → weak contrastive signal</li>
+        <li>48 kHz resample overhead at training time (precompute recommended)</li>
+        <li>Large batch size requirement (128+) — GPU memory pressure</li>
+        <li>SupCon loss tuning (temperature, λ) adds complexity</li>
+        <li>HTSAT fine-tuning may overfit on small BirdCLEF dataset</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Mitigation</h3>
+  <table>
+    <tr><th>Risk</th><th>Mitigation</th></tr>
+    <tr><td>Noisy pseudo labels</td><td>Confidence ≥ 0.85 threshold; Aves-only first; use R4 (cleanest)</td></tr>
+    <tr><td>48 kHz overhead</td><td>Pre-extract and cache 48 kHz mel features to disk</td></tr>
+    <tr><td>GPU memory</td><td>Gradient accumulation (effective batch 128 = 4 × 32); gradient checkpointing</td></tr>
+    <tr><td>Overfitting</td><td>Strong augmentation; freeze more HTSAT stages; add weight decay</td></tr>
+  </table>
+</div>
+
+<h2>10. Integration with Existing Pipeline</h2>
+
+<div class="card">
+  <div class="arch-box">Current Pipeline:
+  Perch TFLite + SED NS R4 (EfficientNet-B0) → ensemble → LB ~0.926
+
+After CLAP integration:
+  Perch TFLite           (weight 0.33)
+  + SED NS R4            (weight 0.33)   ← existing
+  + CLAP-v2 (HTSAT)      (weight 0.33)   ← new
+  → 3-model ensemble     → target LB > 0.935
+
+Final target (CLAP-v3 with Noisy Student):
+  Perch + SED NS + CLAP-NS              → target LB > 0.940</div>
+
+  <div class="success">
+    <strong>✅ Key Advantage:</strong> HTSAT (~27.5M) is a transformer-based audio encoder with very different inductive biases from EfficientNet-B0 (CNN-based). Combined with CLAP's pre-trained cross-modal semantic knowledge, this creates a genuinely complementary ensemble alongside Perch and SED NS — three completely different feature spaces.
+  </div>
+</div>
+
+<h2>11. References</h2>
+
+<div class="card">
+  <table>
+    <tr><th>Resource</th><th>Link</th><th>Purpose</th></tr>
+    <tr><td>LAION CLAP GitHub</td><td>github.com/LAION-AI/CLAP</td><td>Source code + pretrained weights</td></tr>
+    <tr><td>HuggingFace CLAP</td><td>laion/clap-htsat-unfused</td><td>Transformers API loading</td></tr>
+    <tr><td>BioLingual</td><td>davidrrobinson/BioLingual</td><td>Bioacoustics fine-tuned CLAP</td></tr>
+    <tr><td>NatureLM-audio</td><td>arxiv.org/abs/2411.07186</td><td>State-of-art bioacoustics LM</td></tr>
+    <tr><td>CLAP paper (LAION)</td><td>arxiv.org/abs/2211.06687</td><td>Feature Fusion + KwCap</td></tr>
+    <tr><td>SupConLoss paper</td><td>arxiv.org/abs/2004.11362</td><td>Supervised Contrastive Learning</td></tr>
+    <tr><td>HTSAT paper</td><td>arxiv.org/abs/2107.13228</td><td>Audio Transformer architecture</td></tr>
+    <tr><td>Microsoft CLAP</td><td>zenodo.org/record/8378278</td><td>Alternative pretrained weights</td></tr>
+  </table>
+</div>
+
+<div class="card" style="background:#e8f5e9;border-left:4px solid #4caf50;">
+  <h3>🚀 Recommended Next Steps</h3>
+  <ol>
+    <li><strong>Wait for R4</strong> (~1 week) to obtain cleanest pseudo labels for wild domain pairs</li>
+    <li><strong>Week 1</strong>: Install dependencies, verify 32→48 kHz pipeline, run CLAP-v1 baseline</li>
+    <li><strong>If CLAP-v1 ≥ SED-v5 AUC</strong>: proceed to CLAP-v2 (SupCon stage 1)</li>
+    <li><strong>Run prompt variants</strong>: v1 → v2 → v3 (call_type + secondary labels)</li>
+    <li><strong>Build 3-model ensemble</strong>: Perch + SED NS R4 + CLAP-v2</li>
+  </ol>
+  <p><em>Generated: 2026-03-30 | Author: Claude Sonnet 4.6</em></p>
+</div>
+
+</body>
+</html>

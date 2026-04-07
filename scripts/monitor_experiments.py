@@ -2,9 +2,9 @@
 
 Watches:
   - Perch head retrain  (outputs/logs/perch_head_retrain.log)
-  - SED NS 10s  r1-r4   (outputs/sed-ns-b0-10s-r{N}/, logs/sed_ns_10s_r{N}_fold{F}.log)
-  - SSM NS 10s  r1-r4   (outputs/ssm-ns-b0-10s-r{N}/, logs/ssm_ns_10s_r{N}_fold{F}.log)
-  - Master chain        (outputs/logs/master_ns_chain.log)
+  - SED NS 20s  r1-r4   (outputs/sed-ns-b0-20s-r{N}/, logs/sed_ns_20s_r{N}_fold{F}.log)
+  - SSM NS 20s  r1-r4   (outputs/ssm-ns-b0-10s-r{N}/, logs/ssm_ns_10s_r{N}_fold{F}.log)
+  - Auto chains         (outputs/logs/auto_{sed,ssm}_ns_20s_full.log)
 
 Usage:
     python scripts/monitor_experiments.py           # print only
@@ -84,7 +84,7 @@ def parse_ns_exp(prefix: str, rounds: int = 4) -> list[dict]:
     """Returns one dict per (round, fold) with status info."""
     rows = []
     for r in range(1, rounds + 1):
-        out_dir   = OUTPUTS_DIR / f"{prefix}-ns-b0-10s-r{r}"
+        out_dir   = OUTPUTS_DIR / f"{prefix}-ns-b0-20s-r{r}"
         result_f  = out_dir / "result.json"
 
         # Check if round is fully done
@@ -104,7 +104,7 @@ def parse_ns_exp(prefix: str, rounds: int = 4) -> list[dict]:
         # Per-fold status
         for fold in range(5):
             ckpt = out_dir / f"fold{fold}_best.pt"
-            log_name = f"{prefix}_ns_10s_r{r}_fold{fold}.log"
+            log_name = f"{prefix}_ns_20s_r{r}_fold{fold}.log"
             log_path = LOG_DIR / log_name
 
             if ckpt.exists():
@@ -136,12 +136,14 @@ def parse_ns_exp(prefix: str, rounds: int = 4) -> list[dict]:
     return rows
 
 
-def parse_master_chain() -> str:
-    lines = _last_lines(LOG_DIR / "master_ns_chain.log", n=20)
+def parse_chain_log(name: str) -> str:
+    """Return last meaningful line from an auto_*_ns_20s_full.log."""
+    lines = _last_lines(LOG_DIR / name, n=20)
     if not lines:
         return "not_started"
-    last = next((l for l in reversed(lines) if "[MASTER]" in l), "")
-    return last.split("[MASTER]")[-1].strip() if last else lines[-1].strip()
+    tag = name.split("_")[1].upper()  # SED or SSM
+    last = next((l for l in reversed(lines) if f"[{tag}" in l), "")
+    return last.split("]", 1)[-1].strip() if last else lines[-1].strip()
 
 
 # ── Print ─────────────────────────────────────────────────────────────────────
@@ -152,9 +154,11 @@ def print_status() -> list[dict]:
     print(f"  BirdCLEF-2026 NS Chain Monitor  [{now}]")
     print(f"{'='*68}")
 
-    # Master chain
-    master_status = parse_master_chain()
-    print(f"\n  [master-chain]  {master_status}")
+    # Auto chain status
+    proto_chain = parse_chain_log("proto_teacher_chain.log")
+    sed_chain   = parse_chain_log("auto_sed_ns_20s_full.log")
+    print(f"\n  [proto-chain]   {proto_chain}")
+    print(f"  [auto-sed-20s]  {sed_chain}")
 
     # Perch head
     ph = parse_perch_log()
@@ -167,13 +171,15 @@ def print_status() -> list[dict]:
 
     excel_rows = []
 
+    clip_label = {"sed": "20s", "ssm": "10s"}
     for prefix in ["sed", "ssm"]:
         rows = parse_ns_exp(prefix)
+        cl = clip_label[prefix]
         if not rows:
-            print(f"\n  [{prefix}-ns-10s]  no data")
+            print(f"\n  [{prefix}-ns-{cl}]  no data")
             continue
 
-        print(f"\n  [{prefix.upper()} NS 10s]")
+        print(f"\n  [{prefix.upper()} NS {cl}]")
         cur_round = None
         for row in rows:
             if row["round"] != cur_round:

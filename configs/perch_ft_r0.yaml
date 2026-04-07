@@ -1,0 +1,35 @@
+# Round 0 — Supervised warm-up on 66 labeled soundscape files (739 windows)
+# Loss: Focal BCE + SupCon
+# Evaluates: GroupKFold-5 OOF AUC on labeled SS
+
+round: 0
+output_name: perch_adapter_r0.pt
+
+# Model
+emb_dim: 1536
+bottleneck: 512
+n_blocks: 2
+use_seq_attn: false
+dropout: 0.15
+num_classes: 234
+
+# Training
+lr: 3e-4
+weight_decay: 1e-3
+n_epochs: 80
+batch_size: 128
+patience: 15
+
+# Losses
+focal_gamma: 2.0
+supcon_weight: 0.3
+supcon_temp: 0.07
+
+# Data
+labeled_ss_npz: outputs/perch_labeled_ss.npz
+unlabeled_ss_npz: outputs/perch_emb_all_ss.npz
+train_audio_manifest: outputs/embeddings_cache_nohuman/manifest.csv
+train_audio_emb_dir: outputs/embeddings_cache_nohuman/train
+taxonomy_csv: birdclef-2026/taxonomy.csv
+output_dir: weights
+log_dir: outputs/logs

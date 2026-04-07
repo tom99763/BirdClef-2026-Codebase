@@ -1,0 +1,42 @@
+run_name: embed-distill-b4-v1
+
+# EfficientNet-B4 (ns_jft_in1k), feat_dim=1792, in_chans=1
+# Largest backbone — most expressive, but slower
+# + SpecAugment
+
+data:
+  manifest_path: outputs/embeddings_cache/manifest.csv
+  train_audio_dir: birdclef-2026/train_audio
+  soundscapes_dir: birdclef-2026/train_soundscapes
+  mel_cache_dir: outputs/mel_cache
+
+audio:
+  sample_rate: 32000
+  clip_seconds: 5
+
+mel:
+  n_fft: 2048
+  hop_length: 512
+  n_mels: 224
+  fmin: 0.0
+  fmax: 16000.0
+
+model:
+  backbone: tf_efficientnet_b4.ns_jft_in1k
+  teacher_dim: 1536
+  pretrained: true
+  drop_rate: 0.1
+  in_chans: 1
+
+training:
+  epochs: 30
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  warmup_epochs: 2
+  early_stopping_patience: 5
+
+augmentation:
+  enabled: true
+  freq_mask_param: 30
+  time_mask_param: 48

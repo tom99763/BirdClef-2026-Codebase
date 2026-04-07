@@ -334,6 +334,7 @@ class PseudoSoundscapeDataset(Dataset):
     def __init__(self, pseudo_df: pd.DataFrame, ss_dir: str, species_cols: list):
         self.ss_dir       = ss_dir
         self.species_cols = species_cols
+        self._has_nc_weights = '_nc_weight' in pseudo_df.columns
 
         # Group by soundscape, build per-soundscape structure
         pseudo_df = pseudo_df.copy()
@@ -342,18 +343,23 @@ class PseudoSoundscapeDataset(Dataset):
         pseudo_df['_offset'] = pseudo_df['row_id'].apply(
             lambda r: int(str(r).rsplit('_', 1)[1]) if str(r).rsplit('_', 1)[-1].isdigit() else 5)
 
-        self._soundscapes = []   # list of (path, offsets_array, probs_array)
+        self._soundscapes = []   # list of (path, offsets_array, probs_array, nc_weights_array)
         self._weights     = []
 
         for fname, grp in pseudo_df.groupby('_fname'):
             grp     = grp.sort_values('_offset').reset_index(drop=True)
             offsets = grp['_offset'].values                              # (N,) end-times
             probs   = grp[species_cols].values.astype(np.float32)        # (N, 234)
+            # Noisy Classmate disagreement weights (Phase 3)
+            nc_w    = grp['_nc_weight'].values.astype(np.float32) if self._has_nc_weights else np.ones(len(grp), dtype=np.float32)
             path    = os.path.join(ss_dir, fname)
             # Weight = sum of per-window max class prob (1st place WeightedRandomSampler)
             weight  = float(probs.max(axis=1).sum())
-            self._soundscapes.append((path, offsets, probs))
+            self._soundscapes.append((path, offsets, probs, nc_w))
             self._weights.append(max(weight, 1e-6))
+
+        if self._has_nc_weights:
+            print(f"  [NC] Disagreement weights loaded: mean={pseudo_df['_nc_weight'].mean():.3f}")
 
     def __len__(self):
         return len(self._soundscapes)
@@ -363,7 +369,7 @@ class PseudoSoundscapeDataset(Dataset):
         return self._weights
 
     def __getitem__(self, idx):
-        path, offsets, probs = self._soundscapes[idx]
+        path, offsets, probs, nc_w = self._soundscapes[idx]
         clip_dur = CLIP_SAMPLES // SR
 
         # Random start: [0, max_start] where max_start keeps clip within soundscape
@@ -380,12 +386,15 @@ class PseudoSoundscapeDataset(Dataset):
                     if o > start_sec and (o - 5) < clip_end]
         if covered:
             label = probs[[i for i, _ in covered]].max(axis=0)
+            # Noisy Classmate: max disagreement weight among covered windows
+            sample_weight = float(nc_w[[i for i, _ in covered]].max())
         else:
             # Fallback: nearest window
             nearest = int(np.argmin(np.abs(offsets - (start_sec + clip_dur // 2))))
             label   = probs[nearest]
+            sample_weight = float(nc_w[nearest])
 
-        return torch.from_numpy(audio), torch.from_numpy(label.astype(np.float32))
+        return torch.from_numpy(audio), torch.from_numpy(label.astype(np.float32)), torch.tensor(sample_weight)
 
 
 class SoundscapeValDataset(Dataset):
@@ -424,6 +433,55 @@ class FocalBCE(nn.Module):
         )
         pt  = torch.exp(-bce)
         return ((1 - pt) ** self.gamma * bce).mean()
+
+
+class NCDistillLoss(nn.Module):
+    """Noisy Classmate Phase 4: FocalBCE + KL Divergence soft distillation.
+
+    L = (1-beta) * FocalBCE(logits, hard_targets)
+      + beta * KLD(sigma(logits/T), soft_targets/T) * T^2
+    """
+    def __init__(self, gamma=2.0, beta=0.3, temperature=2.0):
+        super().__init__()
+        self.gamma = gamma
+        self.beta = beta
+        self.T = temperature
+        self.focal = FocalBCE(gamma=gamma)
+
+    def forward(self, logits, hard_targets, soft_targets=None, sample_weights=None):
+        if soft_targets is None or self.beta == 0:
+            loss = self.focal(logits, hard_targets)
+            if sample_weights is not None:
+                # Recompute per-sample for weighting
+                bce = F.binary_cross_entropy_with_logits(
+                    logits, hard_targets, reduction='none').mean(dim=1)
+                pt = torch.exp(-bce)
+                focal_per = (1 - pt) ** self.gamma * bce
+                loss = (focal_per * sample_weights).mean()
+            return loss
+
+        # Hard loss (FocalBCE)
+        hard_loss = self.focal(logits, hard_targets)
+
+        # Soft distillation loss (binary KLD per class)
+        T = self.T
+        pred_soft = torch.sigmoid(logits / T)
+        target_soft = soft_targets.clamp(1e-7, 1 - 1e-7)
+        # Binary KLD: sum over classes, mean over batch
+        kld = target_soft * torch.log(target_soft / (pred_soft + 1e-7)) + \
+              (1 - target_soft) * torch.log((1 - target_soft) / (1 - pred_soft + 1e-7))
+        soft_loss = kld.sum(dim=1)  # (B,)
+
+        if sample_weights is not None:
+            # Recompute focal per-sample for weighting
+            bce = F.binary_cross_entropy_with_logits(
+                logits, hard_targets, reduction='none').mean(dim=1)
+            pt = torch.exp(-bce)
+            focal_per = (1 - pt) ** self.gamma * bce
+            combined = (1 - self.beta) * focal_per + self.beta * soft_loss * (T ** 2)
+            return (combined * sample_weights).mean()
+        else:
+            return (1 - self.beta) * hard_loss + self.beta * soft_loss.mean() * (T ** 2)
 
 
 # ── Build expanded soundscape validation DataFrame ────────────────────────────
@@ -584,7 +642,16 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
     pseudo_mixup_a  = t_cfg.get('pseudo_mixup_alpha', 0.15)   # MixUp on pseudo data too
     pseudo_w        = t_cfg.get('pseudo_weight', 1.0)         # 1st place: equal weight
     use_sumix_freq  = t_cfg.get('use_sumix_freq', False)      # 1st place: SumixFreq
-    criterion       = FocalBCE(gamma=gamma)
+
+    # Noisy Classmate Phase 4: soft distillation
+    nc_beta         = t_cfg.get('nc_distill_beta', 0.0)       # 0.0 = off, 0.3 = recommended
+    nc_temperature  = t_cfg.get('nc_temperature', 2.0)
+    use_nc_distill  = nc_beta > 0 and pseudo_ds is not None and pseudo_ds._has_nc_weights
+    if use_nc_distill:
+        criterion = NCDistillLoss(gamma=gamma, beta=nc_beta, temperature=nc_temperature)
+        print(f"  [NC Phase 4] Soft distillation enabled: beta={nc_beta}, T={nc_temperature}")
+    else:
+        criterion = FocalBCE(gamma=gamma)
 
     ema_decay = t_cfg.get('ema_decay', 0.999)
     ema = ModelEMA(model, decay=ema_decay)
@@ -623,10 +690,17 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
 
             if pseudo_iter:
                 try:
-                    pseudo_waves, pseudo_labels = next(pseudo_iter)
+                    pseudo_batch = next(pseudo_iter)
                 except StopIteration:
                     pseudo_iter = iter(pseudo_loader)
-                    pseudo_waves, pseudo_labels = next(pseudo_iter)
+                    pseudo_batch = next(pseudo_iter)
+                # Support both (waves, labels) and (waves, labels, nc_weights)
+                if len(pseudo_batch) == 3:
+                    pseudo_waves, pseudo_labels, pseudo_nc_weights = pseudo_batch
+                    pseudo_nc_weights = pseudo_nc_weights.to(device)
+                else:
+                    pseudo_waves, pseudo_labels = pseudo_batch
+                    pseudo_nc_weights = None
                 pseudo_waves  = pseudo_waves.to(device)
                 pseudo_labels = pseudo_labels.to(device)
 
@@ -636,13 +710,24 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
                 n_pseudo = max(1, int(B * pseudo_w))
                 pseudo_waves  = pseudo_waves[:n_pseudo]
                 pseudo_labels = pseudo_labels[:n_pseudo]
+                if pseudo_nc_weights is not None:
+                    pseudo_nc_weights = pseudo_nc_weights[:n_pseudo]
 
                 # Concat labeled + pseudo, then apply MixUp randomly across the combined batch
                 combined_audio  = torch.cat([audio_waves, pseudo_waves], dim=0)
                 combined_labels = torch.cat([audio_labels, pseudo_labels], dim=0)
+                # Build per-sample loss weights: 1.0 for labeled, nc_weight for pseudo
+                if pseudo_nc_weights is not None:
+                    combined_loss_weights = torch.cat([
+                        torch.ones(B, device=device),
+                        pseudo_nc_weights
+                    ], dim=0)
+                else:
+                    combined_loss_weights = None
                 combined_audio, combined_labels = audio_mixup(combined_audio, combined_labels)
             else:
                 combined_audio, combined_labels = audio_mixup(audio_waves, audio_labels)
+                combined_loss_weights = None
 
             # Mel + SpecAugment AFTER audio MixUp
             with torch.no_grad():
@@ -655,7 +740,22 @@ def train_fold(fold: int, cfg: dict, device: torch.device) -> dict:
 
             with torch.cuda.amp.autocast():
                 out  = model(combined_mel)
-                loss = criterion(out['clipwise_logit'], combined_labels)
+                logits = out['clipwise_logit']
+                # Noisy Classmate: Phase 3 (disagreement weighting) + Phase 4 (soft distillation)
+                if use_nc_distill:
+                    # NCDistillLoss handles both soft targets and sample weights
+                    loss = criterion(logits, combined_labels,
+                                     soft_targets=combined_labels,  # pseudo labels ARE soft probs
+                                     sample_weights=combined_loss_weights)
+                elif combined_loss_weights is not None:
+                    # Phase 3 only: disagreement-weighted FocalBCE
+                    per_sample_loss = F.binary_cross_entropy_with_logits(
+                        logits, combined_labels, reduction='none').mean(dim=1)
+                    pt = torch.exp(-per_sample_loss)
+                    focal = ((1 - pt) ** criterion.gamma * per_sample_loss)
+                    loss = (focal * combined_loss_weights).mean()
+                else:
+                    loss = criterion(logits, combined_labels)
 
             optimizer.zero_grad()
             scaler.scale(loss).backward()

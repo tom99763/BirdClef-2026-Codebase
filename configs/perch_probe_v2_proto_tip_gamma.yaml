@@ -1,0 +1,51 @@
+experiment:
+  name: perch-probe-v2-proto-tip-gamma
+  seed: 42
+
+# (E+F) Prototype + Tip-Adapter + per-class gamma blend
+# Best combination hypothesis: each method captures different aspects
+#   - MLP:   learns non-linear decision boundary from soundscape
+#   - Proto: captures cluster geometry (few-shot distance)
+#   - Tip:   retrieves nearest support clips (transductive)
+#   - gamma: per-class weight to up-weight reliable source per species
+
+data:
+  base_dir: birdclef-2026
+  manifest_path: outputs/embeddings_cache_nohuman/manifest.csv
+  pca_fit_splits: [train, soundscape]
+  add_train_clips: false
+
+model:
+  pca_dim: 128
+  hidden_dim: 256
+  use_hidden: true
+  dropout: 0.3
+  pca_whiten: true
+  use_proto: true
+  use_tip: true
+  use_gamma: true          # per-class blend weight (F)
+  tip_temperature: 10.0
+
+  # blend weights only used when use_gamma=false
+  blend_mlp: 0.5
+  blend_proto: 0.25
+  blend_tip: 0.25
+
+training:
+  epochs: 150
+  batch_size: 64
+  n_folds: 5
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 25
+  asl_gamma_neg: 4.0
+  asl_gamma_pos: 0.0
+  asl_clip: 0.05
+
+output:
+  dir: outputs
+
+wandb:
+  enabled: true
+  project: birdclef-2026
+  tags: [perch-probe, v2, prototype, tip-adapter, gamma, pca128]

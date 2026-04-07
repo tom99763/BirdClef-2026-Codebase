@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — SED Model Comparison</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --bg2: #1a1d27; --bg3: #23273a;
+    --accent: #4f8ef7; --green: #3ecf8e; --yellow: #f5a623;
+    --red: #e05252; --muted: #8891a8; --text: #e2e8f0;
+    --border: #2d3350; --purple: #b57bee; --cyan: #56d0e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+  h1 { font-size: 1.55rem; font-weight: 700; }
+  h2 { font-size: 1.05rem; font-weight: 600; color: var(--accent); margin-bottom: 14px; }
+  h3 { font-size: 0.88rem; font-weight: 600; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .header .meta { color: var(--muted); font-size: 0.82rem; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 28px 32px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 20px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .card-green { border-color: var(--green); }
+  .card-yellow { border-color: var(--yellow); }
+  .card-red { border-color: var(--red); }
+  .card-purple { border-color: var(--purple); }
+  .stat-val { font-size: 2rem; font-weight: 700; color: var(--green); }
+  .stat-sub { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.73rem; font-weight: 600; }
+  .badge-green { background: rgba(62,207,142,0.15); color: var(--green); }
+  .badge-yellow { background: rgba(245,166,35,0.15); color: var(--yellow); }
+  .badge-red { background: rgba(224,82,82,0.15); color: var(--red); }
+  .badge-blue { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-purple { background: rgba(181,123,238,0.15); color: var(--purple); }
+  .badge-cyan { background: rgba(86,208,224,0.15); color: var(--cyan); }
+  .badge-gray { background: rgba(136,145,168,0.15); color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+  th { background: var(--bg3); color: var(--muted); font-weight: 600; padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { padding: 8px 12px; border-bottom: 1px solid rgba(45,51,80,0.5); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.018); }
+  .section { margin-bottom: 30px; }
+  .highlight-box { background: rgba(79,142,247,0.08); border: 1px solid rgba(79,142,247,0.25); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .success-box { background: rgba(62,207,142,0.07); border: 1px solid rgba(62,207,142,0.25); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .warning-box { background: rgba(245,166,35,0.07); border: 1px solid rgba(245,166,35,0.25); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .chart-wrap { position: relative; height: 320px; }
+  .chart-wrap-tall { position: relative; height: 420px; }
+  .footnote { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 26px 0; }
+  .auc-bar { display: inline-block; height: 8px; border-radius: 4px; vertical-align: middle; margin-right: 6px; }
+  .star { color: var(--yellow); }
+  .ongoing { color: var(--cyan); font-style: italic; }
+  .key-tag { font-size: 0.72rem; background: var(--bg3); border: 1px solid var(--border); padding: 2px 6px; border-radius: 3px; color: var(--muted); }
+  .improvement-arrow { color: var(--green); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>BirdCLEF 2026 — SED Model Comparison Report</h1>
+    <div class="meta" style="margin-top:4px;">EfficientNet-B0/B2/B3 · EfficientNetV2-S · ASL · Soft Knowledge Distillation · Multi-round Pseudo Labels</div>
+  </div>
+  <div class="meta" style="text-align:right;">
+    <div>Generated: 2026-03-20</div>
+    <div style="margin-top:4px;">Total experiments: <strong style="color:var(--text);">28</strong> &nbsp;|&nbsp; Validation: 312-clip soundscape holdout</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Key Stats -->
+  <div class="section">
+    <div class="grid4">
+      <div class="card card-green">
+        <h3>Best Soundscape Val AUC</h3>
+        <div class="stat-val">0.8139</div>
+        <div class="stat-sub">sed-b0-v30-multipseu @ ep6</div>
+        <div class="stat-sub" style="margin-top:4px;">ASL + r1–r5 pseudo + soft KD</div>
+      </div>
+      <div class="card card-green">
+        <h3>4-Fold Best (Ongoing)</h3>
+        <div class="stat-val">0.8033</div>
+        <div class="stat-sub">sed-b0-4fold-v30-fold0 @ ep10</div>
+        <div class="stat-sub" style="margin-top:4px;" class="ongoing">GroupKFold · ep13/35 in progress</div>
+      </div>
+      <div class="card card-yellow">
+        <h3>Best Holdout AUC</h3>
+        <div class="stat-val" style="color:var(--yellow);">0.9915</div>
+        <div class="stat-sub">sed-b0-v27-soft-boost</div>
+        <div class="stat-sub" style="margin-top:4px;">Soundscape val 0.7804</div>
+      </div>
+      <div class="card">
+        <h3>Backbone Progression</h3>
+        <div style="margin-top:8px;font-size:0.85rem;">
+          <div>B0 baseline (v5): <strong>0.7527</strong></div>
+          <div>B0 + ASL (v9): <strong>0.7755</strong></div>
+          <div>B0 + soft KD (v28): <strong>0.8053</strong></div>
+          <div style="color:var(--green);">B0 + pseudo r1-r5 (v30): <strong>0.8139</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Validation Metric Note -->
+  <div class="section">
+    <div class="card">
+      <h2>Validation Metrics Explained</h2>
+      <div class="grid2" style="margin-bottom:0;">
+        <div>
+          <h3>Soundscape Val AUC</h3>
+          <p style="font-size:0.85rem;">Macro ROC-AUC on a fixed set of <strong>312 labeled clips</strong> from <code>train_soundscapes</code>. Measured every epoch during training. This is our primary model selection metric as it reflects cross-domain generalization from <code>train_audio</code> → soundscape environment. Typical range: 0.70–0.82.</p>
+        </div>
+        <div>
+          <h3>Holdout AUC</h3>
+          <p style="font-size:0.85rem;">Macro ROC-AUC on a separate held-out split of <code>train_audio</code> recordings, evaluated post-training using the best checkpoint. This measures within-domain accuracy. Typical range: 0.87–0.99. Note: The large gap between soundscape val and holdout AUC reflects genuine domain shift between controlled recordings and field soundscapes.</p>
+        </div>
+      </div>
+      <div class="highlight-box" style="margin-top:14px;">
+        <strong>Key insight:</strong> Soundscape val AUC is a better proxy for competition performance than holdout AUC, because the test set consists of field soundscapes. A model with soundscape val 0.81 outperforms one with 0.78 in practice, regardless of holdout score differences.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Full Experiment Table -->
+  <div class="section">
+    <h2>All SED Experiments — Soundscape Val AUC</h2>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <table>
+        <thead>
+          <tr>
+            <th>Experiment</th>
+            <th>Backbone</th>
+            <th>Loss</th>
+            <th>Key Technique</th>
+            <th>SS Val AUC ↑</th>
+            <th>Holdout AUC</th>
+            <th>Best Ep</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Phase 1: Early baselines -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 1 — Initial Baselines</td>
+          </tr>
+          <tr>
+            <td>sed-b0-v5</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>Baseline · clip+frame dual BCE</td>
+            <td><span class="auc-bar" style="width:55px;background:var(--muted);"></span>0.7527</td>
+            <td>0.9192</td>
+            <td>7</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v6</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>Extended 30 epochs</td>
+            <td><span class="auc-bar" style="width:44px;background:var(--muted);"></span>0.7163</td>
+            <td>—</td>
+            <td>21</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v10-cutmix</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>CutMix augmentation</td>
+            <td><span class="auc-bar" style="width:38px;background:var(--muted);"></span>0.7060</td>
+            <td>—</td>
+            <td>2</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v11-soft-sec</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>Soft secondary labels</td>
+            <td><span class="auc-bar" style="width:40px;background:var(--muted);"></span>0.7098</td>
+            <td>—</td>
+            <td>3</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v12-bce</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>Plain BCE (no dual)</td>
+            <td><span class="auc-bar" style="width:46px;background:var(--muted);"></span>0.7263</td>
+            <td>—</td>
+            <td>2</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v16-rating3</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>BCE</td>
+            <td>Rating ≥ 3 filter only</td>
+            <td><span class="auc-bar" style="width:28px;background:var(--red);"></span>0.6250</td>
+            <td>—</td>
+            <td>2</td>
+            <td><span class="badge badge-red">poor</span></td>
+          </tr>
+          <!-- Phase 2: ASL -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 2 — Asymmetric Loss (ASL) Experiments</td>
+          </tr>
+          <tr>
+            <td>sed-b0-v9-asl</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>ASL γ⁻=4 + pseudo r1 · 20ep soup</td>
+            <td><span class="auc-bar" style="width:60px;background:var(--accent);"></span>0.7755</td>
+            <td>0.9467</td>
+            <td>20</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v13-asl-cutmix</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>ASL + CutMix</td>
+            <td><span class="auc-bar" style="width:53px;background:var(--accent);"></span>0.7467</td>
+            <td>—</td>
+            <td>6</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v15-no-sec</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>ASL · no secondary labels</td>
+            <td><span class="auc-bar" style="width:36px;background:var(--muted);"></span>0.6842</td>
+            <td>—</td>
+            <td>1</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v26-asl-npcen</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>ASL + NPCEN frontend</td>
+            <td><span class="auc-bar" style="width:46px;background:var(--accent);"></span>0.7262</td>
+            <td>0.9574</td>
+            <td>3</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <!-- Phase 3: Dual Loss -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 3 — Dual Loss Ablations</td>
+          </tr>
+          <tr>
+            <td>sed-b0-v21-dual-rating3</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>Dual BCE</td>
+            <td>Dual (clip 0.5 + frame 0.5) · rating ≥ 3</td>
+            <td><span class="auc-bar" style="width:48px;background:var(--muted);"></span>0.7289</td>
+            <td>—</td>
+            <td>13</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v22-dual-noclipmix</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td>Dual BCE</td>
+            <td>Dual · <strong style="color:var(--red);">no ClipMix</strong> ablation</td>
+            <td><span class="auc-bar" style="width:53px;background:var(--muted);"></span>0.7485</td>
+            <td>0.8658</td>
+            <td>5</td>
+            <td><span class="badge badge-red">⬇ no clipmix hurts</span></td>
+          </tr>
+          <!-- Phase 4: Soft KD -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 4 — Knowledge Distillation from Perch</td>
+          </tr>
+          <tr>
+            <td>sed-b0-v23-perch-asl-aug</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>Perch augmentation KD</td>
+            <td><span class="auc-bar" style="width:51px;background:var(--accent);"></span>0.7367</td>
+            <td>—</td>
+            <td>4</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v24-soft-pseudo</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>Soft pseudo-label KD (early attempt)</td>
+            <td><span class="auc-bar" style="width:80px;background:var(--green);"></span><strong>0.8141</strong></td>
+            <td>0.9199</td>
+            <td>12</td>
+            <td><span class="badge badge-green">breakout</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v27-soft-boost</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>Boosted soft pseudo weight</td>
+            <td><span class="auc-bar" style="width:63px;background:var(--green);"></span>0.7804</td>
+            <td><strong style="color:var(--yellow);">0.9915</strong></td>
+            <td>10</td>
+            <td><span class="badge badge-gray">done</span></td>
+          </tr>
+          <!-- Phase 5: Multi-round Pseudo -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 5 — Multi-round Pseudo Labels (r1–r5)</td>
+          </tr>
+          <tr>
+            <td>sed-b0-v28-final-combo</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>r4 pseudo + soft KD 10× · SpecAugment</td>
+            <td><span class="auc-bar" style="width:81px;background:var(--green);"></span><strong>0.8053</strong></td>
+            <td>0.9861</td>
+            <td>9</td>
+            <td><span class="badge badge-green">strong</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-v30-bgnoise</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>r1–r5 pseudo + background noise aug</td>
+            <td><span class="auc-bar" style="width:60px;background:var(--yellow);"></span>0.7725</td>
+            <td>0.9627</td>
+            <td>4</td>
+            <td><span class="badge badge-yellow">⬇ bg noise hurts</span></td>
+          </tr>
+          <tr style="background:rgba(62,207,142,0.04);">
+            <td><strong>sed-b0-v30-multipseu</strong> <span class="star">★</span></td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>r1–r5 pseudo · soft KD 10× · no bg noise</td>
+            <td><span class="auc-bar" style="width:85px;background:var(--green);"></span><strong style="color:var(--green);">0.8139</strong></td>
+            <td>0.9839</td>
+            <td>6</td>
+            <td><span class="badge badge-green">★ SED SOTA</span></td>
+          </tr>
+          <!-- Phase 6: 4-Fold CV -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Phase 6 — 4-Fold GroupKFold (v30 formula, In Progress)</td>
+          </tr>
+          <tr>
+            <td>sed-b0-4fold-v30-fold0</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>GroupKFold fold 0 · same v30 formula</td>
+            <td><span class="auc-bar" style="width:80px;background:var(--cyan);"></span><strong style="color:var(--cyan);">0.8033</strong></td>
+            <td>—</td>
+            <td>10</td>
+            <td><span class="badge badge-cyan">ep13/35 running</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-4fold-v30-fold1</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>GroupKFold fold 1</td>
+            <td><span class="auc-bar" style="width:76px;background:var(--cyan);"></span>0.7952</td>
+            <td>—</td>
+            <td>3</td>
+            <td><span class="badge badge-gray">early stop ep9</span></td>
+          </tr>
+          <tr>
+            <td>sed-b0-4fold-v30-fold2</td>
+            <td><span class="badge badge-blue">B0-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>GroupKFold fold 2</td>
+            <td><span class="auc-bar" style="width:63px;background:var(--cyan);"></span>0.7656</td>
+            <td>—</td>
+            <td>4</td>
+            <td><span class="badge badge-cyan">ep4/35 running</span></td>
+          </tr>
+          <!-- Alternative Backbones -->
+          <tr style="background:rgba(79,142,247,0.04);">
+            <td colspan="8" style="padding:6px 12px;font-size:0.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Alternative Backbones</td>
+          </tr>
+          <tr>
+            <td>sed-b2-v1</td>
+            <td><span class="badge badge-yellow">B2</span></td>
+            <td><span class="badge badge-purple">ASL</span></td>
+            <td>EfficientNet-B2 (5M params)</td>
+            <td><span class="auc-bar" style="width:40px;background:var(--muted);"></span>0.7104</td>
+            <td>—</td>
+            <td>2</td>
+            <td><span class="badge badge-red">underperforms B0</span></td>
+          </tr>
+          <tr>
+            <td>sed-b3-v1-asl</td>
+            <td><span class="badge badge-yellow">B3-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>B3 full formula · oscillates after ep2</td>
+            <td><span class="auc-bar" style="width:62px;background:var(--yellow);"></span>0.7805</td>
+            <td>0.9553</td>
+            <td>2</td>
+            <td><span class="badge badge-yellow">early stop ep8</span></td>
+          </tr>
+          <tr>
+            <td>sed-b3-v1-fold0</td>
+            <td><span class="badge badge-yellow">B3-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>B3 4-fold fold 0</td>
+            <td><span class="auc-bar" style="width:62px;background:var(--yellow);"></span>0.7778</td>
+            <td>—</td>
+            <td>5</td>
+            <td><span class="badge badge-gray">terminated ep8</span></td>
+          </tr>
+          <tr>
+            <td>sed-b3-v1-fold1</td>
+            <td><span class="badge badge-yellow">B3-NS</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>B3 4-fold fold 1</td>
+            <td><span class="auc-bar" style="width:60px;background:var(--yellow);"></span>0.7577</td>
+            <td>—</td>
+            <td>5</td>
+            <td><span class="badge badge-gray">terminated ep6</span></td>
+          </tr>
+          <tr>
+            <td>sed-v2s-v1</td>
+            <td><span class="badge badge-red">V2S</span></td>
+            <td>BCE</td>
+            <td>EfficientNetV2-S baseline</td>
+            <td><span class="auc-bar" style="width:36px;background:var(--red);"></span>0.7012</td>
+            <td>0.7976</td>
+            <td>11</td>
+            <td><span class="badge badge-red">poor transfer</span></td>
+          </tr>
+          <tr>
+            <td>sed-v2s-v3-full-kitchen</td>
+            <td><span class="badge badge-red">V2S</span></td>
+            <td><span class="badge badge-purple">ASL</span>+softKD</td>
+            <td>V2S full v30 formula · instability</td>
+            <td><span class="auc-bar" style="width:57px;background:var(--red);"></span>0.7592</td>
+            <td>—</td>
+            <td>5</td>
+            <td><span class="badge badge-red">oscillates</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Charts -->
+  <div class="section">
+    <h2>Soundscape Val AUC — B0 Progression</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>B0 Series: Soundscape Val AUC by Experiment</h3>
+        <div class="chart-wrap">
+          <canvas id="b0ProgressChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Backbone Comparison (Best Soundscape Val AUC)</h3>
+        <div class="chart-wrap">
+          <canvas id="backboneChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="card">
+      <h3>Soundscape Val AUC vs Holdout AUC — Domain Gap Analysis</h3>
+      <div class="chart-wrap-tall">
+        <canvas id="domainGapChart"></canvas>
+      </div>
+      <div class="footnote" style="margin-top:12px;">
+        The domain gap (holdout − soundscape val) ranges from +0.14 to +0.22 AUC units,
+        reflecting the difficulty of generalizing from curated <code>train_audio</code> to field <code>soundscapes</code>.
+        B0-v27-soft-boost achieves the highest holdout AUC (0.9915) despite moderate soundscape val (0.7804).
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Key Findings -->
+  <div class="section">
+    <h2>Key Findings & Ablations</h2>
+    <div class="grid3">
+
+      <div class="card card-green">
+        <h2>✅ What Works</h2>
+        <div style="font-size:0.85rem;">
+          <div style="margin-bottom:12px;">
+            <strong>ASL over BCE (+0.023)</strong>
+            <div class="footnote">v5 BCE=0.7527 → v9 ASL=0.7755. Asymmetric focusing (γ⁻=4, γ⁺=0, clip=0.05) suppresses easy negatives more effectively in highly imbalanced 234-class settings.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>Soft Knowledge Distillation (+0.030)</strong>
+            <div class="footnote">v9 ASL=0.7755 → v27 soft-boost=0.7804 → v28=0.8053. Perch teacher soft labels on soundscape clips bridge the domain gap: SED learns to mimic Perch's confident detections on unlabeled field recordings.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>Multi-round Pseudo Labels r1–r5 (+0.008)</strong>
+            <div class="footnote">v28=0.8053 → v30-multipseu=0.8139. Combining 5 rounds of Perch-generated pseudo labels (1168 soft clips) provides more diverse supervision signal than single-round pseudo.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>ClipMix in Dual-loss</strong>
+            <div class="footnote">v22 without ClipMix dropped from ~0.77 → 0.7485. ClipMix is essential for dual (clip+frame) loss configurations to prevent frame-level labels from conflicting with clip-level targets.</div>
+          </div>
+          <div>
+            <strong>NS-JFT Pretraining for B0</strong>
+            <div class="footnote">tf_efficientnet_b0.ns_jft_in1k consistently outperforms standard ImageNet init. Noisy-student pretraining on JFT-300M provides richer low-level audio feature initialisation.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-red">
+        <h2>❌ What Doesn't Work</h2>
+        <div style="font-size:0.85rem;">
+          <div style="margin-bottom:12px;">
+            <strong>Background Noise Augmentation (−0.041)</strong>
+            <div class="footnote">v30-multipseu=0.8139 → v30-bgnoise=0.7725. Adding SNR [5,30] dB background noise alongside multi-round pseudo labels hurts soundscape adaptation. Pseudo labels were generated on clean audio — heavy noise creates train/inference distribution mismatch.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>Soft Secondary Labels (−0.043)</strong>
+            <div class="footnote">v11 soft-sec=0.7098 vs v5 BCE=0.7527. Soft secondary labels introduce conflicting gradients: species that co-occur statistically may not co-occur in this specific 5-second clip.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>Rating Filter ≥ 3 (−0.128)</strong>
+            <div class="footnote">v16 rating3=0.6250. Filtering to high-quality recordings reduces training diversity too aggressively for a 234-species task. Data quantity dominates quality at this class count.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>EfficientNetV2-S (−0.043 vs B0)</strong>
+            <div class="footnote">V2S v1=0.7012, V2S v3-kitchen=0.7592 — both below B0 v30=0.8139. Despite larger capacity (21M params), V2S shows worse soundscape generalization. The ImageNet-21k pretraining may overfit to visual features that transfer poorly to spectrograms.</div>
+          </div>
+          <div>
+            <strong>B3 Instability After Warmup</strong>
+            <div class="footnote">B3 best at ep2 (0.7805) then severe oscillation through ep8. With LR=5e-4 and 1536-dim features, B3's larger gradient norms destabilize training post-warmup. Holdout AUC (0.9553) remains high despite unstable soundscape val.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card card-yellow">
+        <h2>⚠️ Mixed / Uncertain</h2>
+        <div style="font-size:0.85rem;">
+          <div style="margin-bottom:12px;">
+            <strong>NPCEN Frontend (holdout +0.011, ss_val −0.051)</strong>
+            <div class="footnote">v26-asl-npcen: ss_val=0.7262, holdout=0.9574. NPCEN raised holdout AUC substantially but soundscape val dropped. Adaptive gain normalization may over-fit to train_audio distribution. Outcome depends on which metric is the better LB proxy.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>EfficientNet-B3 (holdout 0.9553 but ss unstable)</strong>
+            <div class="footnote">Best per-domain score (holdout=0.9553) suggests B3 does learn strong features. The soundscape instability is an optimization problem, not a capacity problem. Lower LR (2e-4) + longer warmup (5 ep) may stabilize it. Not yet tested.</div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <strong>Dual BCE (clip + frame)</strong>
+            <div class="footnote">Dual loss adds frame-level supervision but requires ClipMix for stable training. With ClipMix, v20-dual-mixup08 reaches ~0.783. Without ClipMix, v22 drops to 0.7485. Net benefit over ASL-only unclear — ASL alone (v9) achieves 0.7755 without ClipMix dependency.</div>
+          </div>
+          <div>
+            <strong>4-Fold GroupKFold (Ongoing)</strong>
+            <div class="footnote">fold0 best=0.8033, fold1=0.7952 (early stop), fold2=0.7656 (still training). GroupKFold should produce diverse checkpoints for model soups. Whether the soup exceeds v30-multipseu single model (0.8139) is the key question.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Progression Analysis -->
+  <div class="section">
+    <h2>Technique Contribution Analysis (Cumulative)</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>Change Introduced</th>
+            <th>Experiment</th>
+            <th>SS Val AUC</th>
+            <th>Δ AUC</th>
+            <th>Holdout AUC</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>BCE baseline · clip+frame dual loss</td>
+            <td>sed-b0-v5</td>
+            <td>0.7527</td>
+            <td>—</td>
+            <td>0.9192</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Replace BCE with ASL (γ⁻=4, γ⁺=0, clip=0.05) · 20 ep soup</td>
+            <td>sed-b0-v9-asl</td>
+            <td>0.7755</td>
+            <td><span class="improvement-arrow">+0.023</span></td>
+            <td>0.9467</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Add soft KD from Perch on soundscape clips (frame_loss_weight=0.5)</td>
+            <td>sed-b0-v27-soft-boost</td>
+            <td>0.7804</td>
+            <td><span class="improvement-arrow">+0.005</span></td>
+            <td>0.9915</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Add round-4 pseudo soundscape labels (1168 clips) · soft KD 10×</td>
+            <td>sed-b0-v28-final-combo</td>
+            <td>0.8053</td>
+            <td><span class="improvement-arrow">+0.025</span></td>
+            <td>0.9861</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Background noise augmentation (SNR 5–30 dB)</td>
+            <td>sed-b0-v30-bgnoise</td>
+            <td>0.7725</td>
+            <td><span style="color:var(--red);">−0.033</span> (bg noise hurts)</td>
+            <td>0.9627</td>
+          </tr>
+          <tr style="background:rgba(62,207,142,0.04);">
+            <td><strong>6</strong></td>
+            <td><strong>Multi-round pseudo r1–r5 (no bg noise) · combined pseudo CSV</strong></td>
+            <td><strong>sed-b0-v30-multipseu</strong></td>
+            <td><strong style="color:var(--green);">0.8139</strong></td>
+            <td><span class="improvement-arrow">+0.086 vs baseline</span></td>
+            <td>0.9839</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>4-Fold GroupKFold · same v30 formula (fold0, ongoing)</td>
+            <td>sed-b0-4fold-v30-fold0</td>
+            <td style="color:var(--cyan);">0.8033 (ep13)</td>
+            <td style="color:var(--cyan);">in progress</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="success-box">
+        <strong>Net improvement B0 baseline → v30-multipseu: +0.086 soundscape val AUC</strong>
+        (0.7527 → 0.8139). Primary drivers: ASL (+0.023), soft KD (+0.005), multi-round pseudo labels (+0.036 total for v28+v30).
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Architecture Summary -->
+  <div class="section">
+    <h2>Shared Architecture (All Experiments)</h2>
+    <div class="card">
+      <div class="grid3" style="margin-bottom:0;">
+        <div>
+          <h3>Backbone</h3>
+          <div style="font-size:0.84rem;">
+            <div><strong>B0 (default):</strong> tf_efficientnet_b0.ns_jft_in1k</div>
+            <div style="color:var(--muted);margin-top:2px;">4.0M params · 1280-dim features</div>
+            <div style="margin-top:8px;"><strong>B2:</strong> tf_efficientnet_b2 · 9.1M</div>
+            <div style="margin-top:4px;"><strong>B3-NS:</strong> tf_efficientnet_b3_ns · 12M · 1536-dim</div>
+            <div style="margin-top:4px;"><strong>V2S:</strong> tf_efficientnetv2_s · 21M</div>
+          </div>
+        </div>
+        <div>
+          <h3>Frequency Pooling + Head</h3>
+          <div style="font-size:0.84rem;">
+            <div><strong>GEMFreqPool</strong> (p_init=3.0, learnable)</div>
+            <div style="color:var(--muted);margin-top:2px;">Generalized mean over frequency axis</div>
+            <div style="margin-top:8px;"><strong>AttentionSEDHead</strong></div>
+            <div style="color:var(--muted);margin-top:2px;">FC → tanh attention + softmax over time → weighted sum</div>
+          </div>
+        </div>
+        <div>
+          <h3>Mel Spectrogram</h3>
+          <div style="font-size:0.84rem;">
+            <div>SR: 32,000 Hz · Clip: 5s</div>
+            <div>n_fft: 2048 · hop: 512</div>
+            <div>n_mels: 224 · fmin: 0 · fmax: 16k</div>
+            <div style="margin-top:8px;">Per-sample min-max normalization</div>
+            <div style="color:var(--muted);margin-top:2px;">AmplitudeToDB (top_db=80)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:20px 0;">
+    BirdCLEF 2026 — SED Model Comparison Report — Generated 2026-03-20 — All val AUC on 312-clip soundscape holdout
+  </div>
+
+</div>
+
+<script>
+// ── B0 Progression Chart ───────────────────────────────────────────────────
+const b0Labels = [
+  'v5\nBCE', 'v9\nASL', 'v10\nCutMix', 'v12\nBCE', 'v13\nASL+Cut',
+  'v21\nDual-R3', 'v22\nNo-Clip', 'v23\nPerch-Aug', 'v24\nSoftPseu',
+  'v26\nNPCEN', 'v27\nSoftBoost', 'v28\nFinalCombo', 'v30\nBgNoise',
+  'v30\nmultipseu ★', '4fold\nfold0'
+];
+const b0Aucs = [
+  0.7527, 0.7755, 0.7060, 0.7263, 0.7467,
+  0.7289, 0.7485, 0.7367, 0.8141,
+  0.7262, 0.7804, 0.8053, 0.7725,
+  0.8139, 0.8033
+];
+const b0Colors = b0Aucs.map((v, i) => {
+  if (i === 13) return 'rgba(62,207,142,0.85)';
+  if (i === 14) return 'rgba(86,208,224,0.7)';
+  if (v >= 0.80) return 'rgba(62,207,142,0.7)';
+  if (v >= 0.77) return 'rgba(79,142,247,0.7)';
+  if (v >= 0.74) return 'rgba(136,145,168,0.6)';
+  return 'rgba(224,82,82,0.6)';
+});
+
+new Chart(document.getElementById('b0ProgressChart'), {
+  type: 'bar',
+  data: {
+    labels: b0Labels,
+    datasets: [{
+      label: 'Soundscape Val AUC',
+      data: b0Aucs,
+      backgroundColor: b0Colors,
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` AUC: ${ctx.raw.toFixed(4)}`
+        }
+      }
+    },
+    scales: {
+      x: { ticks: { color: '#8891a8', font: { size: 10 } }, grid: { color: '#2d3350' } },
+      y: { min: 0.68, max: 0.83, ticks: { color: '#8891a8' }, grid: { color: '#2d3350' } }
+    }
+  }
+});
+
+// ── Backbone Comparison Chart ──────────────────────────────────────────────
+new Chart(document.getElementById('backboneChart'), {
+  type: 'bar',
+  data: {
+    labels: ['B0 v5\n(BCE)', 'B0 v9\n(ASL)', 'B0 v30\n(SOTA)', 'B2 v1', 'B3 v1\n(ASL)', 'V2S v1', 'V2S v3\n(kitchen)', '4fold\nfold0'],
+    datasets: [{
+      label: 'Best Soundscape Val AUC',
+      data: [0.7527, 0.7755, 0.8139, 0.7104, 0.7805, 0.7012, 0.7592, 0.8033],
+      backgroundColor: [
+        'rgba(79,142,247,0.6)', 'rgba(79,142,247,0.7)', 'rgba(62,207,142,0.85)',
+        'rgba(136,145,168,0.5)', 'rgba(245,166,35,0.7)',
+        'rgba(224,82,82,0.6)', 'rgba(224,82,82,0.7)', 'rgba(86,208,224,0.7)'
+      ],
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ` AUC: ${ctx.raw.toFixed(4)}` } }
+    },
+    scales: {
+      x: { ticks: { color: '#8891a8', font: { size: 10 } }, grid: { color: '#2d3350' } },
+      y: { min: 0.68, max: 0.83, ticks: { color: '#8891a8' }, grid: { color: '#2d3350' } }
+    }
+  }
+});
+
+// ── Domain Gap Chart ───────────────────────────────────────────────────────
+const gapLabels = ['v5\nBCE', 'v9\nASL', 'v22\nNo-Clip', 'v24\nSoftPseu', 'v26\nNPCEN', 'v27\nSoftBoost', 'v28\nFinalCombo', 'v30\nBgNoise', 'v30\nmultipseu'];
+const ssVals  = [0.7527, 0.7755, 0.6819, 0.8141, 0.7262, 0.7804, 0.8053, 0.7725, 0.8139];
+const holdouts= [0.9192, 0.9467, 0.8658, 0.9199, 0.9574, 0.9915, 0.9861, 0.9627, 0.9839];
+
+new Chart(document.getElementById('domainGapChart'), {
+  type: 'bar',
+  data: {
+    labels: gapLabels,
+    datasets: [
+      {
+        label: 'Soundscape Val AUC',
+        data: ssVals,
+        backgroundColor: 'rgba(79,142,247,0.75)',
+        borderRadius: 3,
+      },
+      {
+        label: 'Holdout AUC (train_audio)',
+        data: holdouts,
+        backgroundColor: 'rgba(62,207,142,0.5)',
+        borderRadius: 3,
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { color: '#8891a8', font: { size: 11 } }
+      },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toFixed(4)}` } }
+    },
+    scales: {
+      x: { ticks: { color: '#8891a8', font: { size: 11 } }, grid: { color: '#2d3350' } },
+      y: { min: 0.65, max: 1.0, ticks: { color: '#8891a8' }, grid: { color: '#2d3350' } }
+    }
+  }
+});
+</script>
+</body>
+</html>

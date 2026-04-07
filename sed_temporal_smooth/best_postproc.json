@@ -1,0 +1,8 @@
+{
+  "best_method": "R50.lmax_pre_aves(\u03b1=0.1)\u2192SoftRich\u2192cSEBBs",
+  "best_auc": 0.8162951703520651,
+  "gaussian_auc": 0.774867085642855,
+  "delta_vs_gaussian": 0.04142808470921011,
+  "timestamp": "2026-03-22 08:33",
+  "results_source": "outputs/smooth_experiments_results.json"
+}

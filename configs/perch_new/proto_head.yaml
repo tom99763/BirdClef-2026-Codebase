@@ -1,0 +1,38 @@
+# Experiment A: ProtoHead — 替換 MLP 線性頭為可學習原型 + cosine similarity
+# 參考: Bird-MAE paper (+37pp over linear probe on frozen Perch)
+# arXiv: 2504.12880
+
+exp_type: proto_head
+
+# Model
+emb_dim: 1536
+proj_dim: 512
+num_classes: 234
+n_blocks: 2
+dropout: 0.10
+temperature: 0.05
+
+# Training
+lr: 3e-4
+weight_decay: 1e-3
+n_epochs: 80
+batch_size: 256
+patience: 15
+focal_gamma: 2.0
+
+# Val
+val_per_missing_class: 3
+
+# Paths (輸出到 perch_new 資料夾)
+output_name: proto_head_r0.pt
+output_dir: weights/perch_new
+log_dir: outputs/perch_new/logs
+labeled_ss_npz: outputs/perch_labeled_ss.npz
+unlabeled_ss_npz: outputs/perch_emb_all_ss.npz
+train_audio_manifest: outputs/embeddings_cache_nohuman/manifest.csv
+train_audio_emb_dir: outputs/embeddings_cache_nohuman/train
+taxonomy_csv: birdclef-2026/taxonomy.csv
+
+# 不需要 ProtoCLR / FixMatch
+protocl_weight: 0.0
+fixmatch_weight: 0.0

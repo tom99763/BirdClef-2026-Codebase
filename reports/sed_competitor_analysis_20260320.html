@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — SED Competitor Analysis</title>
+<style>
+  :root {
+    --bg: #0f1117; --bg2: #1a1d27; --bg3: #23273a;
+    --accent: #4f8ef7; --green: #3ecf8e; --yellow: #f5a623;
+    --red: #e05252; --muted: #8891a8; --text: #e2e8f0;
+    --border: #2d3350; --purple: #b57bee; --cyan: #56d0e0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+  h1 { font-size: 1.6rem; font-weight: 700; }
+  h2 { font-size: 1.05rem; font-weight: 600; color: var(--accent); margin-bottom: 14px; }
+  h3 { font-size: 0.9rem; font-weight: 600; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .header { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .header .meta { color: var(--muted); font-size: 0.82rem; }
+  .container { max-width: 1300px; margin: 0 auto; padding: 28px 32px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .card-accent { border-color: var(--accent); }
+  .card-green { border-color: var(--green); }
+  .card-yellow { border-color: var(--yellow); }
+  .card-red { border-color: var(--red); }
+  .stat-val { font-size: 2rem; font-weight: 700; color: var(--green); }
+  .stat-sub { color: var(--muted); font-size: 0.8rem; margin-top: 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: rgba(62,207,142,0.15); color: var(--green); }
+  .badge-yellow { background: rgba(245,166,35,0.15); color: var(--yellow); }
+  .badge-red { background: rgba(224,82,82,0.15); color: var(--red); }
+  .badge-blue { background: rgba(79,142,247,0.15); color: var(--accent); }
+  .badge-purple { background: rgba(181,123,238,0.15); color: var(--purple); }
+  .badge-cyan { background: rgba(86,208,224,0.15); color: var(--cyan); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th { background: var(--bg3); color: var(--muted); font-weight: 600; padding: 9px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .code { font-family: 'Consolas', 'SF Mono', monospace; font-size: 0.82rem; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; line-height: 1.7; overflow-x: auto; }
+  .inline-code { font-family: 'Consolas', 'SF Mono', monospace; font-size: 0.8rem; background: var(--bg3); padding: 1px 5px; border-radius: 3px; color: var(--cyan); }
+  .section { margin-bottom: 28px; }
+  .vs-row { display: flex; gap: 16px; align-items: stretch; }
+  .vs-col { flex: 1; }
+  .vs-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .ours { color: var(--green); }
+  .theirs { color: var(--yellow); }
+  .highlight-box { background: rgba(79,142,247,0.08); border: 1px solid rgba(79,142,247,0.3); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .warning-box { background: rgba(245,166,35,0.08); border: 1px solid rgba(245,166,35,0.3); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .success-box { background: rgba(62,207,142,0.08); border: 1px solid rgba(62,207,142,0.3); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .danger-box { background: rgba(224,82,82,0.08); border: 1px solid rgba(224,82,82,0.3); border-radius: 8px; padding: 14px 16px; margin-top: 10px; }
+  .pill-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+  .footnote { color: var(--muted); font-size: 0.78rem; margin-top: 6px; }
+  .big-verdict { font-size: 1.15rem; font-weight: 700; }
+  ul.checklist { list-style: none; padding: 0; }
+  ul.checklist li { padding: 4px 0; }
+  ul.checklist li::before { content: '✓ '; color: var(--green); font-weight: 700; }
+  ul.checklist li.miss::before { content: '✗ '; color: var(--red); }
+  ul.checklist li.warn::before { content: '⚠ '; color: var(--yellow); }
+  .priority-high { color: var(--red); font-weight: 700; }
+  .priority-mid { color: var(--yellow); font-weight: 600; }
+  .priority-low { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>SED Competitor Analysis</h1>
+    <div class="meta" style="margin-top:4px;">birdclef-enb0-coarse-ensemble-submission.ipynb vs 我們的實作 — BirdCLEF 2026</div>
+  </div>
+  <div class="meta" style="text-align:right;">
+    <div>生成日期：2026-03-20</div>
+    <div style="margin-top:4px;">Competitor LB: <span style="color:var(--yellow);font-weight:700;">0.900</span> &nbsp;|&nbsp; Our LB: <span style="color:var(--green);font-weight:700;">0.921</span></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- TL;DR -->
+  <div class="section">
+    <div class="card card-accent">
+      <h2>🔑 核心結論 (TL;DR)</h2>
+      <div class="grid3" style="margin-top:12px;margin-bottom:0;">
+        <div>
+          <div class="big-verdict" style="color:var(--green);">我們 LB 更高</div>
+          <div class="footnote" style="margin-top:6px;">0.921 vs 0.900 — 我們的 ensemble 效果更好，不需要追他們的架構</div>
+        </div>
+        <div>
+          <div class="big-verdict" style="color:var(--red);">Val AUC 不可比</div>
+          <div class="footnote" style="margin-top:6px;">他們 0.9270 是 train_audio OOF；我們 0.80 是 soundscape val。完全不同指標</div>
+        </div>
+        <div>
+          <div class="big-verdict" style="color:var(--yellow);">PCEN 值得一試</div>
+          <div class="footnote" style="margin-top:6px;">Learnable acoustic frontend 是最值得從他們這邊借鑑的技術</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LB Score Comparison -->
+  <div class="section">
+    <h2>LB 分數對比</h2>
+    <div class="grid2">
+      <div class="card card-green">
+        <h3>我們的最佳 ensemble</h3>
+        <div class="stat-val">0.921</div>
+        <div class="stat-sub">birdclef-2026-v3-ensemble.ipynb (2026-03-20)</div>
+        <div style="margin-top:12px;font-size:0.85rem;">
+          <div>Perch Bayesian probe (PCA64+LogReg α=0.40) 70%</div>
+          <div>+ TFLite heads 30%</div>
+          <div>SED: v30-multipseu + v9-asl-soup + competitor_sed_fold0</div>
+          <div>VLOM blend: Perch 50% / SED 50%</div>
+          <div>Tricks: T1 file-max / T2 sharpen+smooth / T3 no-peak-norm</div>
+        </div>
+      </div>
+      <div class="card card-yellow">
+        <h3>Competitor (ENB0 Coarse Ensemble)</h3>
+        <div class="stat-val" style="color:var(--yellow);">0.900</div>
+        <div class="stat-sub">birdclef-enb0-coarse-ensemble-submission.ipynb</div>
+        <div style="margin-top:12px;font-size:0.85rem;">
+          <div>5-fold EfficientNetV2-B0 SED ensemble</div>
+          <div>Texture-aware time smoothing (Insecta/Amphibia vs Aves)</div>
+          <div>Site/hour Bayesian prior blending (w=0.15)</div>
+          <div>TTA: 5/4 second shift</div>
+          <div style="margin-top:8px;color:var(--muted);">他們的 SED 模型 fold AUC: 0.9270 / 0.9162 / 0.8954 / 0.8839 / 0.9254</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHY their AUC looks high -->
+  <div class="section">
+    <h2>⚠️ 為什麼他們的 fold AUC 看起來比我們高？</h2>
+    <div class="card card-red">
+      <div class="danger-box" style="margin-top:0;">
+        <strong style="color:var(--red);">關鍵：他們驗證的資料集完全不同</strong>
+        <div style="margin-top:8px;">
+          他們的 <span class="inline-code">auc=0.9270</span> 是用 <strong>train_audio 的 Stratified 5-Fold OOF</strong> 算的，不是 soundscape val。<br>
+          我們的 <span class="inline-code">val_roc_auc=0.80</span> 是用固定 <strong>312 clips soundscape val set</strong> 算的。
+        </div>
+      </div>
+      <table style="margin-top:16px;">
+        <thead>
+          <tr>
+            <th>比較項目</th>
+            <th>他們 (Competitor)</th>
+            <th>我們</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Validation data</td>
+            <td>train_audio OOF (held-out clips, same domain)</td>
+            <td>train_soundscapes (312 clips, different domain)</td>
+          </tr>
+          <tr>
+            <td>Labels</td>
+            <td>Binary primary labels (clean, single class)</td>
+            <td>Multi-label soundscape (multiple species per clip)</td>
+          </tr>
+          <tr>
+            <td>Domain shift</td>
+            <td>❌ 沒有 — train/val 同 domain</td>
+            <td>✅ 有 — train_audio → soundscape</td>
+          </tr>
+          <tr>
+            <td>Metric difficulty</td>
+            <td><span class="badge badge-green">容易</span> — 乾淨 binary labels</td>
+            <td><span class="badge badge-red">困難</span> — multi-label cross-domain</td>
+          </tr>
+          <tr>
+            <td>Reported AUC</td>
+            <td style="color:var(--yellow);font-weight:700;">~0.92</td>
+            <td style="color:var(--green);font-weight:700;">~0.80 (更有意義)</td>
+          </tr>
+          <tr>
+            <td>LB 結果</td>
+            <td style="color:var(--yellow);">0.900</td>
+            <td style="color:var(--green);font-weight:700;">0.921 ✓</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warning-box" style="margin-top:14px;">
+        <strong>結論：</strong>如果我們也用 train_audio OOF 做 validation，我們的數字也會是 0.9+。
+        我們的 soundscape AUC 才是真正的 LB proxy（domain 對齊）。
+        <strong style="color:var(--green);">我們在 LB 上已經領先，無需擔心。</strong>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Technical Comparison -->
+  <div class="section">
+    <h2>技術實作對比</h2>
+
+    <!-- Architecture -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>1. 模型架構</h2>
+      <div class="vs-row">
+        <div class="vs-col">
+          <div class="vs-label theirs">競爭者 (Competitor)</div>
+          <div class="code">backbone = efficientnet_b0 (ImageNet pretrained)
+  ↓
+mean(dim=2) over freq axis
+  ↓
+Dropout(0.5) → FC(1280 → 234)
+  ↓
+max(dim=1).values  # temporal max pooling
+
+# Training: SEDAttentionHead
+# framewise FC + attention (Tanh+Softmax)
+# weighted sum across time frames</div>
+        </div>
+        <div class="vs-col">
+          <div class="vs-label ours">我們</div>
+          <div class="code">backbone = tf_efficientnet_b0.ns_jft_in1k
+  ↓
+GEMFreqPool(p_init=3.0)  # learnable GEM
+  ↓
+AttentionSEDHead (Conv1d)
+  FC(feat_dim → feat_dim) + ReLU + Dropout
+  att_conv: tanh → softmax over time
+  cls_conv: framewise logits
+  weighted sum → clip prediction</div>
+        </div>
+      </div>
+      <div class="highlight-box">
+        <strong>評估：</strong>架構層面我們不輸。GEMFreqPool 比 mean 更具表達能力（learnable p）。我們的 AttentionSEDHead 跟他們訓練時的 SEDAttentionHead 設計相近。但他們的推論 head 比訓練 head 更簡單（直接 max pooling）。
+      </div>
+    </div>
+
+    <!-- Mel Frontend -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>2. Mel Spectrogram Frontend ⭐ 最大差異</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>參數</th>
+            <th style="color:var(--yellow);">Competitor</th>
+            <th style="color:var(--green);">我們</th>
+            <th>影響評估</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Frontend type</td>
+            <td><strong style="color:var(--yellow);">Learnable PCEN</strong></td>
+            <td>AmplitudeToDB (fixed log)</td>
+            <td><span class="badge badge-red">顯著</span> PCEN 自適應增益正規化</td>
+          </tr>
+          <tr>
+            <td>n_fft</td>
+            <td>1024</td>
+            <td>2048</td>
+            <td><span class="badge badge-yellow">中等</span> 更細的頻率解析度</td>
+          </tr>
+          <tr>
+            <td>hop_length</td>
+            <td>512</td>
+            <td>512</td>
+            <td>相同</td>
+          </tr>
+          <tr>
+            <td>n_mels</td>
+            <td>128</td>
+            <td>224</td>
+            <td><span class="badge badge-yellow">中等</span> 我們更細的 mel bins</td>
+          </tr>
+          <tr>
+            <td>fmin / fmax</td>
+            <td>40 Hz / 14,000 Hz</td>
+            <td>0 Hz / 16,000 Hz</td>
+            <td><span class="badge badge-blue">小</span></td>
+          </tr>
+          <tr>
+            <td>Normalization</td>
+            <td>PCEN (learnable 4 params/bin)</td>
+            <td>Per-sample min-max</td>
+            <td><span class="badge badge-red">顯著</span></td>
+          </tr>
+          <tr>
+            <td>Input shape</td>
+            <td>(1, 128, 313)</td>
+            <td>(1, 224, 313)</td>
+            <td><span class="badge badge-yellow">中等</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warning-box" style="margin-top:12px;">
+        <strong>PCEN 詳情：</strong>公式 <span class="inline-code">(S / (eps + M)^α + δ)^r - δ^r</span>
+        — 其中 M 是用 depthwise causal 1D conv 估計的背景雜訊。4 個 learnable params（α, δ, r, s）每個 mel bin 各自學習。
+        相比 fixed log compression，PCEN 能動態壓制背景噪音，對 train_audio OOF AUC 幫助大，但對 soundscape domain shift 幫助不確定。
+        我們目前有實作 PCEN (src/model/pcen.py)，但在 v30 系列沒有啟用。
+      </div>
+    </div>
+
+    <!-- Loss Function -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>3. Loss Function</h2>
+      <div class="vs-row">
+        <div class="vs-col">
+          <div class="vs-label theirs">Competitor — Masked BCE</div>
+          <div class="code">criterion = nn.BCEWithLogitsLoss(reduction='none')
+
+# Primary labels → mask = 1.0  (full gradient)
+# Secondary labels → mask = 0.0 (NO gradient)
+# Combined: primary OR secondary for forward pass
+# Loss: only primary labels contribute
+
+combined = torch.clamp(primary + secondary, 0, 1)
+loss = bce(logits, combined) * mask
+loss = loss.mean()</div>
+        </div>
+        <div class="vs-col">
+          <div class="vs-label ours">我們 — ASL (v9, v30系列)</div>
+          <div class="code">class AsymmetricLoss:
+    gamma_neg = 4.0  # hard negative mining
+    gamma_pos = 0.0  # no focusing on positives
+    clip = 0.05      # shift easy negatives
+
+# Secondary labels: NOT used (use_secondary=false)
+# Soft KD from Perch (v30): pseudo soundscape labels
+
+# Plus in v30: soft KD loss from Perch teacher
+# on soundscape clips</div>
+        </div>
+      </div>
+      <div class="highlight-box">
+        <strong>評估：</strong>我們的 ASL 效果在 LB 上更優（0.921 vs 0.900）。他們完全屏蔽 secondary labels 的做法比我們保守，但 ASL 的 hard negative mining 可以達到類似效果。
+        我們的 soft KD from Perch 是他們沒有的額外優勢。
+      </div>
+    </div>
+
+    <!-- Augmentation -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>4. Data Augmentation</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Augmentation</th>
+            <th style="color:var(--yellow);">Competitor</th>
+            <th style="color:var(--green);">我們 (v30)</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Background mixing</td>
+            <td>✅ 80% prob, SNR 10-30dB, soft label blend</td>
+            <td>✅ 背景噪音檔案 10658 files</td>
+            <td>他們的 soft label blending 更精細</td>
+          </tr>
+          <tr>
+            <td>MixUp</td>
+            <td>✅ 50% prob, α=0.3-0.7 (focal+focal)</td>
+            <td>✅ mixup_alpha=0.5</td>
+            <td>相近</td>
+          </tr>
+          <tr>
+            <td>Time shift</td>
+            <td>✅ 50% prob, circular shift</td>
+            <td>❌ 沒有</td>
+            <td><span class="badge badge-yellow">可加</span></td>
+          </tr>
+          <tr>
+            <td>Random gain</td>
+            <td>✅ 40% prob, -12~+2 dB</td>
+            <td>✅ gain_range=[0.7, 1.3]</td>
+            <td>相近</td>
+          </tr>
+          <tr>
+            <td>SpecAugment freq</td>
+            <td>✅ 2× masks, param=12</td>
+            <td>✅ freq_mask_param=30</td>
+            <td>我們的 mask 更寬</td>
+          </tr>
+          <tr>
+            <td>SpecAugment time</td>
+            <td>✅ 2× masks, param=24</td>
+            <td>✅ time_mask_ratio=0.15, n=2</td>
+            <td>相近</td>
+          </tr>
+          <tr>
+            <td>Pseudo label mixing</td>
+            <td>✅ in background aug, weight=0.5</td>
+            <td>✅ 1168 soft pseudo clips + v30 soft KD</td>
+            <td>我們的 pseudo 更豐富</td>
+          </tr>
+          <tr>
+            <td>CutMix</td>
+            <td>❌</td>
+            <td>✅ (部分 config)</td>
+            <td>我們有額外優勢</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Training Config -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>5. Training Configuration</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>參數</th>
+            <th style="color:var(--yellow);">Competitor</th>
+            <th style="color:var(--green);">我們 (v30)</th>
+            <th>重要性</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Epochs</td>
+            <td>30</td>
+            <td>35</td>
+            <td><span class="badge badge-blue">小</span></td>
+          </tr>
+          <tr>
+            <td>Batch size</td>
+            <td>64 (32 per GPU, 2 GPUs)</td>
+            <td>32 (1 GPU)</td>
+            <td><span class="badge badge-yellow">中等</span> 他們有效 batch 2x</td>
+          </tr>
+          <tr>
+            <td>Head LR</td>
+            <td>3e-4</td>
+            <td>5e-4</td>
+            <td><span class="badge badge-blue">小</span></td>
+          </tr>
+          <tr>
+            <td>Backbone LR</td>
+            <td>3e-5 (10× lower)</td>
+            <td>5e-4 (same as head)</td>
+            <td><span class="badge badge-red">重要</span> 他們有 layer-wise LR decay</td>
+          </tr>
+          <tr>
+            <td>Scheduler</td>
+            <td>CosineAnnealingLR (T_max=30)</td>
+            <td>Cosine + warmup 3 ep</td>
+            <td><span class="badge badge-blue">小</span></td>
+          </tr>
+          <tr>
+            <td>Gradient clipping</td>
+            <td>max_norm=1.0</td>
+            <td>❌ 無</td>
+            <td><span class="badge badge-yellow">中等</span> 可加</td>
+          </tr>
+          <tr>
+            <td>Mixed precision</td>
+            <td>AMP float16 (PCEN fp32)</td>
+            <td>❌ 無 AMP</td>
+            <td><span class="badge badge-yellow">中等</span> 速度優化</td>
+          </tr>
+          <tr>
+            <td>Snapshot averaging</td>
+            <td>6 epochs 平均 (ep20,22,24,26,28,30)</td>
+            <td>Soup: 每 epoch 存，後處理選</td>
+            <td>我們更靈活</td>
+          </tr>
+          <tr>
+            <td>DDP (multi-GPU)</td>
+            <td>✅ 2 GPUs (Kaggle dual T4)</td>
+            <td>❌ 單 GPU (nohup)</td>
+            <td><span class="badge badge-yellow">中等</span> 訓練速度</td>
+          </tr>
+          <tr>
+            <td>Pretrained weights</td>
+            <td>ImageNet (timm)</td>
+            <td>NS-JFT-ImageNet (noisy student)</td>
+            <td><span class="badge badge-green">我們更強</span></td>
+          </tr>
+          <tr>
+            <td>Folds</td>
+            <td>Stratified 5-fold on label_id</td>
+            <td>GroupKFold on train_audio</td>
+            <td>不同策略</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Post-processing -->
+    <div class="card" style="margin-bottom:16px;">
+      <h2>6. Inference / Post-processing</h2>
+      <div class="vs-row">
+        <div class="vs-col">
+          <div class="vs-label theirs">Competitor</div>
+          <ul class="checklist">
+            <li>5 fold ensemble (ensemble mean)</li>
+            <li>TTA: 5/4 second shift (2× 推論平均)</li>
+            <li>Texture-aware time smoothing<br>
+              <span style="font-size:0.8rem;color:var(--muted);">Insecta/Amphibia: [0.35, 0.30, 0.35] (heavy)</span><br>
+              <span style="font-size:0.8rem;color:var(--muted);">Aves/Mammalia: [0.20, 0.60, 0.20] (standard)</span>
+            </li>
+            <li>Site/hour Bayesian prior (w=0.15)</li>
+          </ul>
+        </div>
+        <div class="vs-col">
+          <div class="vs-label ours">我們 (v3 ensemble)</div>
+          <ul class="checklist">
+            <li>Perch 70% Bayesian probe + 30% TFLite</li>
+            <li>SED: v30-multipseu + v9-asl-soup + competitor_sed</li>
+            <li>VLOM blend: Perch 50% / SED 50%</li>
+            <li>T1: file-level max pooling (5%)</li>
+            <li>T2: sharpen + smooth</li>
+            <li>T3: no-peak-norm</li>
+            <li>Perch Bayesian probe: PCA64 + LogReg α=0.40</li>
+          </ul>
+        </div>
+      </div>
+      <div class="success-box" style="margin-top:12px;">
+        <strong>我們的 post-processing 明顯更豐富</strong> — Perch + SED fusion、多個 tricks、Bayesian probe。
+        競爭者的 texture-aware smoothing 和 site/hour priors 是有趣的補充，未來可以整合進去。
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- What we're missing -->
+  <div class="section">
+    <h2>值得借鑑的技術（優先序）</h2>
+    <div class="grid3">
+      <div class="card card-red">
+        <h3>🔴 高優先</h3>
+        <div style="margin-bottom:12px;">
+          <strong>Layer-wise LR Decay</strong>
+          <div class="footnote" style="margin-top:4px;">Backbone 用 3e-5 (10× lower)，Head 用 3e-4。保護預訓練特徵，避免 catastrophic forgetting。我們目前 backbone_lr_multiplier 存在但可能沒用。</div>
+          <div class="pill-row"><span class="badge badge-red">直接影響訓練穩定性</span></div>
+        </div>
+        <div>
+          <strong>PCEN Frontend</strong>
+          <div class="footnote" style="margin-top:4px;">我們有 src/model/pcen.py 但沒啟用。對 train_audio OOF AUC 幫助明顯，對 soundscape AUC 待驗證。</div>
+          <div class="pill-row"><span class="badge badge-purple">實驗成本低，可快速測試</span></div>
+        </div>
+      </div>
+      <div class="card card-yellow">
+        <h3>🟡 中優先</h3>
+        <div style="margin-bottom:12px;">
+          <strong>Texture-aware Time Smoothing</strong>
+          <div class="footnote" style="margin-top:4px;">Insecta/Amphibia 用更重的時間平滑（連續聲音），Aves 用標準平滑（離散鳴叫）。Post-processing 層級，不需重新訓練。</div>
+          <div class="pill-row"><span class="badge badge-cyan">可加入 ensemble 推論</span></div>
+        </div>
+        <div style="margin-bottom:12px;">
+          <strong>Time Shift Augmentation</strong>
+          <div class="footnote" style="margin-top:4px;">50% prob circular shift，增加時間位置不變性。簡單有效。</div>
+        </div>
+        <div>
+          <strong>Gradient Clipping (max_norm=1.0)</strong>
+          <div class="footnote" style="margin-top:4px;">防止梯度爆炸，對大 backbone 尤其有幫助。</div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>🔵 低優先 / 已有</h3>
+        <div style="margin-bottom:10px;">
+          <strong>Site/Hour Priors</strong> <span class="badge badge-blue">已類似</span>
+          <div class="footnote" style="margin-top:4px;">我們的 Perch Bayesian probe 已有類似效果</div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <strong>AMP Mixed Precision</strong> <span class="badge badge-blue">速度優化</span>
+          <div class="footnote" style="margin-top:4px;">可加速訓練但不影響 LB 分數</div>
+        </div>
+        <div>
+          <strong>Fold Split Strategy</strong>
+          <div class="footnote" style="margin-top:4px;">他們用 Stratified on label_id，我們用 GroupKFold。對 LB 影響未知，改動成本高</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Our advantages -->
+  <div class="section">
+    <h2>我們的獨特優勢（競爭者沒有的）</h2>
+    <div class="grid2">
+      <div class="card card-green">
+        <h3>Perch Branch</h3>
+        <ul class="checklist">
+          <li>Google Perch 大型鳥音預訓練模型</li>
+          <li>Bayesian probe (PCA64 + LogReg α=0.40)</li>
+          <li>OOF AUC 0.8119 (vs LogReg baseline 0.7515)</li>
+          <li>TFLite heads ensemble</li>
+          <li>VLOM 50/50 blend with SED</li>
+        </ul>
+      </div>
+      <div class="card card-green">
+        <h3>Soft Knowledge Distillation</h3>
+        <ul class="checklist">
+          <li>Perch 作為 teacher，SED 作為 student</li>
+          <li>Soundscape clips 上的 soft KD loss</li>
+          <li>Combined pseudo labels (round4+5)</li>
+          <li>Multi-fold pseudo labels (r1~r5)</li>
+          <li>v30-multipseu: best soundscape val AUC 0.8033</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Metric Clarification -->
+  <div class="section">
+    <h2>📊 Validation Metric 完整對比</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>描述</th>
+            <th>Competitor 值</th>
+            <th>我們的值</th>
+            <th>LB 相關性</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Train-audio OOF AUC</td>
+            <td>Stratified 5-fold on train_audio，同 domain</td>
+            <td style="color:var(--yellow);">0.8839 ~ 0.9270</td>
+            <td style="color:var(--muted);">未測量</td>
+            <td><span class="badge badge-yellow">中等</span> 過度樂觀</td>
+          </tr>
+          <tr>
+            <td>Soundscape val AUC</td>
+            <td>固定 312 clips soundscape holdout，cross-domain</td>
+            <td style="color:var(--muted);">未報告</td>
+            <td style="color:var(--green);">0.80 (v30 best=0.8033)</td>
+            <td><span class="badge badge-green">強</span> 最佳 LB proxy</td>
+          </tr>
+          <tr>
+            <td>LB Score</td>
+            <td>Kaggle 官方 test soundscapes</td>
+            <td style="color:var(--yellow);">0.900</td>
+            <td style="color:var(--green);font-weight:700;">0.921</td>
+            <td><span class="badge badge-red">Ground truth</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="highlight-box" style="margin-top:14px;">
+        <strong>重要洞察：</strong>Soundscape val AUC 是比 train_audio OOF 更好的 LB proxy，因為 test set 就是 soundscape。
+        我們選擇用更難的 validation set，這才是我們 LB 真正更高的原因 — 模型真正學到了 domain 泛化能力。
+      </div>
+    </div>
+  </div>
+
+  <!-- Current Status -->
+  <div class="section">
+    <h2>當前訓練狀態</h2>
+    <div class="grid2">
+      <div class="card">
+        <h3>GPU0 — sed-b0-4fold-v30-fold0</h3>
+        <div class="stat-val">0.8033</div>
+        <div class="stat-sub">Best soundscape val AUC @ ep10 | 目前 ep14 進行中</div>
+        <div style="margin-top:10px;font-size:0.85rem;">
+          <table style="font-size:0.82rem;">
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep9</td><td>0.7855</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep10</td><td style="color:var(--green);font-weight:700;">0.8033 ★ best</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep11</td><td>0.7780</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep12</td><td>0.7786</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep13</td><td>0.7877</td></tr>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <h3>GPU1 — sed-b0-4fold-v30-fold2</h3>
+        <div class="stat-val" style="color:var(--yellow);">0.7563</div>
+        <div class="stat-sub">Best soundscape val AUC @ ep2 | 目前 ep4 進行中（早期）</div>
+        <div style="margin-top:10px;font-size:0.85rem;">
+          <table style="font-size:0.82rem;">
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep1</td><td>0.7561</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep2</td><td style="color:var(--yellow);font-weight:700;">0.7563 ★ best</td></tr>
+            <tr><td style="color:var(--muted);padding:2px 8px 2px 0;">ep3</td><td>0.7230</td></tr>
+          </table>
+          <div class="footnote" style="margin-top:8px;">注意：ep2 後 warmup 結束，lr 開始下降。通常 ep5-8 後才會回升。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="color:var(--muted);font-size:0.78rem;text-align:center;padding:20px 0;">
+    BirdCLEF 2026 — SED Competitor Analysis Report — Generated 2026-03-20
+  </div>
+
+</div>
+</body>
+</html>

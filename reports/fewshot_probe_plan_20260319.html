@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BirdCLEF 2026 — Few-Shot Probe Upgrade Plan</title>
+<style>
+  :root {
+    --bg: #0d1117; --bg2: #161b22; --bg3: #21262d;
+    --border: #30363d; --text: #e6edf3; --text2: #8b949e;
+    --green: #3fb950; --blue: #58a6ff; --yellow: #d29922;
+    --orange: #f0883e; --red: #f85149; --purple: #bc8cff;
+    --cyan: #39d353;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; line-height: 1.6; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+  h1 { font-size: 28px; font-weight: 700; color: var(--blue); margin-bottom: 8px; }
+  h2 { font-size: 18px; font-weight: 600; color: var(--text); margin: 32px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  h3 { font-size: 15px; font-weight: 600; color: var(--blue); margin: 20px 0 10px; }
+  .subtitle { color: var(--text2); margin-bottom: 28px; font-size: 13px; }
+
+  /* KPI strip */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+  .kpi { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .kpi .val { font-size: 26px; font-weight: 700; }
+  .kpi .lbl { font-size: 11px; color: var(--text2); text-transform: uppercase; margin-top: 4px; }
+  .kpi.green .val { color: var(--green); }
+  .kpi.blue .val { color: var(--blue); }
+  .kpi.orange .val { color: var(--orange); }
+  .kpi.purple .val { color: var(--purple); }
+
+  /* Cards */
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .card.tier1 { border-left: 3px solid var(--green); }
+  .card.tier2 { border-left: 3px solid var(--blue); }
+  .card.tier3 { border-left: 3px solid var(--orange); }
+
+  .tier-label { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; margin-bottom: 10px; }
+  .tier-label.t1 { background: rgba(63,185,80,0.15); color: var(--green); border: 1px solid var(--green); }
+  .tier-label.t2 { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid var(--blue); }
+  .tier-label.t3 { background: rgba(240,136,62,0.15); color: var(--orange); border: 1px solid var(--orange); }
+
+  .card h3 { margin-top: 0; }
+  .card p { color: var(--text2); margin: 8px 0; }
+  .card code { background: var(--bg3); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-family: 'Courier New', monospace; font-size: 12px; color: var(--cyan); }
+
+  /* Code blocks */
+  pre { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 14px; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 12px; line-height: 1.7; margin: 12px 0; color: var(--cyan); }
+  .comment { color: #6a9955; }
+  .kw { color: var(--purple); }
+  .str { color: var(--orange); }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th { background: var(--bg3); padding: 10px 14px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text2); border-bottom: 1px solid var(--border); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge.high { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge.med { background: rgba(88,166,255,0.15); color: var(--blue); }
+  .badge.low { background: rgba(140,140,140,0.15); color: var(--text2); }
+
+  /* Pipeline diagram */
+  .pipeline { display: flex; flex-direction: column; gap: 4px; margin: 16px 0; }
+  .pipe-step { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+  .pipe-step.new { border-color: var(--green); background: rgba(63,185,80,0.05); }
+  .pipe-step.upgraded { border-color: var(--blue); background: rgba(88,166,255,0.05); }
+  .pipe-arrow { text-align: center; color: var(--text2); font-size: 16px; }
+  .pipe-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; white-space: nowrap; }
+  .pipe-tag.exist { background: var(--bg); color: var(--text2); }
+  .pipe-tag.new { background: rgba(63,185,80,0.2); color: var(--green); }
+  .pipe-tag.upg { background: rgba(88,166,255,0.2); color: var(--blue); }
+
+  /* Section split */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: 1fr 1fr; } }
+
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 11px; background: var(--bg3); border: 1px solid var(--border); color: var(--text2); margin: 2px; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Few-Shot Probe Upgrade Plan</h1>
+<div class="subtitle">BirdCLEF 2026 · 2026-03-19 · Based on 10 surveyed papers · Current baseline: 0.918 LB</div>
+
+<!-- KPI Strip -->
+<div class="kpi-row">
+  <div class="kpi green">
+    <div class="val">0.918</div>
+    <div class="lbl">Current LB (PCA+LogReg)</div>
+  </div>
+  <div class="kpi blue">
+    <div class="val">+0.019</div>
+    <div class="lbl">Probe gain over raw Perch</div>
+  </div>
+  <div class="kpi orange">
+    <div class="val">0.925+</div>
+    <div class="lbl">Target with upgrades</div>
+  </div>
+  <div class="kpi purple">
+    <div class="val">1536</div>
+    <div class="lbl">Perch embedding dims</div>
+  </div>
+</div>
+
+<!-- Current System -->
+<h2>現有系統分析</h2>
+<div class="card">
+  <h3>Current Probe Pipeline (0.918 LB)</h3>
+  <div class="pipeline">
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>Perch v2 TFLite → 1536-dim embedding + 14795-dim logits</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>StandardScaler (zero-mean, unit-var per dim)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>PCA(64) — drops 1472 of 1536 dimensions</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>LogisticRegression per class (C=0.5, min_pos≥8 only)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>alpha=0.40 blend: 60% base_score + 40% probe_logit</span>
+    </div>
+  </div>
+  <p><strong>Weaknesses:</strong> (1) No L2-normalization → cosine distance is miscalibrated. (2) PCA(64) discards 96% of embedding information. (3) Classes with 2–7 positives are unhandled (skipped). (4) Temporal smoothing is 1D linear, ignores embedding structure.</p>
+</div>
+
+<!-- Paper Summary Table -->
+<h2>論文摘要 — 最相關方法</h2>
+<table>
+  <tr>
+    <th>Paper</th><th>Year</th><th>Key Technique</th><th>Fixed Embedding?</th><th>Priority</th>
+  </tr>
+  <tr>
+    <td>SimpleShot (Wang et al.)</td><td>2019</td>
+    <td>L2-norm + center + nearest centroid</td>
+    <td>Yes — trivial</td>
+    <td><span class="badge high">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>Ghani et al. (Scientific Reports)</td><td>2023</td>
+    <td>Perch embedding benchmark — linear SVM best</td>
+    <td>Yes — validates our approach</td>
+    <td><span class="badge high">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>Tip-Adapter (Zhang et al., ECCV)</td><td>2022</td>
+    <td>Support cache retrieval + zero-shot blend</td>
+    <td>Yes — no training</td>
+    <td><span class="badge high">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>LP++ (Huang et al., CVPR)</td><td>2024</td>
+    <td>Prototype-initialized linear probe</td>
+    <td>Yes — linear only</td>
+    <td><span class="badge high">Tier 1</span></td>
+  </tr>
+  <tr>
+    <td>LaplacianShot (Ziko et al., ICML)</td><td>2020</td>
+    <td>Graph Laplacian transductive smoothing</td>
+    <td>Yes — inference only</td>
+    <td><span class="badge med">Tier 2</span></td>
+  </tr>
+  <tr>
+    <td>Zhu & Koniusz (CVPR)</td><td>2023</td>
+    <td>Iterative prototype + graph refinement</td>
+    <td>Yes — inference only</td>
+    <td><span class="badge med">Tier 2</span></td>
+  </tr>
+  <tr>
+    <td>APE (Zhu et al., ICCV)</td><td>2023</td>
+    <td>Per-class adaptive feature selection</td>
+    <td>Yes (training-free variant)</td>
+    <td><span class="badge med">Tier 2</span></td>
+  </tr>
+  <tr>
+    <td>Bayesian GP (Snell & Zemel, ICLR)</td><td>2021</td>
+    <td>GP classifier — calibrated uncertainty</td>
+    <td>Yes — dot-product kernel</td>
+    <td><span class="badge low">Tier 3</span></td>
+  </tr>
+  <tr>
+    <td>Zheng et al. (ZCA whitening)</td><td>2023</td>
+    <td>Dimension decorrelation → better prototypes</td>
+    <td>Yes (post-hoc ZCA)</td>
+    <td><span class="badge low">Tier 3</span></td>
+  </tr>
+  <tr>
+    <td>Moummad et al. (SSL bioacoustics)</td><td>2023</td>
+    <td>Self-supervised embeddings for OOD species</td>
+    <td>Yes</td>
+    <td><span class="badge low">Tier 3</span></td>
+  </tr>
+</table>
+
+<!-- Upgrade Plan -->
+<h2>實作計劃 (Tier 1 → 先做)</h2>
+
+<div class="card tier1">
+  <span class="tier-label t1">Tier 1A — Free improvement</span>
+  <h3>L2-Normalization Before PCA (SimpleShot insight)</h3>
+  <p>Current pipeline uses StandardScaler (unit variance) but no L2-normalization. SimpleShot shows L2-norm + centering outperforms StandardScaler by 3–5% for cosine-based classifiers.</p>
+  <pre><code><span class="comment"># BEFORE (current)</span>
+emb_scaled = StandardScaler().fit_transform(emb)
+Z = PCA(64).fit_transform(emb_scaled)
+
+<span class="comment"># AFTER (SimpleShot-style)</span>
+emb_l2 = emb / (np.linalg.norm(emb, axis=1, keepdims=True) + 1e-8)  <span class="comment"># L2-norm</span>
+emb_centered = emb_l2 - emb_l2[labeled_mask].mean(axis=0)           <span class="comment"># center</span>
+Z = PCA(128, whiten=True).fit_transform(emb_centered)                <span class="comment"># more dims + whiten</span></code></pre>
+  <p><strong>Expected gain:</strong> +0.003–0.008 holdout AUC · <strong>Effort:</strong> 30 min</p>
+</div>
+
+<div class="card tier1">
+  <span class="tier-label t1">Tier 1B — Handles rare species</span>
+  <h3>Prototype Fallback for Classes with 2–7 Positives</h3>
+  <p>Currently, classes with <code>n_pos &lt; 8</code> are skipped entirely (no probe). SimpleShot prototypical classification works reliably from even 2 positives.</p>
+  <pre><code><span class="comment"># For classes with 2 ≤ n_pos < min_pos_logr: use prototype instead of LogReg</span>
+<span class="kw">for</span> cls_idx <span class="kw">in</span> range(NUM_CLASSES):
+    n_pos = y_tr[:, cls_idx].sum()
+    <span class="kw">if</span> n_pos >= 8:
+        <span class="comment"># Existing LogReg probe (unchanged)</span>
+        clf.fit(X_tr_cls, y_tr[:, cls_idx])
+        pred = clf.decision_function(X_va_cls)
+    <span class="kw">elif</span> n_pos >= 2:
+        <span class="comment"># Prototype fallback: cosine distance to mean positive</span>
+        proto = Z_tr[y_tr[:, cls_idx] == 1].mean(axis=0)
+        proto = proto / (np.linalg.norm(proto) + 1e-8)
+        pred = Z_va @ proto  <span class="comment"># cosine similarity score</span>
+    <span class="kw">else</span>:
+        <span class="comment"># 0–1 positives: fall back to Perch native logit only</span>
+        <span class="kw">continue</span></code></pre>
+  <p><strong>Expected gain:</strong> +0.002–0.005 (covers ~30 additional rare species) · <strong>Effort:</strong> 45 min</p>
+</div>
+
+<div class="card tier1">
+  <span class="tier-label t1">Tier 1C — Key insight from Tip-Adapter</span>
+  <h3>Support Cache Retrieval (Tip-Adapter Style)</h3>
+  <p>Build a key-value cache from all labeled soundscape clips. At inference, each query clip retrieves its nearest neighbors in embedding space and votes for their labels. Blend with Perch native logits.</p>
+  <pre><code><span class="comment"># Build cache: keys=embeddings, values=labels</span>
+keys_norm = emb_labeled / (np.linalg.norm(emb_labeled, axis=1, keepdims=True) + 1e-8)
+<span class="comment"># keys_norm: (N_labeled, 1536), values: (N_labeled, 234)</span>
+
+<span class="kw">def</span> tip_adapter_score(query_emb, keys, values, tau=0.5):
+    q_norm = query_emb / (np.linalg.norm(query_emb, axis=1, keepdims=True) + 1e-8)
+    sim = q_norm @ keys.T / tau       <span class="comment"># (12, N_labeled)</span>
+    weights = np.exp(sim - sim.max(axis=1, keepdims=True))  <span class="comment"># stable softmax</span>
+    weights /= weights.sum(axis=1, keepdims=True)
+    <span class="kw">return</span> weights @ values           <span class="comment"># (12, 234)</span>
+
+<span class="comment"># Blend: alpha*retrieved + (1-alpha)*perch_native_prob</span>
+retrieved = tip_adapter_score(emb_12, keys_norm, Y_labeled)
+final = alpha * retrieved + (1 - alpha) * perch_native_prob</code></pre>
+  <p><strong>Expected gain:</strong> +0.005–0.015 · <strong>Effort:</strong> 2 hours · <strong>Tune:</strong> alpha ∈ [0.2,0.6], tau ∈ [0.1,1.0] via OOF</p>
+</div>
+
+<h2>實作計劃 (Tier 2 — 次要)</h2>
+
+<div class="two-col">
+  <div class="card tier2">
+    <span class="tier-label t2">Tier 2A</span>
+    <h3>Embedding Graph Smoothing (LaplacianShot-lite)</h3>
+    <p>Replace current 1D temporal smooth (Amphibia/Insecta only) with a 2D embedding-similarity graph over all 12 clips per file. Acoustically similar clips share label information.</p>
+    <pre><code><span class="kw">def</span> emb_graph_smooth(probs_12, emb_12, alpha=0.3):
+    en = emb_12 / (np.linalg.norm(emb_12, axis=1, keepdims=True)+1e-8)
+    W = np.maximum(en @ en.T, 0)   <span class="comment"># (12,12) cosine</span>
+    W /= W.sum(axis=1, keepdims=True)+1e-8
+    <span class="kw">return</span> (1-alpha)*probs_12 + alpha*(W @ probs_12)</code></pre>
+    <p><strong>Expected gain:</strong> +0.002–0.005</p>
+  </div>
+  <div class="card tier2">
+    <span class="tier-label t2">Tier 2B</span>
+    <h3>LP++ Init: Prototype-Seeded LogReg</h3>
+    <p>Initialize LogReg coefficients from class prototype (mean positive embedding) instead of random. Converges faster to a better solution with few positives.</p>
+    <pre><code><span class="kw">def</span> lpp_logreg(X_tr, y_tr, C=0.5):
+    proto = X_tr[y_tr==1].mean(axis=0)
+    clf = LogisticRegression(C=C, max_iter=400)
+    clf.fit(X_tr, y_tr)
+    <span class="comment"># warm-start from prototype</span>
+    clf.coef_ = proto[None, :]
+    clf.fit(X_tr, y_tr)  <span class="comment"># refine</span>
+    <span class="kw">return</span> clf</code></pre>
+    <p><strong>Expected gain:</strong> +0.002–0.004 for rare species</p>
+  </div>
+</div>
+
+<!-- Proposed Upgraded Pipeline -->
+<h2>目標架構 — 升級後 Pipeline</h2>
+<div class="card">
+  <div class="pipeline">
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>Perch v2 TFLite → emb (1536-dim) + logits (14795-dim)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step upgraded">
+      <span class="pipe-tag upg">Upgraded</span>
+      <span><strong>L2-normalize embedding → center by dataset mean</strong> (SimpleShot preprocessing)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step upgraded">
+      <span class="pipe-tag upg">Upgraded</span>
+      <span><strong>PCA(128, whiten=True)</strong> — 2× dims vs current PCA(64)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>LogisticRegression per class (n_pos ≥ 8) + feature engineering</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step new">
+      <span class="pipe-tag new">New</span>
+      <span><strong>Prototype score for rare classes</strong> (2 ≤ n_pos &lt; 8) — cosine to class centroid</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step new">
+      <span class="pipe-tag new">New</span>
+      <span><strong>Tip-Adapter blend</strong>: alpha × retrieved_neighbor_score + (1-alpha) × base_score</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step upgraded">
+      <span class="pipe-tag upg">Upgraded</span>
+      <span><strong>Embedding-graph smoothing per file</strong> (replaces 1D temporal smooth)</span>
+    </div>
+    <div class="pipe-arrow">↓</div>
+    <div class="pipe-step">
+      <span class="pipe-tag exist">Existing</span>
+      <span>Prior fusion (Site × Hour Bayesian tables) + VLOM blend with SED</span>
+    </div>
+  </div>
+</div>
+
+<!-- Implementation Order -->
+<h2>實作順序與預期 LB 軌跡</h2>
+<table>
+  <tr>
+    <th>#</th><th>改動</th><th>Notebook Cell</th><th>預期 LB</th><th>狀態</th>
+  </tr>
+  <tr>
+    <td>0</td><td>現有系統 (PCA64 + LogReg)</td><td>Cell 7</td>
+    <td><strong>0.918</strong></td><td>✅ Done</td>
+  </tr>
+  <tr>
+    <td>1</td><td>L2-norm + center + PCA(128,whiten)</td><td>Cell 7</td>
+    <td>0.920–0.923</td><td>⏳ Next</td>
+  </tr>
+  <tr>
+    <td>2</td><td>+ Prototype fallback (n_pos 2–7)</td><td>Cell 7</td>
+    <td>0.921–0.924</td><td>⏳</td>
+  </tr>
+  <tr>
+    <td>3</td><td>+ Tip-Adapter support cache</td><td>Cell 7 + new cell</td>
+    <td>0.924–0.930</td><td>⏳</td>
+  </tr>
+  <tr>
+    <td>4</td><td>+ Embedding graph smoothing</td><td>Cell 10</td>
+    <td>0.926–0.932</td><td>⏳</td>
+  </tr>
+  <tr>
+    <td>5</td><td>+ Tune alpha/tau/pca_dim (OOF)</td><td>New cell</td>
+    <td>0.928–0.935</td><td>⏳</td>
+  </tr>
+</table>
+
+<!-- Key Theoretical Insight -->
+<h2>核心理論洞見</h2>
+<div class="two-col">
+  <div class="card">
+    <h3>為什麼 L2-norm 比 StandardScaler 好?</h3>
+    <p>StandardScaler 讓每個維度方差=1，但不保證 embedding 向量的長度一致。兩個語義相似的 clip 可能因為音量不同而 L2 距離很大。</p>
+    <p>L2-normalization 後，所有向量落在單位超球面上，<strong>cosine distance = Euclidean distance</strong>，讓 KNN 和 prototype 距離更有意義。</p>
+    <p>SimpleShot 在 miniImageNet 上測試：L2-norm+center 比 StandardScaler 高 <strong>5–8%</strong>。</p>
+  </div>
+  <div class="card">
+    <h3>為什麼 Tip-Adapter 特別適合 BirdCLEF?</h3>
+    <p>我們有 ~2232 個已標記的 soundscape clips 作為 support set。Perch embedding 把同物種的 clip 聚集在同一個 cluster。</p>
+    <p>Tip-Adapter 的 retrieval 直接利用這個 cluster 結構：test clip 只需要找到幾個鄰居，讓鄰居投票。</p>
+    <p>Perch 的原始 logit 作為 "zero-shot prior" 正好符合 Tip-Adapter 的框架。<strong>兩個資訊源互補。</strong></p>
+  </div>
+</div>
+
+<div class="card" style="margin-top: 16px;">
+  <h3>Transductive 的優勢：每個 soundscape file = 12個 query clips</h3>
+  <p>每個 60s soundscape 裡的 12 個 5s clips 共享同一個錄音環境（背景噪音、混響、設備響應）。在 embedding 空間中，這 12 個向量會形成一個緊密的 cluster，彼此方向相近。</p>
+  <p>LaplacianShot 的 graph smoothing 利用這個結構：如果 clip A 和 clip B 在 embedding 空間中很近，它們的物種標籤應該相似。這比固定 1D 時序平滑更靈活，因為它同時考慮了時序和聲學相似性。</p>
+</div>
+
+<hr>
+<div style="color: var(--text2); font-size: 12px; text-align: center;">
+  BirdCLEF 2026 · Few-Shot Probe Upgrade Plan · Generated 2026-03-19<br>
+  References: SimpleShot (arXiv:1911.04623) · Tip-Adapter (arXiv:2207.09519) · LaplacianShot (arXiv:2006.15486) · LP++ (arXiv:2404.02285) · Ghani et al. (arXiv:2307.06292)
+</div>
+
+</div>
+</body>
+</html>

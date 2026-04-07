@@ -1,0 +1,54 @@
+experiment:
+  name: hgnet-ss-llrd
+  seed: 42
+
+# ── HGNet SS-LLRD: Layer-wise LR Decay ──────────────────────────────────────
+# backbone_lr = 5e-4 * 0.1 = 5e-5（fine-tune backbone 更保守）
+# head_lr = 5e-4（head 仍用較高 LR）
+# 目標：避免 ImageNet pretrain 特徵被過度破壞，保留高層次特徵表示。
+# 在 soundscape GT 資料加入後，backbone 已有 train_audio 的 fine-tune 結果，
+# LLRD 可以讓 soundscape 的領域知識主要由 head 層學習。
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  soundscape_gt_csv:     birdclef-2026/train_soundscapes_labels.csv
+  n_folds:               5
+
+model:
+  backbone:     hgnetv2_b0.ssld_stage2_ft_in1k
+  in_chans:     1
+  n_mels:       256
+  n_fft:        2048
+  win_length:   626
+  hop_length:   313
+  fmin:         20
+  top_db:       80.0
+  power:        2.0
+  lms_shape:    [256, 256]
+  mixup_alpha:  1.0
+  mixup_theta:  0.8
+
+training:
+  epochs:                   30
+  batch_size:               64
+  learning_rate:            5.0e-4
+  weight_decay:             1.0e-4
+  use_llrd:                 true
+  backbone_lr_mult:         0.1
+  warmup_epochs:            2
+  early_stopping_patience:  7
+  loss_type:                custom_bce
+  ss_gt_weight:             0.3
+  ss_gt_oversample:         2
+  use_sumix_freq:           false
+  use_specaug:              false
+  use_cutmix:               false
+  use_gain_norm:            false
+  use_swa:                  false
+
+output:
+  dir: outputs/hgnet-ss-llrd

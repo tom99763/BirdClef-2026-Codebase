@@ -1,0 +1,51 @@
+experiment:
+  name: hgnet-v1
+  seed: 42
+
+# ── HGNetV2-B0 Baseline — Faithful Notebook Reproduction ────────────────────
+#
+# Exact replication of birdclef-2026-hgnetv2-b0-baseline-training.ipynb
+# - hgnetv2_b0.ssld_stage2_ft_in1k (ImageNet init, in_chans=1)
+# - AttnSEDHead: Linear + tanh-weighted attention
+# - CustomBCE: 0.5*clip_loss + 0.5*timewise_max_loss
+# - MixUp in mel domain (alpha=1.0, theta=0.8, skip first 5 epochs)
+# - GroupKFold on soundscape files (5 folds)
+# - Pre-cache train_audio to RAM
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  n_folds:               5
+
+model:
+  backbone:     hgnetv2_b0.ssld_stage2_ft_in1k
+  in_chans:     1
+  n_mels:       256
+  n_fft:        2048
+  win_length:   626
+  hop_length:   313
+  fmin:         20
+  fmax:         null        # torchaudio default (SR/2)
+  top_db:       80.0
+  power:        2.0
+  lms_shape:    [256, 256]
+  mixup_alpha:  1.0
+  mixup_theta:  0.8
+  mixup_skip_epochs: 5
+
+training:
+  epochs:           30
+  batch_size:       64
+  learning_rate:    5.0e-4
+  weight_decay:     1.0e-4
+  use_llrd:         false   # uniform LR — exact notebook setting
+  warmup_epochs:    2
+  early_stopping_patience: 5
+  scheduler:        cosine
+  ss_weight:        0.0     # no pseudo labels in v1
+
+output:
+  dir: outputs/hgnet-v1

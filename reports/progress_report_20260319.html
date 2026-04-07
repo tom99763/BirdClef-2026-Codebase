@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>BirdCLEF 2026 — Progress Report (2026-03-19)</title>
+<style>
+  body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 20px; color: #222; background: #f9f9f9; }
+  h1 { color: #1a3a5c; border-bottom: 3px solid #1a3a5c; padding-bottom: 8px; }
+  h2 { color: #2c5f8a; margin-top: 36px; border-left: 5px solid #2c5f8a; padding-left: 12px; }
+  h3 { color: #444; margin-top: 24px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 24px 0; font-size: 0.92em; }
+  th { background: #2c5f8a; color: white; padding: 8px 12px; text-align: left; }
+  td { padding: 7px 12px; border-bottom: 1px solid #ddd; }
+  tr:nth-child(even) { background: #f0f5fa; }
+  tr:hover { background: #dceeff; }
+  .best { background: #d4edda !important; font-weight: bold; }
+  .warn { background: #fff3cd !important; }
+  .bad  { background: #f8d7da !important; }
+  .running { background: #cfe2ff !important; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.82em; font-weight: bold; }
+  .tag-best { background: #28a745; color: white; }
+  .tag-run  { background: #0d6efd; color: white; }
+  .tag-stop { background: #dc3545; color: white; }
+  .tag-lb   { background: #fd7e14; color: white; }
+  .summary-box { background: white; border: 2px solid #2c5f8a; border-radius: 8px; padding: 16px 24px; margin: 20px 0; }
+  .summary-box h3 { margin-top: 0; }
+  .metric { font-size: 1.6em; font-weight: bold; color: #1a3a5c; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+  .card { background: white; border-radius: 8px; padding: 16px; border: 1px solid #ccc; text-align: center; }
+  .card-title { font-size: 0.85em; color: #666; margin-bottom: 4px; }
+  .card-val { font-size: 1.7em; font-weight: bold; color: #1a3a5c; }
+  .card-sub { font-size: 0.8em; color: #888; margin-top: 4px; }
+  code { background: #eef; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
+  .epoch-bar { background: #e0e0e0; border-radius: 4px; height: 10px; margin-top: 4px; }
+  .epoch-fill { background: #2c5f8a; border-radius: 4px; height: 10px; }
+</style>
+</head>
+<body>
+
+<h1>BirdCLEF 2026 — Progress Report</h1>
+<p style="color:#666;">Generated: 2026-03-19 20:15 | Branch: main | Author: Claude Code</p>
+
+<!-- ─── SNAPSHOT ─── -->
+<div class="grid">
+  <div class="card">
+    <div class="card-title">Current Best LB Score</div>
+    <div class="card-val" style="color:#fd7e14;">0.915</div>
+    <div class="card-sub">Perch Few-Shot Probe v2<br>Full-data fit (PCA+LogReg+Proto+TipAdapter)</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Best Holdout AUC</div>
+    <div class="card-val">0.9915</div>
+    <div class="card-sub">sed-b0-v27-soft-boost<br>ss_val=0.7804</div>
+  </div>
+  <div class="card">
+    <div class="card-title">Best ss_val AUC</div>
+    <div class="card-val" style="color:#28a745;">0.8139</div>
+    <div class="card-sub">sed-b0-v30-multipseu<br>holdout=0.9839 🎯</div>
+  </div>
+</div>
+
+<!-- ─── LB HISTORY ─── -->
+<h2>📊 Kaggle LB Score History</h2>
+<table>
+  <tr><th>Date</th><th>Notebook / Strategy</th><th>Key Models</th><th>LB Score</th><th>Notes</th></tr>
+  <tr>
+    <td>~2026-03-16</td>
+    <td>best_ensemble_public_trick.ipynb</td>
+    <td>Perch×3 + sed-b0-v5 + competitor + T1/T2/T3 tricks</td>
+    <td>0.893</td>
+    <td>First strong ensemble</td>
+  </tr>
+  <tr>
+    <td>2026-03-17</td>
+    <td>v9_asl_soup_public_trick.ipynb</td>
+    <td>Perch×3 + sed-b0-v9-asl-soup + T1/T2/T3</td>
+    <td>0.892</td>
+    <td>Higher holdout (0.953) but worse LB — holdout ≠ LB proxy</td>
+  </tr>
+  <tr class="best">
+    <td>~2026-03-19</td>
+    <td>sed_perch_probe_v2_fewshot.ipynb</td>
+    <td>Perch Few-Shot: L2+PCA(128)+LogReg+Proto+TipAdapter</td>
+    <td><strong>0.915 🏆</strong></td>
+    <td>Current best. Full-data fit (no leakage yet)</td>
+  </tr>
+</table>
+
+<!-- ─── SED EXPERIMENTS ─── -->
+<h2>🔬 SED Model Experiments — Full History</h2>
+
+<h3>Phase 1–6: Baseline & Architecture Search</h3>
+<table>
+  <tr><th>Run</th><th>Key Change</th><th>Val ROC-AUC</th><th>Holdout AUC</th><th>Result</th></tr>
+  <tr><td>sed-b0-v3</td><td>First B0 baseline</td><td>0.6234</td><td>—</td><td>Baseline</td></tr>
+  <tr><td>sed-b0-v5</td><td>+Soundscape domain adaptation</td><td>0.7527</td><td>0.9192</td><td><strong>LB benchmark (0.893)</strong></td></tr>
+  <tr><td>sed-b0-v6</td><td>Pseudo labels r1</td><td>0.7163</td><td>0.7542</td><td>Pseudo labels hurt (low quality)</td></tr>
+  <tr><td>sed-b0-v9-asl</td><td>ASL loss (γ_neg=4)</td><td>0.7755</td><td>0.9467</td><td>ASL clearly better than BCE</td></tr>
+  <tr><td>sed-b0-v10-cutmix</td><td>+CutMix augmentation</td><td>0.7060</td><td>0.9391</td><td>CutMix alone insufficient</td></tr>
+  <tr><td>sed-b0-v11-soft-sec</td><td>+Soft secondary labels</td><td>0.7098</td><td>0.9359</td><td>Marginal improvement</td></tr>
+  <tr><td>sed-b0-v12-bce</td><td>BCE loss (ablation)</td><td>0.7263</td><td>0.9079</td><td>BCE < ASL confirmed</td></tr>
+  <tr><td>sed-b0-v13-asl-cutmix</td><td>ASL + CutMix</td><td>0.7467</td><td>0.8972</td><td>Worse than ASL alone</td></tr>
+  <tr><td>sed-b0-v15-no-sec</td><td>No secondary labels</td><td>0.6842</td><td>0.9176</td><td>Secondary labels matter</td></tr>
+  <tr><td>sed-b0-v16-rating3</td><td>Rating≥3 filter</td><td>0.6250</td><td>0.8227</td><td>Quality filter too aggressive</td></tr>
+</table>
+
+<h3>Phase 7–9: Pseudo Labels & Soft Boosting</h3>
+<table>
+  <tr><th>Run</th><th>Key Change</th><th>Val ROC-AUC</th><th>Holdout AUC</th><th>ss_val AUC</th><th>Result</th></tr>
+  <tr><td>sed-b0-v21-dual-rating3</td><td>Dual dataset + rating≥3</td><td>0.7289</td><td>—</td><td>—</td><td>Rating filter still hurts</td></tr>
+  <tr><td>sed-b0-v22-dual-noclipmix</td><td>Dual dataset, no clip mix</td><td>0.7485</td><td>0.8658</td><td>—</td><td>Weak holdout</td></tr>
+  <tr><td>sed-b0-v24-soft-pseudo</td><td>Soft pseudo labels</td><td>0.8141</td><td>0.9199</td><td>—</td><td>Soft > hard pseudo</td></tr>
+  <tr><td>sed-b0-v26-asl-npcen</td><td>No PCEN</td><td>0.7262</td><td>0.9574</td><td>—</td><td>PCEN helps</td></tr>
+  <tr class="best"><td>sed-b0-v27-soft-boost</td><td>Soft pseudo + boosted soundscape</td><td>0.7804</td><td><strong>0.9915</strong></td><td>0.7804</td><td>Best holdout overall</td></tr>
+  <tr class="best"><td>sed-b0-v28-final-combo</td><td>Full combo (pseudo+boost+aug)</td><td><strong>0.8053</strong></td><td>0.9861</td><td><strong>0.8053</strong></td><td>Best ss_val pre-Phase10</td></tr>
+</table>
+
+<h3>Backbone Comparisons</h3>
+<table>
+  <tr><th>Run</th><th>Backbone</th><th>Params</th><th>Val ROC-AUC</th><th>Holdout AUC</th><th>Result</th></tr>
+  <tr><td>sed-b0-v9-asl</td><td>EfficientNet-B0</td><td>4M</td><td>0.7755</td><td>0.9467</td><td>Baseline backbone</td></tr>
+  <tr><td>sed-b2-v1</td><td>EfficientNet-B2</td><td>7.7M</td><td>0.7104</td><td>—</td><td>Underperforms B0 (early stopped)</td></tr>
+  <tr><td>sed-v2s-v1</td><td>EfficientNet-V2S</td><td>22M</td><td>0.7012</td><td>0.7976</td><td>Much worse holdout</td></tr>
+  <tr><td>sed-v2s-v2-asl</td><td>EfficientNet-V2S + ASL</td><td>22M</td><td>0.7113</td><td>0.9717</td><td>Better with ASL</td></tr>
+  <tr><td>sed-v2s-v3-full-kitchen</td><td>EfficientNet-V2S full pipeline</td><td>22M</td><td>0.7592</td><td>—</td><td>Early stopped ep11, V2S plateaus early</td></tr>
+  <tr class="running"><td>sed-b3-v1-asl ⏳</td><td><strong>EfficientNet-B3</strong></td><td>13.8M</td><td>0.7805 @ep2</td><td>—</td><td>Training ep5 — ep4 dip (0.7158), monitoring</td></tr>
+</table>
+
+<h3>Phase 10: Multi-Round Pseudo &amp; Background Noise (Current)</h3>
+<table>
+  <tr><th>Run</th><th>Key Change</th><th>Val ROC-AUC</th><th>Holdout AUC</th><th>ss_val AUC</th><th>Status</th></tr>
+  <tr class="best"><td>sed-b0-v30-multipseu</td><td>5-round pseudo labels (round2–5)</td><td><strong>0.8139</strong> @ep6</td><td><strong>0.9839 🎯</strong></td><td><strong>0.8139</strong></td><td>✅ Done — Best ss_val ever!</td></tr>
+  <tr class="running"><td>sed-b0-v30-bgnoise ⏳</td><td>Background noise aug (10,658 files)</td><td>0.7725 @ep4</td><td>—</td><td>—</td><td>Training ep5 (~18 min) — delayed convergence pattern</td></tr>
+  <tr class="bad"><td>sed-b0-v22-dual-noclipmix</td><td>No clip mix ablation</td><td>0.7485 @ep5</td><td>0.8658</td><td>—</td><td>⚠️ Early stopped, weak</td></tr>
+  <tr class="bad"><td>sed-v2s-v3-full-kitchen</td><td>V2S with full pipeline</td><td>0.7592 @ep5</td><td>—</td><td>—</td><td>⚠️ Early stopped ep11</td></tr>
+</table>
+
+<!-- ─── EMBED DISTILL ─── -->
+<h2>🔗 Embedding Distillation Experiments</h2>
+<table>
+  <tr><th>Run</th><th>Student</th><th>Teacher</th><th>Val AUC</th><th>Result</th></tr>
+  <tr><td>embed-distill-b0-v1</td><td>B0</td><td>Perch 1536-dim</td><td>—</td><td>KD pipeline established</td></tr>
+  <tr><td>embed-distill-b0-v2/v3/v4</td><td>B0</td><td>Perch</td><td>—</td><td>Hyperparameter sweeps</td></tr>
+  <tr><td>embed-distill-b2-v1</td><td>B2</td><td>Perch</td><td>—</td><td>B2 student experiment</td></tr>
+</table>
+<p style="color:#666; font-size:0.9em;">Note: embed-distill val metric uses cosine similarity, not ROC-AUC — not directly comparable.</p>
+
+<!-- ─── FEW-SHOT PROBE ─── -->
+<h2>🧬 Few-Shot Probe (Perch Embeddings)</h2>
+<table>
+  <tr><th>Version</th><th>Method</th><th>LOO AUC</th><th>LB Score</th><th>Status</th></tr>
+  <tr><td>v1 (baseline)</td><td>PCA(64) + LogReg</td><td>—</td><td>0.918</td><td>Done</td></tr>
+  <tr><td>v2 (SimpleShot)</td><td>L2 + PCA(128,whiten) + LogReg + Proto + TipAdapter</td><td>+0.15 LOO</td><td>0.915</td><td>Done (full-data fit)</td></tr>
+  <tr class="best"><td><strong>v2 Full-data</strong></td><td>Same as v2, fit on all 708 clips</td><td>—</td><td><strong>0.915 🏆</strong></td><td><strong>Current Best LB</strong></td></tr>
+  <tr class="running"><td>v2 GroupKFold-5 ⏳</td><td>Per-fold PCA/LogReg, no leakage (23.5 MB cache)</td><td>—</td><td>TBD (expected ≥0.915)</td><td>Ready to submit</td></tr>
+  <tr class="running"><td>v3 TIM-lite ⏳</td><td>v2 + Transductive Info Max per file (lam=0.10)</td><td>—</td><td>TBD</td><td>Built, in submissions_20260319_1427.zip</td></tr>
+  <tr class="running"><td>v4 DistCal+LP++ ⏳</td><td>v2 + Distribution Calibration (rare) + LP++ init</td><td>—</td><td>TBD</td><td>precompute_probe_cache.py updated, not yet run on Kaggle</td></tr>
+  <tr><td>v5 Subspace Ensemble</td><td>PCA(32)+PCA(128)+PCA(512) averaged</td><td>—</td><td>TBD</td><td>Not yet implemented</td></tr>
+  <tr><td>v5 APE</td><td>Fisher per-dim weighting per class</td><td>—</td><td>TBD</td><td>Not yet implemented</td></tr>
+</table>
+
+<!-- ─── CURRENTLY RUNNING ─── -->
+<h2>⏳ Currently Running (as of 20:15)</h2>
+<table>
+  <tr><th>Experiment</th><th>GPU</th><th>Epoch</th><th>Best val_roc_auc</th><th>Trend</th><th>ETA ep+1</th></tr>
+  <tr class="running">
+    <td>sed-b3-v1-asl</td><td>GPU0</td><td>ep5 (in progress)</td><td>0.7805 @ep2</td>
+    <td>↑0.7475→↑0.7805→↓0.7700→↓0.7158 ⚠️</td><td>~55 min</td>
+  </tr>
+  <tr class="running">
+    <td>sed-b0-v30-bgnoise</td><td>GPU1</td><td>ep5 (in progress)</td><td>0.7725 @ep4</td>
+    <td>→→↑↑↑ 0.7378→0.7376→0.7441→0.7725 🚀</td><td>~18 min</td>
+  </tr>
+</table>
+
+<h3>B3-v1-asl: Epoch History</h3>
+<table>
+  <tr><th>Epoch</th><th>val_roc_auc</th><th>val_cmap</th><th>LR</th><th>Time</th></tr>
+  <tr><td>1</td><td>0.7475</td><td>0.4690</td><td>1.33e-4</td><td>108 min</td></tr>
+  <tr class="best"><td>2</td><td><strong>0.7805</strong></td><td>0.4769</td><td>2.67e-4</td><td>89 min</td></tr>
+  <tr><td>3</td><td>0.7700</td><td>0.4740</td><td>4.00e-4</td><td>75 min</td></tr>
+  <tr class="bad"><td>4</td><td>0.7158 ↓↓</td><td>0.4608</td><td>3.99e-4</td><td>75 min</td></tr>
+  <tr class="running"><td>5</td><td>—</td><td>—</td><td>—</td><td>⏳</td></tr>
+</table>
+
+<h3>B0-v30-bgnoise: Epoch History</h3>
+<table>
+  <tr><th>Epoch</th><th>val_roc_auc</th><th>val_cmap</th><th>LR</th><th>Time</th></tr>
+  <tr><td>1</td><td>0.7378</td><td>0.4690</td><td>1.67e-4</td><td>107 min</td></tr>
+  <tr><td>2</td><td>0.7376</td><td>0.4680</td><td>3.33e-4</td><td>100 min</td></tr>
+  <tr><td>3</td><td>0.7441</td><td>0.4668</td><td>5.00e-4</td><td>79 min</td></tr>
+  <tr class="best"><td>4</td><td><strong>0.7725</strong></td><td>0.4740</td><td>4.99e-4</td><td>76 min</td></tr>
+  <tr class="running"><td>5</td><td>—</td><td>—</td><td>—</td><td>⏳ ~18 min</td></tr>
+</table>
+
+<!-- ─── KEY INSIGHTS ─── -->
+<h2>💡 Key Insights</h2>
+<ul>
+  <li><strong>Holdout AUC ≠ LB proxy</strong>: v9-asl-soup (holdout=0.953) got 0.892 LB vs v5 (holdout=0.919) got 0.893. Use <strong>ss_val_auc</strong> as LB proxy instead.</li>
+  <li><strong>Few-shot probe is the game changer</strong>: Direct Perch embedding exploitation jumped from 0.893 → <strong>0.915 LB</strong>, bypassing the need for a better SED.</li>
+  <li><strong>Multi-round pseudo labels work</strong>: v30-multipseu achieves <strong>ss_val=0.8139</strong> (vs v28=0.8053), the highest ever. Holdout=0.9839 also very strong.</li>
+  <li><strong>Background noise aug delayed convergence</strong>: bgnoise needs ~4 epochs to start improving (0.737→0.737→0.744→0.773), still climbing.</li>
+  <li><strong>B3 backbone shows early promise</strong>: ep2=0.7805 > B0 ep2 equivalent, but ep4 crashed (0.7158). LR oscillation pattern — ep5 critical.</li>
+  <li><strong>ASL consistently beats BCE</strong>: Validated across multiple ablations (v12 vs v9, etc.).</li>
+</ul>
+
+<!-- ─── NEXT STEPS ─── -->
+<h2>🎯 Next Steps (Priority Order)</h2>
+<table>
+  <tr><th>#</th><th>Action</th><th>Expected Gain</th><th>Effort</th></tr>
+  <tr><td>1</td><td>Submit <code>submissions_20260319_1427.zip</code> (probe-v3-TIM) to Kaggle</td><td>+0.002–0.005 LB</td><td>0 (ready)</td></tr>
+  <tr><td>2</td><td>Run <code>precompute_probe_cache.py</code> on Kaggle (DistCal+LP++) → submit probe-v4</td><td>+0.005–0.015 LB</td><td>Low</td></tr>
+  <tr><td>3</td><td>Wait for b3-v1-asl ep5 result — if recovered, run holdout eval; if not, consider early stop</td><td>TBD</td><td>—</td></tr>
+  <tr><td>4</td><td>Wait for bgnoise ep5–8 — if converges to >0.80, run holdout & add to ensemble</td><td>TBD</td><td>—</td></tr>
+  <tr><td>5</td><td>Build new ensemble with v30-multipseu (ss_val=0.8139) replacing v28</td><td>+0.001–0.005 LB</td><td>Low</td></tr>
+  <tr><td>6</td><td>Implement subspace ensemble (PCA 32+128+512) in probe cache</td><td>+0.003–0.008 LB</td><td>Medium</td></tr>
+</table>
+
+<hr style="margin-top:40px;">
+<p style="color:#aaa; font-size:0.8em;">Report generated by Claude Code (claude-sonnet-4-6) | BirdCLEF 2026 Codebase | 2026-03-19</p>
+</body>
+</html>

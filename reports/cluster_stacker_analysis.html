@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cluster Stacker Analysis — BirdCLEF 2026</title>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --bg2: #181c27;
+      --bg3: #1e2330;
+      --card: #232840;
+      --border: #2e3555;
+      --accent: #5b8dee;
+      --accent2: #7ecfb3;
+      --accent3: #f0a04b;
+      --danger: #e0505a;
+      --text: #d4d8f0;
+      --text-dim: #8a90b0;
+      --text-bright: #f0f2ff;
+      --green: #4caf81;
+      --blue: #4a90d9;
+      --yellow: #d4a843;
+      --code-bg: #131622;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 240px;
+      min-width: 240px;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      padding: 1.5rem 0 2rem;
+    }
+
+    #sidebar h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-dim);
+      padding: 0 1.2rem 0.5rem;
+      margin-bottom: 0.25rem;
+    }
+
+    #sidebar a {
+      display: block;
+      padding: 0.4rem 1.2rem;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.84rem;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+
+    #sidebar a:hover, #sidebar a.active {
+      color: var(--text-bright);
+      background: rgba(91,141,238,0.08);
+      border-left-color: var(--accent);
+    }
+
+    #sidebar .brand {
+      padding: 0 1.2rem 1.5rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    #sidebar .brand span {
+      display: block;
+      font-weight: 400;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* ── Main ── */
+    #main {
+      flex: 1;
+      min-width: 0;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    #header {
+      background: linear-gradient(135deg, #1a2060 0%, #0d1535 40%, #112244 70%, #1a1040 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 3rem 3rem 2.5rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #header::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 360px; height: 360px;
+      background: radial-gradient(circle, rgba(91,141,238,0.15) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    #header .badge {
+      display: inline-block;
+      background: rgba(91,141,238,0.2);
+      border: 1px solid rgba(91,141,238,0.4);
+      color: var(--accent);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-bottom: 1rem;
+    }
+
+    #header h1 {
+      font-size: 2.1rem;
+      font-weight: 800;
+      color: var(--text-bright);
+      line-height: 1.2;
+      margin-bottom: 0.6rem;
+    }
+
+    #header .subtitle {
+      color: var(--text-dim);
+      font-size: 1rem;
+      max-width: 600px;
+    }
+
+    #header .meta {
+      display: flex;
+      gap: 2rem;
+      margin-top: 1.5rem;
+    }
+
+    #header .meta-item {
+      text-align: center;
+    }
+
+    #header .meta-item .val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    #header .meta-item .lbl {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ── Content ── */
+    .content { padding: 2.5rem 3rem; }
+
+    section { margin-bottom: 3.5rem; }
+
+    section > h2 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-bright);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    section > h2 .icon {
+      width: 28px; height: 28px;
+      background: rgba(91,141,238,0.18);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+    }
+
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin: 1.5rem 0 0.6rem;
+    }
+
+    p { margin-bottom: 0.9rem; color: var(--text); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.4rem 1.6rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+    }
+
+    .card-grid .card { margin-bottom: 0; }
+
+    .stat-row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.2rem;
+    }
+
+    .stat-box {
+      flex: 1;
+      min-width: 120px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .stat-box .val {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat-box .lbl {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* ── Tables ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.875rem;
+    }
+
+    thead tr {
+      background: var(--bg3);
+    }
+
+    th {
+      padding: 0.65rem 0.9rem;
+      text-align: left;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-dim);
+      border-bottom: 2px solid var(--border);
+    }
+
+    td {
+      padding: 0.6rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .tag-green { background: rgba(76,175,129,0.18); color: var(--green); border: 1px solid rgba(76,175,129,0.3); }
+    .tag-blue  { background: rgba(74,144,217,0.18); color: var(--blue);  border: 1px solid rgba(74,144,217,0.3); }
+    .tag-yellow{ background: rgba(212,168,67,0.18); color: var(--yellow);border: 1px solid rgba(212,168,67,0.3); }
+    .tag-red   { background: rgba(224,80,90,0.18);  color: var(--danger);border: 1px solid rgba(224,80,90,0.3); }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.2rem 1.4rem;
+      overflow-x: auto;
+      font-size: 0.82rem;
+      line-height: 1.6;
+      margin: 1rem 0;
+      position: relative;
+    }
+
+    code {
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      color: #c8d0f0;
+    }
+
+    .kw { color: #c792ea; }
+    .fn { color: #82aaff; }
+    .str { color: #c3e88d; }
+    .num { color: #f78c6c; }
+    .cmt { color: #546e7a; font-style: italic; }
+    .var { color: #89ddff; }
+    .op { color: #89ddff; }
+
+    /* ── Collapsibles ── */
+    details {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 1rem 0;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 0.85rem 1.2rem;
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 0.9rem;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      user-select: none;
+    }
+
+    summary::before {
+      content: '▶';
+      font-size: 0.7rem;
+      transition: transform 0.2s;
+    }
+
+    details[open] summary::before { transform: rotate(90deg); }
+
+    details > *:not(summary) {
+      padding: 0 1.2rem 1.2rem;
+    }
+
+    /* ── Formula boxes ── */
+    .formula-box {
+      background: var(--bg3);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.4rem;
+      margin: 1rem 0;
+      overflow-x: auto;
+    }
+
+    /* ── Callouts ── */
+    .callout {
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      margin: 1rem 0;
+      display: flex;
+      gap: 0.8rem;
+    }
+
+    .callout-info {
+      background: rgba(91,141,238,0.1);
+      border: 1px solid rgba(91,141,238,0.3);
+    }
+
+    .callout-warn {
+      background: rgba(240,160,75,0.1);
+      border: 1px solid rgba(240,160,75,0.3);
+    }
+
+    .callout-success {
+      background: rgba(76,175,129,0.1);
+      border: 1px solid rgba(76,175,129,0.3);
+    }
+
+    .callout-danger {
+      background: rgba(224,80,90,0.1);
+      border: 1px solid rgba(224,80,90,0.3);
+    }
+
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+
+    .callout-body p:last-child { margin-bottom: 0; }
+
+    /* ── Progress bars ── */
+    .progress-row { margin: 0.6rem 0; }
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      margin-bottom: 3px;
+    }
+    .progress-bar {
+      background: var(--bg3);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s;
+    }
+
+    /* ── Rank badges ── */
+    .rank {
+      display: inline-block;
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      text-align: center;
+      line-height: 24px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .rank-1 { background: #d4a843; color: #1a1200; }
+    .rank-2 { background: #9aa0b0; color: #111; }
+    .rank-3 { background: #c07850; color: #fff; }
+    .rank-4 { background: var(--bg3); color: var(--text-dim); border: 1px solid var(--border); }
+    .rank-5 { background: var(--bg3); color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ── Architecture diagram ── */
+    .arch-flow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+
+    .arch-box {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem;
+      font-size: 0.8rem;
+      text-align: center;
+      flex: 1;
+      min-width: 100px;
+    }
+
+    .arch-box .title {
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 2px;
+    }
+
+    .arch-box .sub {
+      font-size: 0.7rem;
+      color: var(--text-dim);
+    }
+
+    .arch-arrow {
+      color: var(--text-dim);
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Feature layout bar ── */
+    .feature-bar {
+      display: flex;
+      height: 36px;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 1rem 0;
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    .fb-seg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 234;
+      padding: 0 6px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .fb-1 { background: #2c3e7a; color: #8bb0ff; }
+    .fb-2 { background: #1e5a4a; color: #7ecfb3; }
+    .fb-3 { background: #4a2c6a; color: #c890f0; }
+    .fb-4 { background: #5a3a1a; color: #f0b060; }
+    .fb-5 { background: #5a1e2a; color: #f08090; }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      #sidebar { display: none; }
+      .content { padding: 1.5rem; }
+      #header { padding: 2rem 1.5rem; }
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg2); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #44506a; }
+
+    /* ── Divider ── */
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5rem 0;
+    }
+
+    ul, ol {
+      padding-left: 1.4rem;
+      margin-bottom: 0.9rem;
+    }
+
+    li { margin-bottom: 0.3rem; color: var(--text); }
+
+    strong { color: var(--text-bright); }
+
+    .highlight { color: var(--accent); font-weight: 600; }
+    .highlight-green { color: var(--green); font-weight: 600; }
+    .highlight-warn  { color: var(--yellow); font-weight: 600; }
+    .highlight-danger { color: var(--danger); font-weight: 600; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin-bottom: 1rem;
+    }
+
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav id="sidebar">
+  <div class="brand">
+    Cluster Stacker
+    <span>BirdCLEF 2026 Analysis</span>
+  </div>
+  <h2>Sections</h2>
+  <a href="#executive-summary">1. Executive Summary</a>
+  <a href="#method-architecture">2. Method Architecture</a>
+  <a href="#score-weighted-distance">3. Score-Weighted Distance</a>
+  <a href="#data-analysis">4. Data Analysis</a>
+  <a href="#experiment-table">5. Experiment Comparison</a>
+  <a href="#strengths-weaknesses">6. Strengths &amp; Weaknesses</a>
+  <a href="#pseudo-labels">7. Pseudo Labels Analysis</a>
+  <a href="#hdbscan-internals">8. HDBSCAN Internals</a>
+  <a href="#expected-outcomes">9. Expected Outcomes</a>
+  <a href="#next-steps">10. Next Steps</a>
+  <hr style="border-color: var(--border); margin: 1rem 0;">
+  <h2>Quick Stats</h2>
+  <a href="#data-analysis">708 Training Rows</a>
+  <a href="#experiment-table">5 Experiments (A1–B2)</a>
+  <a href="#expected-outcomes">Best LB: 0.929</a>
+</nav>
+
+<!-- Main Content -->
+<div id="main">
+  <!-- Header -->
+  <div id="header">
+    <div class="badge">Research Analysis · 2026-03-28</div>
+    <h1>Cluster-Based Stacker<br>for BirdCLEF 2026</h1>
+    <div class="subtitle">HDBSCAN acoustic scene clustering with score-weighted MST distance to refine ensemble predictions via habitat-conditional label distributions.</div>
+    <div class="meta">
+      <div class="meta-item">
+        <div class="val">1170</div>
+        <div class="lbl">Feature Dims</div>
+      </div>
+      <div class="meta-item">
+        <div class="val">708</div>
+        <div class="lbl">Labeled Rows</div>
+      </div>
+      <div class="meta-item">
+        <div class="val">5</div>
+        <div class="lbl">Experiments</div>
+      </div>
+      <div class="meta-item">
+        <div class="val">0.929</div>
+        <div class="lbl">Current LB</div>
+      </div>
+      <div class="meta-item">
+        <div class="val">234</div>
+        <div class="lbl">Species Classes</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- 1. Executive Summary -->
+    <section id="executive-summary">
+      <h2><span class="icon">📋</span>1. Executive Summary</h2>
+
+      <p>
+        The cluster-based stacker proposes a <strong>non-parametric, locality-sensitive post-processing layer</strong> for the BirdCLEF 2026 ensemble. Rather than learning a global mapping from 1170-dim prediction concatenation to target labels (as MLP/TCN stackers do), it uses HDBSCAN to discover <em>acoustic scene clusters</em> in prediction space and then blends each window's base prediction with the cluster's empirical label distribution. The key novelty is a <strong>score-weighted MST distance</strong> that inflates pairwise distances for windows where the 5 base models disagree—encoding uncertainty directly into the clustering geometry.
+      </p>
+
+      <p>
+        Five experiments (A1–B2) span three axes of variation: feature space (raw scores vs. Perch embeddings vs. combined), distance metric (cosine vs. score-weighted), and training data (labeled only vs. +5K pseudo anchors). Based on theoretical analysis, <strong>experiment B2</strong> (Emb+Scores, score-weighted distance, +5K pseudo) has the highest ceiling but also the greatest risk from pseudo-label noise. <strong>Experiment A3</strong> is the recommended first-run candidate due to information richness without pseudo-label contamination. Traditional stacker baselines (MLP OOF 0.9594, TCN 0.9007) represent the upper and lower bounds of comparison.
+      </p>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">ℹ</span>
+        <div class="callout-body">
+          <p>This method targets a potential <strong>+0.002–0.005 LB improvement</strong> over the current 0.929 if cluster structure is genuine and pseudo-label noise is controlled. The primary risk is data sparsity (708 rows in 1170-dim space) causing HDBSCAN to classify most points as noise.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Method Architecture -->
+    <section id="method-architecture">
+      <h2><span class="icon">🏗</span>2. Method Architecture</h2>
+
+      <h3>Feature Layout (1170 dimensions per 5-second window)</h3>
+      <div class="feature-bar">
+        <div class="fb-seg fb-1">perch_raw<br>234</div>
+        <div class="fb-seg fb-2">perch_prior_fused<br>234</div>
+        <div class="fb-seg fb-3">mlp_probe<br>234</div>
+        <div class="fb-seg fb-4">proto_ssm<br>234</div>
+        <div class="fb-seg fb-5">sed_csebbs<br>234</div>
+      </div>
+
+      <h3>Two-Phase Algorithm</h3>
+
+      <div class="arch-flow">
+        <div class="arch-box">
+          <div class="title">Fit Phase</div>
+          <div class="sub">708 labeled windows</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">Compute Distance</div>
+          <div class="sub">Score-weighted cosine</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">HDBSCAN</div>
+          <div class="sub">Dense cluster discovery</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">Cluster μ Labels</div>
+          <div class="sub">Mean species distribution</div>
+        </div>
+      </div>
+
+      <div class="arch-flow">
+        <div class="arch-box">
+          <div class="title">Predict Phase</div>
+          <div class="sub">Test windows</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">Assign Cluster</div>
+          <div class="sub">+ soft membership s</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">Blend</div>
+          <div class="sub">(1 − αs)·base + αs·μ</div>
+        </div>
+        <span class="arch-arrow">→</span>
+        <div class="arch-box">
+          <div class="title">Final Prediction</div>
+          <div class="sub">234 species probabilities</div>
+        </div>
+      </div>
+
+      <h3>The 5 Experiments</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Exp</th>
+            <th>Features</th>
+            <th>Dims</th>
+            <th>Distance</th>
+            <th>Pseudo Labels</th>
+            <th>Hypothesis</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>A1</strong> <span class="tag tag-green">Baseline</span></td>
+            <td>Scores only</td>
+            <td>1170</td>
+            <td>Cosine</td>
+            <td>❌</td>
+            <td>Pure prediction-space clustering</td>
+          </tr>
+          <tr>
+            <td><strong>A2</strong></td>
+            <td>Perch Emb only</td>
+            <td>1536</td>
+            <td>Cosine</td>
+            <td>❌</td>
+            <td>Acoustic embedding clustering</td>
+          </tr>
+          <tr>
+            <td><strong>A3</strong> <span class="tag tag-yellow">Recommended</span></td>
+            <td>Emb + Scores</td>
+            <td>2706</td>
+            <td>Score-weighted</td>
+            <td>❌</td>
+            <td>Best of both worlds</td>
+          </tr>
+          <tr>
+            <td><strong>B1</strong> <span class="tag tag-blue">Pseudo</span></td>
+            <td>Scores only</td>
+            <td>1170</td>
+            <td>Cosine</td>
+            <td>✅ 5K</td>
+            <td>More anchors → stable clusters</td>
+          </tr>
+          <tr>
+            <td><strong>B2</strong> <span class="tag tag-blue">Pseudo</span></td>
+            <td>Emb + Scores</td>
+            <td>2706</td>
+            <td>Score-weighted</td>
+            <td>✅ 5K</td>
+            <td>Full version</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Blend Formula</h3>
+      <div class="formula-box">
+        \[
+          \hat{y}_i = (1 - \alpha \cdot s_i)\,\cdot\, \text{base}_i \;+\; (\alpha \cdot s_i)\,\cdot\, \mu_{c(i)}
+        \]
+        <p style="margin-top:0.8rem; font-size:0.85rem; color: var(--text-dim);">
+          where \(\alpha = 0.4\) (blend strength), \(s_i \in [0,1]\) (soft cluster membership), \(c(i)\) = assigned cluster, \(\mu_{c(i)}\) = mean label distribution of cluster \(c(i)\), and \(\text{base}_i = \frac{1}{5}\sum_{k} \sigma(z_{ik})\).
+        </p>
+      </div>
+
+      <details>
+        <summary>Implementation Pseudocode (Python)</summary>
+        <pre><code><span class="kw">import</span> numpy <span class="kw">as</span> np
+<span class="kw">import</span> hdbscan
+
+<span class="kw">class</span> <span class="fn">ClusterStacker</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(<span class="var">self</span>, alpha=<span class="num">0.4</span>, beta=<span class="num">2.0</span>, min_cluster_size=<span class="num">10</span>):
+        <span class="var">self</span>.alpha = alpha
+        <span class="var">self</span>.beta = beta
+        <span class="var">self</span>.min_cluster_size = min_cluster_size
+
+    <span class="kw">def</span> <span class="fn">_score_weighted_dist</span>(<span class="var">self</span>, X, scores):
+        <span class="cmt"># X: (N, D) features; scores: (N, 5, 234) per-model sigmoid outputs</span>
+        var_x = np.<span class="fn">mean</span>(np.<span class="fn">var</span>(scores, axis=<span class="num">1</span>), axis=-<span class="num">1</span>)  <span class="cmt"># (N,)</span>
+        <span class="cmt"># Compute pairwise cosine distance</span>
+        X_norm = X / (np.<span class="fn">linalg.norm</span>(X, axis=<span class="num">1</span>, keepdims=<span class="kw">True</span>) + <span class="num">1e-8</span>)
+        cos_sim = X_norm @ X_norm.T
+        cos_dist = <span class="num">1.0</span> - np.<span class="fn">clip</span>(cos_sim, -<span class="num">1</span>, <span class="num">1</span>)
+        <span class="cmt"># Inflate by inter-model variance</span>
+        var_i = var_x[:, <span class="kw">None</span>]  <span class="cmt"># column</span>
+        var_j = var_x[<span class="kw">None</span>, :]  <span class="cmt"># row</span>
+        weight = <span class="num">1.0</span> + <span class="var">self</span>.beta * (var_i + var_j)
+        <span class="kw">return</span> cos_dist * weight
+
+    <span class="kw">def</span> <span class="fn">fit</span>(<span class="var">self</span>, X, scores, labels):
+        <span class="cmt"># X: feature matrix, scores: (N,5,234), labels: (N,234) binary</span>
+        D = <span class="var">self</span>.<span class="fn">_score_weighted_dist</span>(X, scores)
+        <span class="var">self</span>.clusterer = hdbscan.<span class="fn">HDBSCAN</span>(
+            metric=<span class="str">'precomputed'</span>,
+            min_cluster_size=<span class="var">self</span>.min_cluster_size,
+            prediction_data=<span class="kw">True</span>
+        ).<span class="fn">fit</span>(D)
+        <span class="cmt"># Compute per-cluster mean label distribution</span>
+        <span class="var">self</span>.cluster_means = {}
+        <span class="kw">for</span> cid <span class="kw">in</span> <span class="fn">set</span>(<span class="var">self</span>.clusterer.labels_) - {-<span class="num">1</span>}:
+            mask = <span class="var">self</span>.clusterer.labels_ == cid
+            <span class="var">self</span>.cluster_means[cid] = labels[mask].mean(axis=<span class="num">0</span>)
+        <span class="var">self</span>.X_train = X
+        <span class="var">self</span>.train_scores = scores
+        <span class="kw">return</span> <span class="var">self</span>
+
+    <span class="kw">def</span> <span class="fn">predict</span>(<span class="var">self</span>, X_test, test_scores):
+        base_pred = np.<span class="fn">mean</span>(test_scores, axis=<span class="num">1</span>)  <span class="cmt"># (N,234)</span>
+        labels_, strengths_ = hdbscan.<span class="fn">approximate_predict</span>(
+            <span class="var">self</span>.clusterer, X_test
+        )
+        preds = base_pred.<span class="fn">copy</span>()
+        <span class="kw">for</span> i, (cid, s) <span class="kw">in</span> <span class="fn">enumerate</span>(<span class="fn">zip</span>(labels_, strengths_)):
+            <span class="kw">if</span> cid != -<span class="num">1</span> <span class="kw">and</span> cid <span class="kw">in</span> <span class="var">self</span>.cluster_means:
+                mu = <span class="var">self</span>.cluster_means[cid]
+                blend = <span class="var">self</span>.alpha * s
+                preds[i] = (<span class="num">1</span> - blend) * base_pred[i] + blend * mu
+        <span class="kw">return</span> preds</code></pre>
+      </details>
+    </section>
+
+    <!-- 3. Score-Weighted Distance -->
+    <section id="score-weighted-distance">
+      <h2><span class="icon">📐</span>3. Score-Weighted Distance Deep Dive</h2>
+
+      <h3>Motivation</h3>
+      <p>
+        Standard HDBSCAN with cosine distance treats all windows equally—two windows with similar prediction vectors are considered "close" regardless of how confident the models are. But in BirdCLEF, there is a crucial asymmetry: a window where all 5 models strongly agree is <em>qualitatively different</em> from one where they disagree. The score-weighted distance encodes this <strong>epistemic uncertainty</strong> directly into the clustering geometry.
+      </p>
+
+      <h3>Mathematical Definition</h3>
+
+      <div class="formula-box">
+        \[
+          \text{var}_i = \frac{1}{C}\sum_{c=1}^{C}\,\mathrm{Var}_{k}\bigl[\sigma(z_{ikc})\bigr]
+        \]
+        <p style="font-size:0.85rem; color:var(--text-dim); margin-top:0.5rem;">
+          Mean per-class variance across the 5 models (\(k=1\ldots5\)), averaged over all \(C=234\) classes.
+        </p>
+      </div>
+
+      <div class="formula-box">
+        \[
+          d_{\mathrm{sw}}(x_i,\, x_j) \;=\; d_{\cos}(x_i,\, x_j)\;\cdot\;\Bigl(1 + \beta\,(\mathrm{var}_i + \mathrm{var}_j)\Bigr)
+        \]
+        <p style="font-size:0.85rem; color:var(--text-dim); margin-top:0.5rem;">
+          \(\beta = 2.0\) is the uncertainty inflation coefficient. \(d_{\cos} \in [0,2]\) for unit-normalized vectors.
+        </p>
+      </div>
+
+      <h3>Effect on Clustering</h3>
+
+      <div class="two-col">
+        <div class="card">
+          <h3 style="margin-top:0; color: var(--green);">Confident Windows (var ≈ 0)</h3>
+          <p>All 5 models agree on the prediction. Weight factor ≈ 1.0. Distance is essentially pure cosine. These windows form <strong>tight, stable clusters</strong>—ideal for computing reliable cluster means.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color: var(--danger);">Uncertain Windows (var → high)</h3>
+          <p>Models strongly disagree. Weight factor inflates distance. Even if the prediction vector looks similar to another window, they are kept farther apart. These windows tend to become <strong>noise points</strong> (label = −1, strength = 0), falling back to base_pred—appropriate behavior.</p>
+        </div>
+      </div>
+
+      <h3>Connection to Existing Literature</h3>
+
+      <ul>
+        <li><strong>UMAP fuzzy simplicial complex:</strong> UMAP also modifies edge weights in a KNN graph based on local density. Score-weighted distance is analogous but uses <em>model disagreement</em> as the density signal.</li>
+        <li><strong>Density-sensitive distance:</strong> Bijral et al. (2011) showed that density-sensitive geodesic distances improve spectral clustering. Here, density in "model agreement space" modulates the MST.</li>
+        <li><strong>Conformal prediction regions:</strong> High inter-model variance correlates with wide conformal prediction sets—windows that are harder to classify. Pushing them toward noise is a principled choice.</li>
+        <li><strong>HDBSCAN mutual reachability:</strong> The standard mutual reachability distance already has a built-in density correction (\(\mathrm{max}(d_{\mathrm{core}}(x_i), d_{\mathrm{core}}(x_j), d(x_i,x_j))\)). Score-weighted distance adds a second layer of uncertainty correction before mutual reachability is computed.</li>
+      </ul>
+
+      <details>
+        <summary>Worked Example: β sensitivity analysis</summary>
+        <div>
+          <p>Suppose two windows have cosine distance 0.05 (very similar prediction vectors). Window i has var = 0.001 (confident); window j has var = 0.08 (uncertain).</p>
+          <table>
+            <thead><tr><th>β</th><th>Weight factor</th><th>d_sw</th><th>Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td>0 (disabled)</td><td>1.000</td><td>0.050</td><td>Windows likely cluster together</td></tr>
+              <tr><td>1.0</td><td>1.081</td><td>0.054</td><td>Slight separation</td></tr>
+              <tr><td>2.0</td><td>1.162</td><td>0.058</td><td>Moderate separation</td></tr>
+              <tr><td>5.0</td><td>1.405</td><td>0.070</td><td>Strong separation</td></tr>
+            </tbody>
+          </table>
+          <p>At β = 2.0, a highly uncertain window pair (both var = 0.08) would have weight = 1 + 2×0.16 = 1.32 → distance inflated 32%. This is sufficient to push them outside the minimum spanning tree edges that define cluster membership, if the cluster's core density requires d < 0.05.</p>
+        </div>
+      </details>
+    </section>
+
+    <!-- 4. Data Analysis -->
+    <section id="data-analysis">
+      <h2><span class="icon">📊</span>4. Data Analysis</h2>
+
+      <h3>Dataset Overview</h3>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="val">59</div>
+          <div class="lbl">Labeled Soundscapes</div>
+        </div>
+        <div class="stat-box">
+          <div class="val">12</div>
+          <div class="lbl">Windows / File</div>
+        </div>
+        <div class="stat-box">
+          <div class="val">708</div>
+          <div class="lbl">Total Labeled Rows</div>
+        </div>
+        <div class="stat-box">
+          <div class="val">234</div>
+          <div class="lbl">Species Classes</div>
+        </div>
+        <div class="stat-box">
+          <div class="val">0.018</div>
+          <div class="lbl">Positive Rate</div>
+        </div>
+        <div class="stat-box">
+          <div class="val">127,188</div>
+          <div class="lbl">Pseudo-labeled Rows</div>
+        </div>
+      </div>
+
+      <h3>Dimensionality vs. Sample Size Problem</h3>
+      <div class="card">
+        <p>With 708 rows in 1170-dimensional space, the <strong>samples-to-dimensions ratio is 0.61</strong>—well below the rule-of-thumb of 5–10 per dimension for stable distance estimation. This is the <em>curse of dimensionality</em> in its most severe form.</p>
+
+        <div class="progress-row">
+          <div class="progress-label"><span>Experiment A1 (1170-dim scores)</span><span style="color:var(--danger)">0.61 samples/dim</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:6%; background: var(--danger);"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Experiment A2 (1536-dim Perch)</span><span style="color:var(--danger)">0.46 samples/dim</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:5%; background: var(--danger);"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Experiment A3 (2706-dim combined)</span><span style="color:var(--danger)">0.26 samples/dim</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:3%; background: var(--danger);"></div></div>
+        </div>
+        <div class="progress-row">
+          <div class="progress-label"><span>Experiments B1/B2 (+5K pseudo, 5708 rows)</span><span style="color:var(--yellow)">~4.9 samples/dim</span></div>
+          <div class="progress-bar"><div class="progress-fill" style="width:49%; background: var(--yellow);"></div></div>
+        </div>
+
+        <p style="margin-top:1rem; font-size:0.85rem; color:var(--text-dim);">Note: HDBSCAN operates on mutual reachability distances, which partially mitigate the curse of dimensionality by using core distances (local density estimates). Cosine distance is also more robust in high dimensions than Euclidean. Still, sparse data is the primary risk factor for this method.</p>
+      </div>
+
+      <h3>Label Distribution Analysis</h3>
+
+      <div class="two-col">
+        <div class="card">
+          <h3 style="margin-top:0;">Positive Rate: 0.018</h3>
+          <p>With 708 windows × 234 species = 165,672 cells, approximately <strong>2,982 positives</strong> exist. Most windows contain 4–8 positive species. Cluster means will be heavily zero-dominated.</p>
+          <div class="callout callout-warn" style="margin-top:0.8rem;">
+            <span class="callout-icon">⚠</span>
+            <div class="callout-body"><p style="margin:0; font-size:0.85rem;">Cluster means dominated by negatives will make the blend formula conservative: αs×μ pulls toward zero, potentially suppressing true positives.</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">Temporal Structure</h3>
+          <p>Each soundscape file contributes 12 consecutive windows. These 12 windows share the same <strong>habitat, time of day, and acoustic conditions</strong>. They should naturally cluster together.</p>
+          <p>If HDBSCAN discovers file-level clusters, the cluster mean effectively provides <strong>file-level context smoothing</strong>—adjacent windows reinforce each other's rare species detections.</p>
+        </div>
+      </div>
+
+      <h3>Model Correlation Analysis (Hypothesized)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Model Pair</th>
+            <th>Expected Correlation</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>perch_raw ↔ perch_prior_fused</td>
+            <td><span class="highlight-warn">High (~0.85)</span></td>
+            <td>Same Perch backbone; prior fusion adds calibration shift only</td>
+          </tr>
+          <tr>
+            <td>perch_raw ↔ mlp_probe</td>
+            <td><span class="highlight-warn">High (~0.80)</span></td>
+            <td>MLP probe trained on Perch embeddings</td>
+          </tr>
+          <tr>
+            <td>perch_raw ↔ proto_ssm</td>
+            <td><span class="highlight">Moderate (~0.60)</span></td>
+            <td>ProtoSSM uses different architecture and prior fusion</td>
+          </tr>
+          <tr>
+            <td>perch_raw ↔ sed_csebbs</td>
+            <td><span class="highlight-green">Low (~0.40)</span></td>
+            <td>SED uses different backbone (efficientnet) and 20s clips</td>
+          </tr>
+          <tr>
+            <td>proto_ssm ↔ sed_csebbs</td>
+            <td><span class="highlight-green">Low (~0.35)</span></td>
+            <td>Most architecturally diverse pair</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-info">
+        <span class="callout-icon">ℹ</span>
+        <div class="callout-body">
+          <p>The high Perch family correlation means the 1170-dim feature space has effective dimensionality much lower—roughly 3 independent subspaces (Perch family, ProtoSSM, SED). This is <strong>good for clustering</strong>: HDBSCAN will see a truly 3-"block" structure rather than 5 independent views.</p>
+        </div>
+      </div>
+
+      <h3>SED Leakage Concern</h3>
+      <div class="callout callout-danger">
+        <span class="callout-icon">⚠</span>
+        <div class="callout-body">
+          <p>The <code>sed_csebbs</code> component achieves <strong>OOF AUC 0.9957</strong>, significantly above the others. This is attributable to train_audio data leakage: soundscape validation files were heard by the SED model during pretraining. In the 1170-dim feature space, <code>sed_csebbs</code> columns will be highly discriminative for the labeled validation set but may not generalize to test soundscapes. This distorts cluster structure: clusters formed by fitting on labeled data will be dominated by the SED signal, but test-time cluster assignment using the same SED signal may behave differently on truly unseen habitats.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Experiment Comparison -->
+    <section id="experiment-table">
+      <h2><span class="icon">🔬</span>5. Experiment Comparison Table</h2>
+
+      <p>All experiments are compared against the traditional stacker baselines and the current LB ceiling.</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Type</th>
+            <th>Features</th>
+            <th>Dist Metric</th>
+            <th>Pseudo</th>
+            <th>Expected OOF</th>
+            <th>Expected LB Δ</th>
+            <th>Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="background: rgba(224,80,90,0.05);">
+            <td><strong>Base ensemble</strong></td>
+            <td><span class="tag tag-yellow">Baseline</span></td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0.9193 (threshold)</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr style="background: rgba(76,175,129,0.05);">
+            <td><strong>MLP stacker</strong></td>
+            <td><span class="tag tag-green">Parametric</span></td>
+            <td>1170 scores</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0.9594</td>
+            <td>+0.003–0.005</td>
+            <td>Low</td>
+          </tr>
+          <tr>
+            <td><strong>TCN stacker</strong></td>
+            <td><span class="tag tag-green">Parametric</span></td>
+            <td>1170 scores</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0.9007</td>
+            <td>Negative</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>Transformer stacker</strong></td>
+            <td><span class="tag tag-green">Parametric</span></td>
+            <td>1170 scores</td>
+            <td>—</td>
+            <td>—</td>
+            <td>0.9072</td>
+            <td>Neutral</td>
+            <td>Medium</td>
+          </tr>
+          <tr style="border-top: 2px solid var(--border);">
+            <td><strong>A1</strong></td>
+            <td><span class="tag tag-blue">Cluster</span></td>
+            <td>1170 scores</td>
+            <td>Cosine</td>
+            <td>❌</td>
+            <td>0.93–0.94</td>
+            <td>+0.001–0.003</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>A2</strong></td>
+            <td><span class="tag tag-blue">Cluster</span></td>
+            <td>1536 Perch emb</td>
+            <td>Cosine</td>
+            <td>❌</td>
+            <td>0.92–0.93</td>
+            <td>+0.000–0.002</td>
+            <td>Medium</td>
+          </tr>
+          <tr style="background: rgba(91,141,238,0.06);">
+            <td><strong>A3 ★</strong></td>
+            <td><span class="tag tag-blue">Cluster</span></td>
+            <td>2706 emb+scores</td>
+            <td>Score-weighted</td>
+            <td>❌</td>
+            <td>0.93–0.95</td>
+            <td>+0.002–0.005</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>B1</strong></td>
+            <td><span class="tag tag-blue">Cluster</span></td>
+            <td>1170 scores</td>
+            <td>Cosine</td>
+            <td>✅ 5K</td>
+            <td>0.92–0.94</td>
+            <td>+0.001–0.003</td>
+            <td>Medium-High</td>
+          </tr>
+          <tr style="background: rgba(74,144,217,0.06);">
+            <td><strong>B2</strong></td>
+            <td><span class="tag tag-blue">Cluster</span></td>
+            <td>2706 emb+scores</td>
+            <td>Score-weighted</td>
+            <td>✅ 5K</td>
+            <td>0.92–0.96</td>
+            <td>+0.000–0.007</td>
+            <td>High</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠</span>
+        <div class="callout-body">
+          <p><strong>OOF estimates are highly uncertain</strong>: with only 59 files, OOF AUC variance is approximately ±0.015. These ranges reflect theoretical expectations, not empirical measurements. True LB delta may differ substantially.</p>
+        </div>
+      </div>
+
+      <h3>Key Differentiators from Parametric Stackers</h3>
+      <div class="two-col">
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--accent);">Cluster Stacker Advantages</h3>
+          <ul>
+            <li>No parameters to overfit to 708 training rows</li>
+            <li>Handles distribution shift gracefully (novel habitat → noise → base pred)</li>
+            <li>Automatic temporal coherence via file-level clusters</li>
+            <li>Rare species benefit from habitat-context priors</li>
+            <li>Interpretable: can inspect which windows cluster together</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">MLP Stacker Advantages</h3>
+          <ul>
+            <li>Learns non-linear interactions between model predictions</li>
+            <li>OOF 0.9594 already validated against LB</li>
+            <li>Can fit calibration shifts per-species</li>
+            <li>Consistent performance regardless of cluster structure quality</li>
+            <li>Well-understood failure modes</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Strengths & Weaknesses -->
+    <section id="strengths-weaknesses">
+      <h2><span class="icon">⚖</span>6. Theoretical Strengths &amp; Weaknesses</h2>
+
+      <h3>Strengths</h3>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--green);">Acoustic Scene Structure</h3>
+          <p>Soundscape recordings from the same site/habitat have consistent species compositions. HDBSCAN should discover these "habitat clusters." Windows from a cloud forest will cluster together and share rare highland species detections.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--green);">Temporal Coherence</h3>
+          <p>12 consecutive windows from the same 60-second file will have nearly identical prediction vectors. HDBSCAN will naturally group them, providing implicit temporal smoothing without the artifacts of sliding-window smoothing.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--green);">Rare Species Benefit</h3>
+          <p>For species with few training examples, cluster means provide a contextual prior: "windows from similar acoustic contexts tend to contain species X." This is analogous to prototype networks (Snell 2017) but applied to the stacking layer.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--green);">Noise Robustness</h3>
+          <p>HDBSCAN's noise classification is a feature here: uncertain or atypical windows (strength=0) revert entirely to base prediction. The method degrades gracefully to the base ensemble when clustering fails.</p>
+        </div>
+      </div>
+
+      <h3>Weaknesses</h3>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">Data Sparsity</h3>
+          <p>708 points in 1170+ dimensions may yield mostly noise points. If min_cluster_size=10, and HDBSCAN produces only 5–10 clusters, most of the 708 rows will be noise → blend has no effect on most test windows.</p>
+          <div class="callout callout-danger" style="margin-top:0.8rem;">
+            <span class="callout-icon">!</span>
+            <div class="callout-body"><p style="margin:0; font-size:0.82rem;">Mitigation: reduce min_cluster_size (risk: unstable clusters), or use PCA/UMAP to reduce dimensions before clustering (risk: information loss).</p></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">Label Imbalance</h3>
+          <p>Cluster means are dominated by zeros (pos_rate=0.018). The blend formula pulls predictions toward near-zero means, potentially hurting recall for rare species that are correctly predicted by the base ensemble.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">SED Leakage Distortion</h3>
+          <p>sed_csebbs achieves 0.9957 OOF due to train_audio leakage. Its contribution to the 1170-dim feature space dominates cluster formation for training data but may not generalize, creating train/test cluster mismatch.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">OOF Reliability</h3>
+          <p>With only 59 soundscapes, each cross-validation fold contains ~12 files. OOF AUC variance is ±0.015 or more. Hyperparameter selection (α, β, min_cluster_size) based on OOF may not transfer to LB.</p>
+        </div>
+      </div>
+
+      <h3>Hyperparameter Sensitivity Analysis</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Hyperparameter</th>
+            <th>Default</th>
+            <th>Low Value Effect</th>
+            <th>High Value Effect</th>
+            <th>Sensitivity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>α</code> (blend strength)</td>
+            <td>0.4</td>
+            <td>Less cluster influence, ~= base pred</td>
+            <td>Heavy cluster bias, may hurt recall</td>
+            <td><span class="tag tag-yellow">Medium</span></td>
+          </tr>
+          <tr>
+            <td><code>β</code> (uncertainty inflation)</td>
+            <td>2.0</td>
+            <td>~= standard cosine clustering</td>
+            <td>Almost all uncertain windows → noise</td>
+            <td><span class="tag tag-yellow">Medium</span></td>
+          </tr>
+          <tr>
+            <td><code>min_cluster_size</code></td>
+            <td>10</td>
+            <td>Fragmented micro-clusters, noisy means</td>
+            <td>Very few large clusters, oversimplified</td>
+            <td><span class="tag tag-red">High</span></td>
+          </tr>
+          <tr>
+            <td><code>min_samples</code></td>
+            <td>5</td>
+            <td>More points classified as core → larger clusters</td>
+            <td>More noise points, fewer clusters</td>
+            <td><span class="tag tag-red">High</span></td>
+          </tr>
+          <tr>
+            <td>Pseudo label count</td>
+            <td>5K</td>
+            <td>Still sparse; similar to A-experiments</td>
+            <td>Noise dominates cluster means</td>
+            <td><span class="tag tag-yellow">Medium</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 7. Pseudo Labels Analysis -->
+    <section id="pseudo-labels">
+      <h2><span class="icon">🏷</span>7. Pseudo Labels Analysis</h2>
+
+      <h3>What the Pseudo Labels Are</h3>
+      <p>
+        The pseudo labels come from the SED ensemble applied to 10,658 unlabeled soundscapes. They are <strong>continuous probabilities</strong> (not binary), representing model confidence rather than ground truth. The 5,000 selected anchors are the highest-confidence windows (likely threshold ≥ 0.5 for at least one species).
+      </p>
+
+      <div class="two-col">
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--green);">When Pseudo Labels Help</h3>
+          <ul>
+            <li><strong>Sparse regions:</strong> Habitats not well-represented in 59 labeled files get anchors from the 10K pseudo pool → test windows in those habitats find neighbors.</li>
+            <li><strong>Cluster stability:</strong> More points → HDBSCAN can use smaller min_cluster_size → finer-grained clusters with more stable means.</li>
+            <li><strong>Rare species:</strong> Pseudo-labeled windows where rare species were confidently detected add rare-species signal to cluster means.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0; color:var(--danger);">When Pseudo Labels Hurt</h3>
+          <ul>
+            <li><strong>Label noise propagation:</strong> A false positive in pseudo labels (species X detected but not present) will contaminate the cluster mean, biasing all cluster members toward species X.</li>
+            <li><strong>Distribution mismatch:</strong> Pseudo labels are continuous (prob=0.6) while true labels are binary (0/1). Cluster means from mixed data have different scale than pure labeled data means.</li>
+            <li><strong>Cluster contamination:</strong> A habitat cluster with 2 labeled + 50 pseudo windows will have its mean dominated by pseudo predictions → cluster mean reliability degrades.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>Pseudo Label Quality Estimation</h3>
+      <p>
+        The pseudo labels derive from the SED ensemble, which achieves ~0.929 LB AUC on soundscapes. At a 0.5 threshold, expected precision is approximately 60–70% for common species and 40–55% for rare species. Key risks:
+      </p>
+
+      <div class="progress-row">
+        <div class="progress-label"><span>Common species pseudo precision (estimated)</span><span style="color:var(--green)">~65%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:65%; background: var(--green);"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Rare species pseudo precision (estimated)</span><span style="color:var(--yellow)">~45%</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:45%; background: var(--yellow);"></div></div>
+      </div>
+      <div class="progress-row">
+        <div class="progress-label"><span>Pseudo labels from SED (same source as sed_csebbs feature)</span><span style="color:var(--danger)">Correlated bias</span></div>
+        <div class="progress-bar"><div class="progress-fill" style="width:80%; background: var(--danger);"></div></div>
+      </div>
+
+      <div class="callout callout-warn">
+        <span class="callout-icon">⚠</span>
+        <div class="callout-body">
+          <p><strong>Circular dependency risk:</strong> The sed_csebbs feature (from the SED ensemble) and the pseudo labels (from the SED ensemble) are correlated. Clustering on sed_csebbs features and then using SED-derived pseudo labels to compute cluster means introduces a circular signal that may artificially inflate OOF while not generalizing to LB.</p>
+        </div>
+      </div>
+
+      <h3>Recommended Pseudo Label Strategy</h3>
+      <ul>
+        <li><strong>Run A3 first</strong> (no pseudo) to establish a clean baseline cluster quality estimate.</li>
+        <li>If A3 produces ≥30% non-noise points, proceed to B2 with pseudo labels.</li>
+        <li>If A3 produces &lt;10% non-noise points, the labeled data is too sparse; pseudo labels are essential (run B1 next).</li>
+        <li>Consider using <strong>only high-confidence pseudo windows</strong> (top 1% per species by model agreement) rather than top 5K by any species.</li>
+      </ul>
+    </section>
+
+    <!-- 8. HDBSCAN Internals -->
+    <section id="hdbscan-internals">
+      <h2><span class="icon">🔍</span>8. HDBSCAN Internals in This Context</h2>
+
+      <h3>How HDBSCAN Builds Clusters</h3>
+      <p>HDBSCAN operates in four stages. Understanding each stage helps predict behavior on this dataset.</p>
+
+      <div class="card">
+        <h3 style="margin-top:0; color:var(--accent);">Stage 1: Core Distance</h3>
+        <p>For each point \(x_i\) and parameter min_samples \(k\):</p>
+        <div class="formula-box">
+          \[d_{\text{core},k}(x_i) = \text{distance to the } k\text{-th nearest neighbor of } x_i\]
+        </div>
+        <p><strong>In this context:</strong> With 708 points in 1170-dim space and k=5, core distances will be large (sparse space). Points in dense file-level groups (12 windows/file) will have small core distances; isolated windows will have large core distances.</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0; color:var(--accent);">Stage 2: Mutual Reachability Distance</h3>
+        <div class="formula-box">
+          \[d_{\text{mreach},k}(x_i, x_j) = \max\!\left(d_{\text{core},k}(x_i),\; d_{\text{core},k}(x_j),\; d_{\text{sw}}(x_i, x_j)\right)\]
+        </div>
+        <p><strong>In this context:</strong> For score-weighted distance (Exp A3, B2), \(d_{\text{sw}}\) replaces the standard distance. The max operation means even if two windows have low \(d_{\text{sw}}\), if either has a large core distance (isolated in space), their mutual reachability distance stays large—they won't cluster.</p>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0; color:var(--accent);">Stage 3: Minimum Spanning Tree</h3>
+        <p>HDBSCAN builds the MST over all pairwise mutual reachability distances. The <strong>score-weighted distance modification affects every edge in this MST</strong>—uncertain windows will have inflated edges to all their neighbors, making them less likely to be included in dense subgraphs.</p>
+        <p><strong>Expected MST structure for 708 labeled rows:</strong></p>
+        <ul>
+          <li>12 short edges per file (consecutive windows in same file)</li>
+          <li>Longer edges connecting files from same habitat type</li>
+          <li>Very long edges connecting different habitat types</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0; color:var(--accent);">Stage 4: Condensed Cluster Tree → Soft Membership</h3>
+        <p>The condensed tree is pruned to select persistent clusters (those that survive over a range of density thresholds). Each point receives a soft membership \(s_i \in [0,1]\) equal to its probability of cluster membership normalized by the maximum within-cluster membership.</p>
+        <p><strong>Key insight:</strong> \(s_i = 0\) means the point is a noise outlier → base_pred unchanged. \(s_i = 1\) means the point is a core cluster member → maximum blending toward cluster mean. This is the mechanism that makes the method robust: uncertain windows self-select to \(s_i \approx 0\).</p>
+      </div>
+
+      <details>
+        <summary>Expected Cluster Count Estimates</summary>
+        <div>
+          <p>With 59 soundscape files × 12 windows and typical habitat diversity in BirdCLEF, we expect:</p>
+          <table>
+            <thead><tr><th>Scenario</th><th>Expected Clusters</th><th>Noise %</th></tr></thead>
+            <tbody>
+              <tr><td>All files from distinct habitats</td><td>~59 (file-level)</td><td>~20%</td></tr>
+              <tr><td>10 habitat types, 6 files/habitat</td><td>~10–15</td><td>~40%</td></tr>
+              <tr><td>Strong SED leakage dominates</td><td>~5 (per-species dominant)</td><td>~60%</td></tr>
+              <tr><td>Worst case: all noise</td><td>0</td><td>~100%</td></tr>
+            </tbody>
+          </table>
+          <p>The most likely scenario is 10–25 clusters with 30–50% noise points. Even so, the 50–70% non-noise points that do receive cluster assignments could see meaningful improvement.</p>
+        </div>
+      </details>
+
+      <details>
+        <summary>HDBSCAN approximate_predict for Test Data</summary>
+        <div>
+          <p>After fitting on training data, <code>hdbscan.approximate_predict(clusterer, X_test)</code> assigns each test point to the nearest cluster without re-running the full clustering algorithm. This is critical for efficiency and consistency.</p>
+          <p><strong>Limitation:</strong> The approximation may not find the optimal cluster assignment for test points in ambiguous regions. Test points near cluster boundaries will receive lower membership strength (s close to 0), which is appropriate—they should not be strongly blended.</p>
+          <pre><code><span class="cmt"># Under the hood: approximate_predict</span>
+<span class="cmt"># For each test point x:</span>
+<span class="cmt">#   1. Find nearest training exemplar by core distance</span>
+<span class="cmt">#   2. Assign to that exemplar's cluster</span>
+<span class="cmt">#   3. Membership strength = min(1, exemplar_strength × distance_ratio)</span>
+<span class="cmt"># This is O(N_train × D) per test point → scales with feature dimension</span></code></pre>
+        </div>
+      </details>
+    </section>
+
+    <!-- 9. Expected Outcomes -->
+    <section id="expected-outcomes">
+      <h2><span class="icon">🎯</span>9. Expected Outcomes</h2>
+
+      <h3>Ranked Prediction: Which Experiment Should Win</h3>
+
+      <div class="card" style="border-color: var(--yellow); background: rgba(212,168,67,0.05);">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+          <span class="rank rank-1">1</span>
+          <div>
+            <strong>B2: Emb+Scores, Score-Weighted, +5K Pseudo</strong>
+            <div style="color:var(--text-dim); font-size:0.82rem;">Highest information ceiling; most likely to discover stable habitat clusters</div>
+          </div>
+        </div>
+        <p style="margin-bottom:0.4rem; font-size:0.88rem;"><strong>Expected OOF:</strong> 0.930–0.960 &nbsp;|&nbsp; <strong>Expected LB Δ:</strong> +0.001–0.007 &nbsp;|&nbsp; <strong>Confidence:</strong> Low (high variance)</p>
+        <p style="font-size:0.85rem; color:var(--text-dim);">The +5K pseudo anchors solve the sparsity problem. Score-weighted distance correctly handles SED uncertainty. Perch embeddings add acoustic structure not present in raw scores. Primary risk: circular bias from SED pseudo labels.</p>
+      </div>
+
+      <div class="card" style="border-color: #9aa0b0; background: rgba(154,160,176,0.05);">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+          <span class="rank rank-2">2</span>
+          <div>
+            <strong>A3: Emb+Scores, Score-Weighted, No Pseudo</strong>
+            <div style="color:var(--text-dim); font-size:0.82rem;">Best information quality; no pseudo label contamination</div>
+          </div>
+        </div>
+        <p style="margin-bottom:0.4rem; font-size:0.88rem;"><strong>Expected OOF:</strong> 0.928–0.950 &nbsp;|&nbsp; <strong>Expected LB Δ:</strong> +0.001–0.005 &nbsp;|&nbsp; <strong>Confidence:</strong> Medium</p>
+        <p style="font-size:0.85rem; color:var(--text-dim);">Score-weighted distance prevents uncertain windows from corrupting clusters. Combined Emb+Scores captures both acoustic identity (Perch) and model consensus. May suffer from sparsity in 2706-dim space.</p>
+      </div>
+
+      <div class="card" style="border-color: #c07850; background: rgba(192,120,80,0.05);">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+          <span class="rank rank-3">3</span>
+          <div>
+            <strong>A1: Scores Only, Cosine, No Pseudo</strong>
+            <div style="color:var(--text-dim); font-size:0.82rem;">Simplest variant; most interpretable results; good diagnostic</div>
+          </div>
+        </div>
+        <p style="margin-bottom:0.4rem; font-size:0.88rem;"><strong>Expected OOF:</strong> 0.925–0.940 &nbsp;|&nbsp; <strong>Expected LB Δ:</strong> +0.000–0.003 &nbsp;|&nbsp; <strong>Confidence:</strong> Medium-High</p>
+        <p style="font-size:0.85rem; color:var(--text-dim);">Lower-dimensional space (1170 vs 2706) is more favorable for 708 training rows. SED dominates cluster structure due to high OOF AUC. Cosine distance may conflate confident and uncertain windows.</p>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+          <span class="rank rank-4">4</span>
+          <div>
+            <strong>B1: Scores Only, Cosine, +5K Pseudo</strong>
+            <div style="color:var(--text-dim); font-size:0.82rem;">Pseudo anchors help but lack score-weighted distance protection</div>
+          </div>
+        </div>
+        <p style="margin-bottom:0.4rem; font-size:0.88rem;"><strong>Expected OOF:</strong> 0.923–0.942 &nbsp;|&nbsp; <strong>Expected LB Δ:</strong> +0.000–0.004 &nbsp;|&nbsp; <strong>Confidence:</strong> Medium</p>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:1rem; margin-bottom:0.8rem;">
+          <span class="rank rank-5">5</span>
+          <div>
+            <strong>A2: Perch Emb Only, Cosine, No Pseudo</strong>
+            <div style="color:var(--text-dim); font-size:0.82rem;">Acoustic-only clustering may not capture species composition structure</div>
+          </div>
+        </div>
+        <p style="margin-bottom:0.4rem; font-size:0.88rem;"><strong>Expected OOF:</strong> 0.920–0.935 &nbsp;|&nbsp; <strong>Expected LB Δ:</strong> -0.001–0.002 &nbsp;|&nbsp; <strong>Confidence:</strong> Medium-Low</p>
+        <p style="font-size:0.85rem; color:var(--text-dim);">1536-dim Perch embeddings capture acoustic scene identity (habitat, background noise) well, but may not cluster by <em>species composition</em>. Two windows from similar habitats but with different active birds will cluster together and bias each other's species predictions incorrectly.</p>
+      </div>
+
+      <h3>Success Criteria</h3>
+      <div class="callout callout-success">
+        <span class="callout-icon">✓</span>
+        <div class="callout-body">
+          <p><strong>Submit if:</strong> The best cluster stacker experiment achieves soundscape val AUC &gt; 0.9193 (current threshold) AND OOF AUC improves by ≥ 0.003 over the base ensemble. The LB submission should use cluster stacker as a post-processing layer on top of the existing MLP stacker, not as a replacement.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 10. Next Steps -->
+    <section id="next-steps">
+      <h2><span class="icon">🚀</span>10. Next Steps &amp; Ablations</h2>
+
+      <h3>Recommended Execution Order</h3>
+      <ol>
+        <li><strong>Run A1 first</strong> (simplest, fastest) to diagnose cluster quality: count clusters, noise%, and mean cluster size.</li>
+        <li><strong>Inspect cluster structure:</strong> If ≥ 12 clusters found with &lt;50% noise, proceed. If mostly noise, consider dimension reduction first.</li>
+        <li><strong>Run A3</strong> (score-weighted + combined features) as primary candidate.</li>
+        <li><strong>Run B2</strong> (full version with pseudo) only if A3 shows promise (&gt;0 LB delta).</li>
+        <li><strong>Skip A2 and B1</strong> unless A3 underperforms A1 (suggests Perch embeddings are hurting).</li>
+      </ol>
+
+      <h3>Ablations to Run After Initial Results</h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Ablation</th>
+            <th>What to Test</th>
+            <th>Expected Learning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>α</code> sweep</td>
+            <td>α ∈ {0.1, 0.2, 0.3, 0.4, 0.5, 0.6}</td>
+            <td>Optimal blend strength; if α=0 wins, clustering is hurting</td>
+          </tr>
+          <tr>
+            <td><code>β</code> sweep</td>
+            <td>β ∈ {0, 0.5, 1, 2, 5, 10}</td>
+            <td>Importance of uncertainty weighting; β=0 disables the innovation</td>
+          </tr>
+          <tr>
+            <td>UMAP pre-reduction</td>
+            <td>Reduce to 50-dim with UMAP before HDBSCAN</td>
+            <td>Mitigates curse of dimensionality; may find cleaner clusters</td>
+          </tr>
+          <tr>
+            <td>min_cluster_size sweep</td>
+            <td>mcs ∈ {5, 8, 10, 15, 20}</td>
+            <td>Trade-off between cluster granularity and stability</td>
+          </tr>
+          <tr>
+            <td>Label binarization</td>
+            <td>Use binary(prob &gt; 0.5) vs. raw probability as cluster mean</td>
+            <td>Whether continuous means or binary means are more effective</td>
+          </tr>
+          <tr>
+            <td>SED feature ablation</td>
+            <td>Remove sed_csebbs from clustering features</td>
+            <td>Whether SED leakage distorts cluster structure</td>
+          </tr>
+          <tr>
+            <td>Temporal constraint</td>
+            <td>Force windows from same file to same cluster</td>
+            <td>Whether file-level hard clustering beats data-driven soft clustering</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Alternative Directions if Cluster Stacker Underperforms</h3>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3 style="margin-top:0;">K-Nearest Neighbors Blend</h3>
+          <p>Instead of cluster means, use KNN label means from the k=20 nearest labeled windows. More fine-grained than cluster means; no dependency on HDBSCAN quality.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">Gaussian Process Stacker</h3>
+          <p>Model label distribution as a GP in prediction space. Uncertainty-aware, naturally handles sparse data, interpolates smoothly. Expensive to compute for 234 species.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">Transductive Label Propagation</h3>
+          <p>Build a KNN graph on training + test features, then propagate labels from labeled nodes. Standard semi-supervised approach; well-understood behavior.</p>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">File-Level MLP</h3>
+          <p>Train an MLP on file-level aggregated features (mean/max/std across 12 windows), then use predictions to re-weight per-window predictions. Captures temporal context explicitly.</p>
+        </div>
+      </div>
+
+      <h3>Integration with Existing Pipeline</h3>
+      <div class="callout callout-info">
+        <span class="callout-icon">ℹ</span>
+        <div class="callout-body">
+          <p>The cluster stacker should be applied as a <strong>post-processing layer</strong> on top of the MLP stacker output, not as a replacement. Pipeline: base models → MLP stacker (current best 0.9594 OOF) → cluster stacker → final prediction. This ensures the cluster stacker can only improve upon an already-strong baseline, not introduce regressions.</p>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="card" style="border-color: var(--accent); background: rgba(91,141,238,0.04);">
+        <h3 style="margin-top:0; color:var(--accent);">Summary</h3>
+        <p>The cluster-based stacker is a theoretically motivated method that could provide meaningful improvement by exploiting acoustic scene structure and temporal coherence. The key innovation—score-weighted MST distance—is principled and analogous to established uncertainty-aware clustering methods. The primary risk is data sparsity (708 rows in 1170+ dimensions), which may cause HDBSCAN to classify most points as noise, leaving predictions unchanged.</p>
+        <p style="margin-bottom:0;"><strong>Recommended first run:</strong> A3 (2706-dim combined features, score-weighted distance, no pseudo labels) with min_cluster_size=8, α=0.4, β=2.0. Expected runtime: ~15 minutes including OOF evaluation. If A3 cluster noise rate &lt;50%, proceed to B2 with pseudo labels.</p>
+      </div>
+
+    </section>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+  // Simple scroll-spy for sidebar
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll('#sidebar a');
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const active = document.querySelector(`#sidebar a[href="#${entry.target.id}"]`);
+        if (active) active.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>

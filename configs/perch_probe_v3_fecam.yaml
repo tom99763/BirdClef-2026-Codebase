@@ -1,0 +1,48 @@
+experiment:
+  name: perch-probe-v3-fecam
+  seed: 42
+
+# FeCAM: Mahalanobis NCM blended with MLP
+# Replaces Euclidean proto distance with per-class Mahalanobis (Ledoit-Wolf + Tukey)
+# Based on: Goswami et al., NeurIPS 2023 "FeCAM"
+# Expected: +2-4pp vs Euclidean proto; handles anisotropic class distributions
+
+data:
+  base_dir: birdclef-2026
+  manifest_path: outputs/embeddings_cache_nohuman/manifest.csv
+  pca_fit_splits: [train, soundscape]
+  add_train_clips: true
+
+model:
+  pca_dim: 128
+  hidden_dim: 512
+  use_hidden: true
+  dropout: 0.3
+  pca_whiten: true
+  abt_n_top: 0
+  use_proto: false
+  use_tip: false
+  use_fecam: true           # FeCAM Mahalanobis NCM
+  use_laplacian: false
+  use_gamma: false
+  blend_mlp: 0.7
+  blend_fecam: 0.3          # blend MLP + FeCAM
+
+training:
+  epochs: 150
+  batch_size: 256
+  n_folds: 5
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 25
+  asl_gamma_neg: 4.0
+  asl_gamma_pos: 0.0
+  asl_clip: 0.05
+
+output:
+  dir: outputs
+
+wandb:
+  enabled: true
+  project: birdclef-2026
+  tags: [perch-probe, v3, fecam, mahalanobis, pca128, add-train]

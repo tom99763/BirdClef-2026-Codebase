@@ -1,0 +1,47 @@
+# Experiment C: FixMatch in embedding space — 利用 127k 無標籤 SS 視窗做半監督
+# 弱增強 → teacher 偽標籤 (conf > 0.70) → 強增強 → student 一致性損失
+# 參考: BirdCLEF 2025 2nd place (VSydorskyy) 半監督蒸餾思路
+
+exp_type: fixmatch
+
+# Model (同 proto_head)
+emb_dim: 1536
+proj_dim: 512
+num_classes: 234
+n_blocks: 2
+dropout: 0.10
+temperature: 0.05
+
+# Training
+lr: 2e-4
+weight_decay: 1e-3
+n_epochs: 80
+batch_size: 256
+patience: 15
+focal_gamma: 2.0
+
+# FixMatch parameters
+fixmatch_weight: 0.5
+fixmatch_conf_thr: 0.70     # 高置信度才用偽標籤
+fixmatch_noise_w: 0.02       # 弱增強噪音 sigma
+fixmatch_noise_s: 0.08       # 強增強噪音 sigma
+fixmatch_mask_ratio: 0.15    # 強增強 feature masking 比例
+
+# Val
+val_per_missing_class: 3
+
+# 熱啟動：從 proto_head 實驗的結果開始
+init_ckpt: weights/perch_new/proto_head_r0.pt
+
+# Paths
+output_name: fixmatch_r0.pt
+output_dir: weights/perch_new
+log_dir: outputs/perch_new/logs
+labeled_ss_npz: outputs/perch_labeled_ss.npz
+unlabeled_ss_npz: outputs/perch_emb_all_ss.npz
+train_audio_manifest: outputs/embeddings_cache_nohuman/manifest.csv
+train_audio_emb_dir: outputs/embeddings_cache_nohuman/train
+taxonomy_csv: birdclef-2026/taxonomy.csv
+
+# 不需要 ProtoCLR
+protocl_weight: 0.0

@@ -1,0 +1,57 @@
+experiment:
+  name: finetune-comp-v2
+  seed: 42
+
+# ── Fine-tune Competitor SED v2 ───────────────────────────────────────────────
+#
+# Changes vs v1:
+#   + Perch pseudo labels on soundscapes (ns_r0_perch_aug.csv, 69k clips)
+#   + ss_weight=0.3 (30% contribution from Perch soft labels)
+#   + ss_oversample=2 (2 soundscape batches per train_audio batch)
+#
+# Goal: Soundscape pseudo labels should help adapt to test domain
+
+data:
+  train_csv:             birdclef-2026/train.csv
+  soundscape_labels_csv: birdclef-2026/train_soundscapes_labels.csv
+  taxonomy_csv:          birdclef-2026/taxonomy.csv
+  audio_dir:             birdclef-2026/train_audio
+  soundscape_dir:        birdclef-2026/train_soundscapes
+  competitor_ckpt:       "birdclef-2026/notebook resource/current_subs/weights/competitor_sed_fold0.pt"
+  perch_ss_csv:          pseudo_labels/ns_r0_perch_aug.csv
+  n_folds:               5
+
+model:
+  backbone:       tf_efficientnet_b0.ns_jft_in1k
+  clip_duration:  5
+  n_mels:         224
+  n_fft:          2048
+  hop_length:     512
+  fmin:           0
+  fmax:           16000
+  top_db:         80.0
+  power:          2.0
+  norm:           slaney
+  mel_scale:      htk
+  dropout:        0.1
+  drop_path_rate: 0.05
+  gem_p_init:     3.0
+  freq_mask:      24
+  time_mask:      32
+
+training:
+  early_stopping_patience: 5
+  epochs:           25
+  batch_size:       64
+  learning_rate:    2.0e-5
+  weight_decay:     1.0e-4
+  focal_gamma:      2.0
+  use_sumix_freq:   true
+  ss_weight:        0.3       # Perch pseudo label loss weight
+  ss_oversample:    2         # soundscape batches per labeled batch
+  use_llrd:         true
+  backbone_lr_mult: 0.1
+  warmup_epochs:    2
+
+output:
+  dir: outputs/finetune-comp-v2

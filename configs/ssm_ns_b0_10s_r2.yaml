@@ -33,6 +33,7 @@ model:
 
 training:
   epochs:            40
+  warmup_epochs:      5
   batch_size:        16
   pseudo_batch_size: 4
   learning_rate:     1.0e-3
@@ -40,6 +41,8 @@ training:
   focal_gamma:       2.0
   pseudo_weight:     1.0
   pseudo_mixup_alpha: 0.15
+  use_sumix_freq:     true   # 1st place: SumixFreq
+  early_stopping_patience: 7
 
 output:
   dir:         outputs/ssm-ns-b0-10s-r2
