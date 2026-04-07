@@ -42,3 +42,22 @@ wandb/
 # ── Misc ──────────────────────────────────────────────────────────────────────
 *.log
 *.tmp
+
+# Large files
+pseudo_labels/*.csv
+pseudo_labels/*.npz
+outputs/
+weights/
+checkpoints/
+*.pt
+*.onnx
+*.npz
+*.npy
+*.tflite
+birdclef-2026/
+sed_improved/
+submissions_v3/weights/
+submission_onnx/
+submission_pp_indiv/
+*.zip
+
