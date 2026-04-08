@@ -32,7 +32,7 @@ model:
   time_mask:        64
 
 training:
-  nc_distill_beta:    0.3
+  nc_distill_beta:    0.05
   nc_temperature:     2.0
   early_stopping_patience: 3
   epochs:             30

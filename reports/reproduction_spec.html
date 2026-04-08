@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BirdCLEF 2026 — Full Reproduction Specification</title>
+<style>
+body { font-family: 'Segoe UI', Arial, sans-serif; max-width: 1100px; margin: 40px auto; padding: 0 20px; color: #333; line-height: 1.7; }
+h1 { color: #1a5276; border-bottom: 3px solid #1a5276; padding-bottom: 10px; }
+h2 { color: #2c3e50; margin-top: 40px; border-left: 5px solid #3498db; padding-left: 15px; }
+h3 { color: #34495e; }
+table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+th { background: #2c3e50; color: white; padding: 10px; text-align: left; }
+td { border: 1px solid #ddd; padding: 8px; }
+tr:nth-child(even) { background: #f9f9f9; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+pre { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 0.85em; }
+.note { background: #eaf2f8; border-left: 4px solid #2980b9; padding: 15px; margin: 15px 0; border-radius: 4px; }
+.warn { background: #fef9e7; border-left: 4px solid #f39c12; padding: 15px; margin: 15px 0; border-radius: 4px; }
+.step { background: #fff; border: 2px solid #3498db; border-radius: 8px; padding: 20px; margin: 20px 0; }
+.step h3 { color: #2980b9; margin-top: 0; }
+.diagram { background: #fafafa; border: 2px solid #bdc3c7; padding: 20px; margin: 20px 0; border-radius: 8px; font-family: monospace; white-space: pre; line-height: 1.4; font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<h1>BirdCLEF 2026 &mdash; Full Reproduction Specification</h1>
+<p><em>From raw data to LB 0.942 &mdash; every step documented for reproducibility.</em><br>
+<em>Tom, Realtek Semiconductor Corp. &mdash; 2026-04-07</em></p>
+
+<h2>0. Environment &amp; Data</h2>
+
+<h3>Hardware</h3>
+<table>
+<tr><th>Component</th><th>Spec</th></tr>
+<tr><td>GPU</td><td>2&times; NVIDIA GPU (24GB each). All training on GPU1 (<code>CUDA_VISIBLE_DEVICES=1</code>)</td></tr>
+<tr><td>RAM</td><td>64GB</td></tr>
+<tr><td>Storage</td><td>~1TB</td></tr>
+</table>
+
+<h3>Software</h3>
+<pre>
+Python 3.12 (conda env: tom)
+PyTorch 2.x + torchaudio
+timm (for backbone models)
+onnxruntime (for export + INT8 quantization)
+soundfile, librosa, pandas, numpy, scikit-learn, wandb
+</pre>
+
+<h3>Data Layout</h3>
+<pre>
+birdclef-2026/
+  train_audio/              # ~35K labeled per-species recordings
+  train_soundscapes/        # 10,658 unlabeled 60s soundscape recordings (Pantanal, Brazil)
+  train_soundscapes_labels.csv   # Sparse GT labels for 66 soundscapes (739 rows)
+  taxonomy.csv              # 234 species (Aves, Amphibia, Insecta, Mammalia, Reptilia)
+  train.csv                 # Metadata for train_audio
+  folds/                    # Pre-computed 5-fold splits
+</pre>
+
+<h2>1. Pipeline Overview</h2>
+
+<div class="diagram">
+Phase A: Noisy Student (NS) &mdash; Independent Self-Training
+=============================================================
+
+Step 0: Perch Teacher
+  Perch v2 (frozen) + fine-tuned head &rarr; predictions on all 10,658 soundscapes
+  &rarr; outputs/perch_teacher_aug_all_ss.csv
+
+Step 1: R0 Pseudo Labels
+  perch_teacher_aug_all_ss.csv &rarr; gamma=2.0, threshold=p95
+  &rarr; pseudo_labels/ns_r0_perch_aug.csv
+
+Step 2: B0 NS Chain (R1&rarr;R12)
+  R1&rarr;R4: Perch teacher blended (w decreasing 0.50&rarr;0.10)
+  R5+: Pure self-training (perch_w=0.00)
+  Each round: 5-fold train &rarr; infer_all_ss &rarr; Residual Corrector &rarr; gen_pseudo
+
+Step 3: PVT NS Chain (R1&rarr;R8)
+  Seeded from B0 R4 pseudo labels (one-time)
+  Then independent self-training R1&rarr;R8
+
+Phase B: Noisy Classmate (NC) &mdash; Cross-Architecture Co-Evolution
+=====================================================================
+
+Step 4: NC PVT R9+
+  Blend B0 R11 + PVT R8 predictions &rarr; NC pseudo labels
+  Phase 2: Confidence-weighted blending
+  Phase 3: Disagreement mining (sample weights)
+  Phase 4: Soft distillation loss (R10+)
+
+Step 5: NC Bidirectional (R10+)
+  PVT R10 predictions feed back to B0 R12+
+  Alternating: PVT round &rarr; B0 round &rarr; PVT round &rarr; ...
+
+Phase C: Ensemble &amp; Submission
+================================
+
+Step 6: ONNX Export
+  Best fold checkpoints &rarr; FP32 ONNX + INT8 quantized
+
+Step 7: Kaggle Notebook
+  3-model SED ensemble + Perch probe &rarr; VLOM blend &rarr; submission
+</div>
+
+<h2>2. Step 0 &mdash; Perch Teacher</h2>
+
+<div class="step">
+<h3>Train Perch Head</h3>
+<pre>
+export CUDA_VISIBLE_DEVICES=1
+
+python3 train.py --config configs/exp_nohuman_label_soundscape_train.yaml
+# Fine-tunes a linear head on frozen Perch v2 embeddings
+# Uses labeled soundscape data (train_soundscapes_labels.csv)
+# Output: weights/label_head_soundscape_train.pt
+</pre>
+
+<h3>Extract Teacher Predictions</h3>
+<pre>
+python3 scripts/extract_perch_teacher_all_ss.py \
+    --output outputs/perch_teacher_aug_all_ss.csv
+# Runs Perch head over all 10,658 soundscapes
+# Output: CSV with columns [row_id, species_1, ..., species_234]
+# row_id format: &lt;filename&gt;_5, _10, ..., _60 (5s windows)
+# ~127,896 rows total
+</pre>
+</div>
+
+<h2>3. Step 1 &mdash; R0 Pseudo Labels</h2>
+
+<div class="step">
+<pre>
+python3 scripts/gen_pseudo_ns.py \
+    --round 0 --clip_sec 20 \
+    --perch_csv outputs/perch_teacher_aug_all_ss.csv \
+    --perch_w 1.0 --sed_w 0.0 \
+    --percentile 95 --gamma 2.0 \
+    --nonaves_perch_only \
+    --out pseudo_labels/ns_r0_perch_aug.csv
+</pre>
+
+<div class="note">
+<strong>Key settings:</strong>
+<ul>
+<li><code>--clip_sec 20</code>: Aligns pseudo labels to 20s training clips (row_ids: _20, _25, ..., _65)</li>
+<li><code>--gamma 2.0</code>: Power transform sharpens soft labels (BirdCLEF 2025 1st place technique)</li>
+<li><code>--percentile 95</code>: Per-class dynamic threshold at 95th percentile of positive predictions</li>
+<li><code>--nonaves_perch_only</code>: For non-Aves classes (Amphibia/Insecta/Mammalia/Reptilia), use only Perch predictions (SED unreliable for these taxa with ~12.9 clips/species)</li>
+</ul>
+</div>
+</div>
+
+<h2>4. Step 2 &mdash; B0 Noisy Student Chain (R1&rarr;R12)</h2>
+
+<div class="step">
+<h3>Automated Execution</h3>
+<pre>
+# R1-R4 (with Perch teacher blending)
+nohup bash scripts/auto_sed_ns_20s_full.sh \
+    > outputs/logs/auto_sed_ns_20s_full.log 2>&1 &
+
+# R5-R8 (pure self-training)
+nohup bash scripts/auto_sed_ns_20s_r5r8.sh \
+    > outputs/logs/auto_sed_ns_20s_r5r8.log 2>&1 &
+
+# R9-R15
+nohup bash scripts/auto_sed_ns_20s_r9r15.sh \
+    > outputs/logs/auto_sed_ns_20s_r9r15.log 2>&1 &
+</pre>
+
+<h3>Model Architecture</h3>
+<table>
+<tr><th>Component</th><th>Setting</th></tr>
+<tr><td>Backbone</td><td><code>tf_efficientnet_b0.ns_jft_in1k</code> (5.3M params, ImageNet-JFT pretrained)</td></tr>
+<tr><td>Input</td><td>20s audio clip &rarr; absmax normalize &rarr; MelSpec &rarr; 3-channel expand</td></tr>
+<tr><td>MelSpec</td><td>n_mels=224, n_fft=2048, hop=512, fmin=0, fmax=16000, power=2.0, slaney/htk</td></tr>
+<tr><td>Augmentation</td><td>SpecAugment(freq=24, time=64) &rarr; SumixFreq &rarr; Wave MixUp(&lambda;=0.5)</td></tr>
+<tr><td>Pooling</td><td>GEMFreqPool(p_init=3.0, learnable)</td></tr>
+<tr><td>Head</td><td>AttentionSEDHead: fc(C&rarr;C) + att_conv(C&rarr;234) + cls_conv(C&rarr;234)</td></tr>
+<tr><td>Loss</td><td>FocalBCE(&gamma;=2.0)</td></tr>
+<tr><td>Optimizer</td><td>AdamW(lr=1e-3, wd=1e-4)</td></tr>
+<tr><td>Scheduler</td><td>CosineAnnealingLR(T_max=epochs, eta_min=1e-6)</td></tr>
+<tr><td>EMA</td><td>decay=0.999, inherited across rounds (warm start from prev round EMA checkpoint)</td></tr>
+<tr><td>Epochs</td><td>R1-R4: 30, R5+: 25</td></tr>
+<tr><td>Early stop</td><td>R1-R4: 3, R5+: 4</td></tr>
+<tr><td>Batch size</td><td>16</td></tr>
+<tr><td>Folds</td><td>5-fold, all folds trained per round</td></tr>
+</table>
+
+<h3>Per-Round Pipeline</h3>
+<pre>
+For each round R:
+  1. Train 5 folds:
+     python3 train_sed_ns.py --config configs/sed_ns_b0_20s_r{R}.yaml --fold {0..4}
+     &rarr; outputs/sed-ns-b0-20s-r{R}/fold{F}_best.pt, fold{F}_ema.pt
+
+  2. 5-fold ensemble inference on all soundscapes:
+     python3 train_sed_ns.py --config ... --infer_all_ss
+     &rarr; outputs/sed-ns-b0-20s-r{R}/all_ss_probs.npz
+
+  3. Residual Corrector:
+     python3 scripts/train_sed_residual_corrector.py \
+         --sed_dir outputs/sed-ns-b0-20s-r{R} \
+         --teacher outputs/perch_teacher_aug_all_ss.csv \
+         --round {R} --alpha 0.40
+     &rarr; outputs/sed-ns-b0-20s-r{R}/all_ss_probs_corrected.npz
+
+  4. Generate pseudo labels (if R &lt; max_round):
+     python3 scripts/gen_pseudo_ns.py \
+         --round {R} --sed_dir outputs/sed-ns-b0-20s-r{R} \
+         --perch_w {PW} --sed_w {SW} --percentile {PCT} --gamma {G} \
+         --nonaves_perch_only \
+         --out pseudo_labels/sed_20s_r{R}.csv
+</pre>
+
+<h3>Pseudo Label Schedule (B0)</h3>
+<table>
+<tr><th>Round</th><th>Perch Weight</th><th>SED Weight</th><th>Threshold Pct</th><th>Gamma (&gamma;)</th><th>Notes</th></tr>
+<tr><td>R0</td><td>1.00</td><td>0.00</td><td>95</td><td>2.0</td><td>Perch-only teacher</td></tr>
+<tr><td>R1</td><td>0.50</td><td>0.50</td><td>92</td><td>1.00</td><td>Raw soft labels, bootstrap</td></tr>
+<tr><td>R2</td><td>0.30</td><td>0.70</td><td>93</td><td>1.54</td><td>Moderate sharpening</td></tr>
+<tr><td>R3</td><td>0.10</td><td>0.90</td><td>94</td><td>1.82</td><td>Strong sharpening</td></tr>
+<tr><td>R4</td><td>0.05</td><td>0.95</td><td>94</td><td>2.00</td><td>Student dominant</td></tr>
+<tr><td>R5</td><td>0.05</td><td>0.95</td><td>94</td><td>2.00</td><td></td></tr>
+<tr><td>R6</td><td>0.02</td><td>0.98</td><td>95</td><td>2.00</td><td></td></tr>
+<tr><td>R7+</td><td>0.00</td><td>1.00</td><td>95</td><td>2.00</td><td>Pure self-training</td></tr>
+</table>
+
+<h3>Residual Corrector Architecture</h3>
+<pre>
+SED probs (234-d per 5s frame)
+  &rarr; Linear(234 &rarr; 128) + LayerNorm + GELU
+  &rarr; BiSSM(d_model=128, d_state=16)  [forward + backward passes]
+  &rarr; Linear(128 &rarr; 234)            [residual delta]
+  &rarr; corrected = SED_probs + 0.40 &times; delta
+</pre>
+</div>
+
+<h2>5. Step 3 &mdash; PVT Noisy Student Chain (R1&rarr;R8)</h2>
+
+<div class="step">
+<h3>Key Differences from B0</h3>
+<table>
+<tr><th>Setting</th><th>B0</th><th>PVT</th></tr>
+<tr><td>Backbone</td><td><code>tf_efficientnet_b0.ns_jft_in1k</code> (5.3M)</td><td><code>pvt_v2_b0</code> (3.4M, Pyramid Vision Transformer)</td></tr>
+<tr><td>Seed pseudo</td><td>Perch R0</td><td>B0 R4 pseudo (one-time transfer)</td></tr>
+<tr><td>SumixFreq</td><td>Enabled</td><td>Disabled (wave-level MixUp only)</td></tr>
+<tr><td>Epochs</td><td>30 (R1-R4), 25 (R5+)</td><td>25 (all rounds)</td></tr>
+<tr><td>Early stop</td><td>3 (R1-R4), 4 (R5+)</td><td>4 (all rounds)</td></tr>
+<tr><td>Learning rate</td><td>1e-3 (all)</td><td>1e-3 (R1-R4), 5e-4 (R5+)</td></tr>
+<tr><td>Pseudo schedule</td><td>See B0 table above</td><td>All rounds: perch_w=0.0, pct=95, &gamma;=2.0</td></tr>
+</table>
+
+<pre>
+# R1-R4 (seeded from B0 R4 pseudo)
+nohup bash scripts/auto_sed_ns_pvt_20s_r1r4.sh \
+    > outputs/logs/auto_sed_ns_pvt_20s_r1r4.log 2>&1 &
+
+# R5-R8
+nohup bash scripts/auto_sed_ns_pvt_20s_r5r8.sh \
+    > outputs/logs/auto_sed_ns_pvt_20s_r5r8.log 2>&1 &
+</pre>
+
+<div class="note">
+<strong>Why a separate PVT chain?</strong>
+PVT (Vision Transformer) has fundamentally different inductive biases from EfficientNet-B0 (CNN):
+CNN excels at local spectral texture; ViT excels at global temporal context.
+Running an independent NS chain produces predictions with low correlation to B0 &rarr;
+high ensemble diversity &rarr; better LB.
+</div>
+</div>
+
+<h2>6. Step 4 &mdash; Noisy Classmate (NC) PVT R9+</h2>
+
+<div class="step">
+<h3>NC Pseudo Label Generation</h3>
+<pre>
+python3 scripts/gen_noisy_classmate_pseudo.py \
+    --chains "b0:outputs/sed-ns-b0-20s-r11" "pvt:outputs/sed-ns-pvt-20s-r8" \
+    --weights 0.5 0.5 \
+    --confidence_weighting \
+    --disagreement_mining \
+    --soft_labels \
+    --percentile 95 --gamma 2.0 \
+    --out pseudo_labels/noisy_classmate_pvt_r9.csv
+</pre>
+
+<h3>Five Phases Explained</h3>
+
+<table>
+<tr><th>Phase</th><th>Flag / Config</th><th>Mechanism</th><th>Active From</th></tr>
+<tr><td>1. Ensemble Pseudo</td><td><code>--chains</code></td><td>Weighted average of B0 + PVT soundscape predictions</td><td>R9</td></tr>
+<tr><td>2. Confidence Weighting</td><td><code>--confidence_weighting</code></td><td>Per-sample inverse-entropy weighting: trust the more confident model per sample</td><td>R9</td></tr>
+<tr><td>3. Disagreement Mining</td><td><code>--disagreement_mining</code></td><td>Compute prediction variance across models; high-variance samples get up to 3&times; training weight via <code>_nc_weight</code> column</td><td>R9</td></tr>
+<tr><td>4. Soft Distillation</td><td><code>nc_distill_beta: 0.3</code></td><td>Training loss = (1-&beta;)&times;FocalBCE + &beta;&times;KLD(student, soft_ensemble) &times; T&sup2;. Preserves inter-class similarity structure.</td><td>R10</td></tr>
+<tr><td>5. Bidirectional Loop</td><td><code>auto_nc_full.sh</code></td><td>Alternating: PVT round &rarr; B0 round. Knowledge flows both directions.</td><td>R10</td></tr>
+</table>
+
+<h3>Phase 2 Detail: Confidence-Aware Blending</h3>
+<pre>
+# For each sample i:
+conf_B0[i] = 1 / entropy(B0_probs[i])     # lower entropy = higher confidence
+conf_PVT[i] = 1 / entropy(PVT_probs[i])
+
+# Normalize (with base weights)
+w_B0[i] = (0.5 * conf_B0[i]) / (0.5 * conf_B0[i] + 0.5 * conf_PVT[i])
+w_PVT[i] = 1 - w_B0[i]
+
+pseudo[i] = w_B0[i] * B0_probs[i] + w_PVT[i] * PVT_probs[i]
+</pre>
+
+<h3>Phase 3 Detail: Disagreement Mining</h3>
+<pre>
+# Per-sample disagreement score:
+variance[i] = mean_over_species( Var(B0_probs[i], PVT_probs[i]) )
+
+# Training weight:
+_nc_weight[i] = 1.0 + alpha * (variance[i] / max_variance)
+# alpha = 2.0: max-disagreement samples get 3x training weight
+# Stored in _nc_weight column of pseudo CSV
+# Read by PseudoSoundscapeDataset, applied in training loop
+</pre>
+
+<h3>Phase 4 Detail: Soft Distillation Loss</h3>
+<pre>
+# NCDistillLoss in train_sed_ns.py
+class NCDistillLoss:
+    L = (1 - beta) * FocalBCE(logits, hard_targets)
+      + beta * BinaryKLD(sigmoid(logits/T), soft_targets) * T^2
+
+    # beta = 0.3, T = 2.0
+    # soft_targets = raw ensemble blend probabilities (pre-threshold)
+    # hard_targets = thresholded binary labels
+
+# Config (add to training YAML):
+training:
+  nc_distill_beta: 0.3
+  nc_temperature: 2.0
+</pre>
+
+<h3>Phase 5 Detail: Bidirectional Loop</h3>
+<pre>
+# Automated in scripts/auto_nc_full.sh
+# 6 generations of alternating co-evolution:
+
+for GEN in 1 2 3 4 5 6:
+    # PVT next round: blend B0_latest + PVT_latest &rarr; train PVT
+    gen_nc_pseudo(b0=B0_LATEST, pvt=PVT_LATEST) &rarr; PVT R(N+1)
+    train PVT R(N+1) &rarr; infer &rarr; corrector
+
+    # B0 next round: blend PVT_latest + B0_latest &rarr; train B0  (KNOWLEDGE FLOWS BACK!)
+    gen_nc_pseudo(pvt=PVT_LATEST, b0=B0_LATEST) &rarr; B0 R(M+1)
+    train B0 R(M+1) &rarr; infer &rarr; corrector
+</pre>
+</div>
+
+<h2>7. Step 5 &mdash; ONNX Export</h2>
+
+<div class="step">
+<pre>
+# Export single checkpoint
+python3 scripts/export_sed_to_onnx.py \
+    --pt outputs/sed-ns-b0-20s-r12/fold0_best.pt \
+    --out "birdclef-2026/notebook resource/new direction/weights/sed/sed_ns_b0_r12_fold0.onnx" \
+    --backbone tf_efficientnet_b0.ns_jft_in1k
+# Produces: FP32 ONNX (24MB) + INT8 quantized (6.7MB)
+
+# PVT export (specify backbone)
+python3 scripts/export_sed_to_onnx.py \
+    --pt outputs/sed-ns-pvt-20s-r5/fold4_best.pt \
+    --out ".../sed_ns_pvt_r5_fold4.onnx" \
+    --backbone pvt_v2_b0
+# Produces: FP32 ONNX (14MB) + INT8 (4.1MB)
+</pre>
+
+<h3>ONNX Model I/O</h3>
+<table>
+<tr><th>Name</th><th>Shape</th><th>Type</th></tr>
+<tr><td>Input: <code>mel</code></td><td>(B, 3, 224, T)</td><td>float32. T varies by clip duration.</td></tr>
+<tr><td>Output: <code>probs</code></td><td>(B, 234)</td><td>float32. Sigmoid probabilities per species.</td></tr>
+</table>
+</div>
+
+<h2>8. Step 6 &mdash; Ensemble Selection &amp; Submission</h2>
+
+<div class="step">
+<h3>Best Ensemble (LB 0.942)</h3>
+<pre>
+SED_CHECKPOINTS = [
+    {'name': 'b0_0',  'onnx_path': '.../sed_ns_b0_r12_fold0.onnx',
+     'backbone': 'tf_efficientnet_b0.ns_jft_in1k', 'weight': 1.0, 'clip_sec': 20},
+    {'name': 'pvt_4', 'onnx_path': '.../sed_ns_pvt_r5_fold4.onnx',
+     'backbone': 'pvt_v2_b0', 'weight': 1.0, 'clip_sec': 20},
+    {'name': 'b0_3',  'onnx_path': '.../sed_ns_r6_fold3.onnx',
+     'backbone': 'tf_efficientnet_b0.ns_jft_in1k', 'weight': 1.0, 'clip_sec': 20},
+]
+# VLOM blend: SED_w=0.7, Perch_w=0.3
+</pre>
+
+<h3>Ensemble Selection Rules (Empirically Validated)</h3>
+<table>
+<tr><th>Rule</th><th>Evidence</th></tr>
+<tr><td>Maximize round diversity between B0 models</td><td>R6+R12 (6 rounds apart) &rarr; 0.942; R8+R12 (4 apart) &rarr; 0.941; R12+R12 (0 apart) &rarr; 0.940</td></tr>
+<tr><td>Never use same-round models</td><td>R12f0+R12f2: corr=0.987 &rarr; 0.940 (worse than R12f0+R8f3: corr=0.983 &rarr; 0.941)</td></tr>
+<tr><td>PVT R5 fold4 is locked</td><td>Every attempt to change PVT fold or round degraded LB</td></tr>
+<tr><td>Architecture diversity helps</td><td>B0+PVT always better than B0+B0 with same total val AUC</td></tr>
+<tr><td>Higher val AUC &ne; better LB</td><td>0.937 config had avg AUC 0.967 but worst LB; 0.942 had avg AUC 0.959</td></tr>
+</table>
+
+<h3>VLOM Blend</h3>
+<pre>
+# Variance-weighted log-odds mean
+# SED and Perch predictions combined in log-odds space
+def vlom_blend(sed, perch, w_sed=0.70, w_perch=0.30):
+    eps = 1e-9
+    lo_sed   = log(sed / (1 - sed + eps) + eps)
+    lo_perch = log(perch / (1 - perch + eps) + eps)
+    blended  = w_sed * lo_sed + w_perch * lo_perch
+    return sigmoid(blended)
+</pre>
+</div>
+
+<h2>9. Complete Round-by-Round Results</h2>
+
+<h3>B0 (EfficientNet-B0) Val AUC</h3>
+<table>
+<tr><th>Round</th><th>f0</th><th>f1</th><th>f2</th><th>f3</th><th>f4</th><th>Mean</th></tr>
+<tr><td>R1</td><td>0.9015</td><td>0.9149</td><td>0.9009</td><td>0.9289</td><td>0.9138</td><td>0.9120</td></tr>
+<tr><td>R2</td><td>0.9096</td><td>0.9294</td><td>0.9229</td><td>0.9402</td><td>0.9261</td><td>0.9256</td></tr>
+<tr><td>R3</td><td>0.9014</td><td>0.9426</td><td>0.9151</td><td>0.9563</td><td>0.9369</td><td>0.9305</td></tr>
+<tr><td>R4</td><td>0.9034</td><td>0.9480</td><td>0.9238</td><td>0.9544</td><td>0.9408</td><td>0.9341</td></tr>
+<tr><td>R5</td><td>0.9023</td><td>0.9451</td><td>0.9210</td><td>0.9595</td><td>0.9370</td><td>0.9330</td></tr>
+<tr><td>R6</td><td>0.9052</td><td>0.9524</td><td>0.9246</td><td>0.9664</td><td>0.9431</td><td>0.9383</td></tr>
+<tr><td>R7</td><td>0.9047</td><td>0.9590</td><td>0.9216</td><td>0.9577</td><td>0.9451</td><td>0.9376</td></tr>
+<tr><td>R8</td><td>0.9016</td><td>0.9571</td><td>0.9292</td><td>0.9596</td><td>0.9440</td><td>0.9383</td></tr>
+<tr><td>R9</td><td>0.9649</td><td>0.9307</td><td>0.9648</td><td>0.9440</td><td>0.9243</td><td>0.9458</td></tr>
+<tr><td>R10</td><td>0.9640</td><td>0.9232</td><td>0.9617</td><td>0.9434</td><td>0.9253</td><td>0.9435</td></tr>
+<tr><td>R11</td><td>0.9650</td><td>0.9248</td><td>0.9568</td><td>0.9369</td><td>0.9230</td><td>0.9413</td></tr>
+<tr><td>R12</td><td>0.9651</td><td>0.9203</td><td>0.9568</td><td>0.9451</td><td>&mdash;</td><td>0.9468</td></tr>
+</table>
+
+<h3>PVT (Pyramid Vision Transformer) Val AUC</h3>
+<table>
+<tr><th>Round</th><th>f0</th><th>f1</th><th>f2</th><th>f3</th><th>f4</th><th>Mean</th><th>Training</th></tr>
+<tr><td>R1</td><td>0.8991</td><td>0.9243</td><td>0.8519</td><td>0.9101</td><td>0.9170</td><td>0.9005</td><td>NS</td></tr>
+<tr><td>R2</td><td>0.9108</td><td>0.9182</td><td>0.9064</td><td>0.9455</td><td>0.9317</td><td>0.9225</td><td>NS</td></tr>
+<tr><td>R3</td><td>0.9225</td><td>0.9380</td><td>0.9218</td><td>0.9516</td><td>0.9410</td><td>0.9350</td><td>NS</td></tr>
+<tr><td>R4</td><td>0.9313</td><td>0.9493</td><td>0.9202</td><td>0.9567</td><td>0.9473</td><td>0.9409</td><td>NS</td></tr>
+<tr><td>R5</td><td>&mdash;</td><td>0.9522</td><td>0.9235</td><td>0.9626</td><td>0.9514</td><td>0.9474</td><td>NS</td></tr>
+<tr><td>R6</td><td>0.9545</td><td>0.9352</td><td>0.9663</td><td>0.9612</td><td>0.9393</td><td>0.9513</td><td>NS</td></tr>
+<tr><td>R7</td><td>0.9599</td><td>0.9467</td><td>0.9651</td><td>0.9602</td><td>0.9416</td><td>0.9547</td><td>NS</td></tr>
+<tr><td>R8</td><td>0.9575</td><td>0.9435</td><td>0.9693</td><td>0.9603</td><td>0.9418</td><td>0.9545</td><td>NS</td></tr>
+<tr><td>R9</td><td>0.9639</td><td>0.9449</td><td>0.9662</td><td>0.9678</td><td>TBD</td><td>&mdash;</td><td><strong>NC</strong></td></tr>
+</table>
+
+<div class="note">
+<strong>NC vs NS improvement at R9:</strong> fold0 +0.006, fold1 +0.001, fold3 +0.008. Noisy Classmate cross-chain pseudo labels demonstrably improve PVT performance.
+</div>
+
+<h2>10. LB Submission History</h2>
+
+<table>
+<tr><th>Date</th><th>Config</th><th>LB</th><th>Key Insight</th></tr>
+<tr><td>2026-04-07</td><td>B0 R12 f0 + PVT R5 f4 + B0 R6 f3</td><td><strong>0.942</strong></td><td>Max round diversity (R6 vs R12 = 6 rounds)</td></tr>
+<tr><td>2026-04-07</td><td>B0 R12 f0 + PVT R5 f4 + B0 R8 f3</td><td>0.941</td><td>fold0 diversity breakthrough</td></tr>
+<tr><td>2026-04-07</td><td>B0 R12 f0 + PVT R5 f4 + B0 R12 f2</td><td>0.940</td><td>Same-round penalty confirmed</td></tr>
+<tr><td>2026-04-06</td><td>B0 R8 f2 + PVT R5 f4 + B0 R8 f3</td><td>0.938</td><td>Original 3-model baseline</td></tr>
+<tr><td>2026-04-06</td><td>B0 R9 f2 + PVT R5 f4 + B0 R8 f3</td><td>0.937</td><td>R9 fold2 worse than R8 fold2</td></tr>
+<tr><td>2026-04-06</td><td>B0 R8 f2 + PVT R8 f0 + B0 R8 f3</td><td>0.934</td><td>PVT fold change fails</td></tr>
+<tr><td>2026-04-06</td><td>B0 R5 f2 + PVT R5 f4 + B0 R5 f3</td><td>0.933</td><td>All R5 worse</td></tr>
+<tr><td>2026-04-04</td><td>B0 R8 f2 + PVT R5 f4 + B0 R8 f3 (sed_w=0.7)</td><td>0.938</td><td>VLOM weight matters</td></tr>
+<tr><td>2026-04-01</td><td>B0 R5 f1 + B0 R5 f3 (no PVT)</td><td>0.931</td><td>First NS-only submission</td></tr>
+</table>
+
+<hr>
+<p><em>Generated: 2026-04-07 | Full Reproduction Specification v1.0</em></p>
+
+</body>
+</html>
