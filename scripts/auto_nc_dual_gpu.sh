@@ -36,7 +36,8 @@ train_fold_gpu() {
     # Copy config to avoid race condition (4 folds modify same file)
     local TMP_CFG="/tmp/nc_${ARCH}_r${ROUND}_fold${FOLD}.yaml"
     cp "$CONFIG" "$TMP_CFG"
-    sed -i "s|dir:.*outputs/sed-ns-.*|dir:          ${OUT_DIR}|" "$TMP_CFG"
+    # Only match the output dir line (starts with "  dir:"), not prev_round_dir
+    sed -i "/^  dir:/s|dir:.*|dir:          ${OUT_DIR}|" "$TMP_CFG"
 
     CUDA_VISIBLE_DEVICES=$GPU $PYTHON train_sed_ns.py \
         --config "$TMP_CFG" \
@@ -119,19 +120,19 @@ run_infer() {
         log "${ARCH}-R${ROUND}-nc: npz exists, skipping infer"
         return 0
     fi
-    # Temporarily set output dir
-    local ORIG_DIR
-    ORIG_DIR=$(grep "dir:" "$CONFIG" | tail -1 | awk '{print $2}')
-    sed -i "s|dir:.*outputs/sed-ns-.*|dir:          ${OUT_DIR}|" "$CONFIG"
+    # Use tmp config to avoid modifying shared config
+    local TMP_CFG="/tmp/nc_${ARCH}_r${ROUND}_infer.yaml"
+    cp "$CONFIG" "$TMP_CFG"
+    sed -i "/^  dir:/s|dir:.*|dir:          ${OUT_DIR}|" "$TMP_CFG"
 
     log "${ARCH}-R${ROUND}-nc: running infer_all_ss (GPU0)"
     CUDA_VISIBLE_DEVICES=0 $PYTHON train_sed_ns.py \
-        --config "$CONFIG" \
+        --config "$TMP_CFG" \
         --infer_all_ss \
         --device "cuda:0" \
         > "${LOG}/sed_ns_${ARCH}_r${ROUND}_nc_infer.log" 2>&1
 
-    sed -i "s|dir:.*${OUT_DIR}|dir:          ${ORIG_DIR}|" "$CONFIG"
+    rm -f "$TMP_CFG"
     log "${ARCH}-R${ROUND}-nc: infer done"
 }
 
