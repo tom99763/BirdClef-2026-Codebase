@@ -1,0 +1,24 @@
+{
+  "model": "SoftOrderStats",
+  "kernel_size": 5,
+  "n_classes": 234,
+  "n_epochs": 60,
+  "best_loss": 1.0728483200073242,
+  "aves_weights": [
+    0.17660853266716003,
+    0.1523769497871399,
+    0.14120528101921082,
+    0.13228468596935272,
+    0.39752453565597534
+  ],
+  "texture_weights": [
+    0.20162348449230194,
+    0.20067115128040314,
+    0.2001650035381317,
+    0.1993499994277954,
+    0.198190376162529
+  ],
+  "local_eval_mean_auc": 0.7748,
+  "gaussian_baseline_auc": 0.7749,
+  "note": "Trained on full 708-window OOF (59 labeled soundscape files)"
+}
