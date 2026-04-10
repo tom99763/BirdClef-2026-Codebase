@@ -1,20 +1,19 @@
 experiment:
-  name: sed-ns-pvt-20s-r10
+  name: sed-ns-cnxtf-20s-r1
   seed: 42
-  round: 10
+  round: 1
 
-# ── PVT v2 B0 Transformer Series ──────────────────────────────────────────────
 data:
   train_csv:              birdclef-2026/train.csv
   soundscape_labels_csv:  birdclef-2026/train_soundscapes_labels.csv
   taxonomy_csv:           birdclef-2026/taxonomy.csv
   audio_dir:              birdclef-2026/train_audio
   soundscape_dir:         birdclef-2026/train_soundscapes
-  pseudo_labels_csv:      pseudo_labels/nc2_pvt_r10.csv
+  pseudo_labels_csv:      pseudo_labels/nc3_r0.csv
   n_folds:                5
 
 model:
-  backbone:         pvt_v2_b0
+  backbone:         convnext_femto.d1_in1k
   clip_duration:    20
   n_mels:           224
   n_fft:            2048
@@ -27,27 +26,24 @@ model:
   mel_scale:        htk
   peak_norm:        false
   dropout:          0.1
-  drop_path_rate:   0.1
+  drop_path_rate:   0.15
   gem_p_init:       3.0
   freq_mask:        24
   time_mask:        64
 
 training:
-  nc_distill_beta:    0.05
-  nc_temperature:     2.0
   early_stopping_patience: 4
   epochs:             25
   batch_size:         16
-  learning_rate:      5.0e-4
+  learning_rate:      1.0e-3
   weight_decay:       1.0e-4
   focal_gamma:        2.0
   mixup_alpha:        0.15
   pseudo_weight:      1.0
   pseudo_mixup_alpha: 0.15
-  use_sumix_freq:     false
+  use_sumix_freq:     true
   ema_decay:          0.999
-  prev_round_dir:     outputs/sed-ns-pvt-20s-r9-nc2
 
 output:
-  dir:          outputs/sed-ns-pvt-20s-r10
+  dir:          outputs/sed-ns-cnxtf-20s-r1
   infer_all_ss: false

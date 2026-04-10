@@ -1,7 +1,7 @@
 # BirdCLEF 2026 — Noisy Classmate Training Framework
 
 Kaggle competition: multi-label bird/amphibian/insect species classification from 5-second soundscape segments.
-**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.943**
+**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.944**
 
 ---
 
@@ -228,7 +228,8 @@ SED_CHECKPOINTS = [
 |------|--------|----|-----------|
 | Date | Config | LB | Key Change |
 |------|--------|----|-----------|
-| 2026-04-08 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, VLOM 0.70/0.30 | **0.943** | Best: fold2 PVT + VLOM weight tuning |
+| 2026-04-10 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, per-class VLOM | **0.944** | Per-class VLOM: Aves 0.7/0.3, non-Aves 0.3/0.7 |
+| 2026-04-08 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, VLOM 0.70/0.30 | 0.943 | Uniform VLOM |
 | 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R6 f3 | 0.942 | Max round diversity |
 | 2026-04-08 | VLOM 0.75/0.25 | 0.942 | Slightly worse than 0.70 |
 | 2026-04-08 | NC PVT R9 f0 replaces PVT slot | 0.941 | NC confidence problem |
@@ -295,9 +296,21 @@ VLOM (Variance-weighted Log-Odds Mean) blends SED and Perch predictions in logit
 
 ## NC Confidence Problem
 
-NC v1 models have mean prediction probability = 35% of NS (0.019 vs 0.054). In 3-model ensemble, NC contributes only ~12% signal. Root cause: disagreement mining + KLD loss smooths predictions.
+NC v1 models have mean prediction probability = 35% of NS (0.019 vs 0.054). In 3-model ensemble, NC contributes only ~12% signal. Root cause: ensemble pseudo label blending inherently produces smoother targets.
 
-**NC v2** removes disagreement mining and KLD (beta=0.0), uses gamma=3.0 and student-weighted blend (0.3/0.7) to preserve confidence.
+**NC v2** (removed disagreement/KLD) showed same confidence (82.9% vs 83.1%), confirming the problem is in Phase 1/2 blending, not Phase 3/4.
+
+## NC v3 — 3-Architecture Co-evolution
+
+New approach: 3 completely different architectures for maximum ensemble diversity.
+
+| Architecture | timm name | Params | CPU Speed |
+|-------------|-----------|--------|-----------|
+| ConvNeXt-Femto | `convnext_femto.d1_in1k` | 4.83M | 11.2ms |
+| FastViT-T8 | `fastvit_t8.apple_dist_in1k` | 3.26M | 21.9ms |
+| RegNetY-008 | `regnety_008.pycls_in1k` | 5.49M | 16.4ms |
+
+Pipeline: B0+PVT as teachers (Phase 0) → 5-model blend (Phase 1) → 3-way NC co-evolution (Phase 2+)
 
 ## Constraints
 
