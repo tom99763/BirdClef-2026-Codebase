@@ -190,6 +190,37 @@ def main():
     taxonomy = pd.read_csv(args.taxonomy_csv)
     species_cols = taxonomy['primary_label'].astype(str).tolist()
 
+    # ── Non-Aves → Perch-only substitution (same as NS) ─────────────────────
+    if args.nonaves_perch_only and Path(args.perch_teacher).exists():
+        print("\n=== Non-Aves Perch-Only Substitution ===")
+        perch_df = pd.read_csv(args.perch_teacher)
+        # Build aves mask
+        aves_sp = set(taxonomy[taxonomy['class_name'] == 'Aves']['primary_label'].astype(str))
+        aves_mask = np.array([c in aves_sp for c in species_cols], dtype=bool)
+        n_aves = aves_mask.sum()
+        n_nonaves = (~aves_mask).sum()
+        print(f"  Aves: {n_aves} species, non-Aves: {n_nonaves} species")
+
+        # Align perch probs with row_ids
+        row_ids_list = chain_data[0]['row_ids']
+        perch_row_ids = perch_df['row_id'].astype(str).values
+        perch_probs_all = perch_df[species_cols].values.astype(np.float32)
+
+        # Build lookup
+        perch_lookup = {rid: i for i, rid in enumerate(perch_row_ids)}
+
+        # For non-Aves columns, replace blended probs with Perch-only
+        replaced = 0
+        for i, rid in enumerate(row_ids_list):
+            if str(rid) in perch_lookup:
+                pidx = perch_lookup[str(rid)]
+                blended[i, ~aves_mask] = perch_probs_all[pidx, ~aves_mask]
+                replaced += 1
+
+        print(f"  Replaced non-Aves probs for {replaced}/{len(row_ids_list)} rows")
+        print(f"  Aves columns: keep NC blend (B0+PVT)")
+        print(f"  Non-Aves columns: pure Perch teacher")
+
     # ── Phase 4: Save soft labels ───────────────────────────────────────────
     if args.soft_labels:
         soft_out = args.out.replace('.csv', '_soft.npz')

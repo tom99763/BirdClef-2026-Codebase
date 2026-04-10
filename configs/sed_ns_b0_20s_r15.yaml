@@ -9,7 +9,7 @@ data:
   taxonomy_csv:           birdclef-2026/taxonomy.csv
   audio_dir:              birdclef-2026/train_audio
   soundscape_dir:         birdclef-2026/train_soundscapes
-  pseudo_labels_csv:      pseudo_labels/sed_20s_r14.csv
+  pseudo_labels_csv:      pseudo_labels/noisy_classmate_b0_r15_nc.csv
   n_folds:                5
 
 model:
@@ -45,7 +45,7 @@ training:
   pseudo_mixup_alpha: 0.15
   use_sumix_freq:     true
   ema_decay:          0.999
-  prev_round_dir:     outputs/sed-ns-b0-20s-r14
+  prev_round_dir:     outputs/sed-ns-b0-20s-r14-nc
 
 output:
   dir:          outputs/sed-ns-b0-20s-r15

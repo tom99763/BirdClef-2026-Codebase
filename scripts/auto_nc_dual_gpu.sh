@@ -55,48 +55,27 @@ train_all_folds_dual() {
     local OUT_DIR=$(nc_dir "$ARCH" "$ROUND")
     mkdir -p "$OUT_DIR"
 
-    log "${ARCH}-R${ROUND}-nc: training 5 folds on dual GPU (4+1 dynamic)"
+    log "${ARCH}-R${ROUND}-nc: training 5 folds on dual GPU (1 per GPU + dynamic fold5)"
 
-    # Launch fold0+fold1 on GPU0, fold2+fold3 on GPU1
+    # Wave 1: fold0 (GPU0) + fold1 (GPU1)
     train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 0 0 &
-    local PID0=$!
-    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 1 0 &
-    local PID1=$!
-    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 2 1 &
-    local PID2=$!
-    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 3 1 &
-    local PID3=$!
-    log "${ARCH}-R${ROUND}-nc: 4 folds launched (f0+f1 GPU0, f2+f3 GPU1)"
+    local PID_A=$!
+    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 1 1 &
+    local PID_B=$!
+    log "${ARCH}-R${ROUND}-nc: wave 1 (fold0 GPU0, fold1 GPU1)"
+    wait $PID_A $PID_B
 
-    # Wait for ANY fold to finish, then launch fold4 on that GPU
-    local FOLD4_LAUNCHED=false
-    while true; do
-        # Check GPU0 folds (PID0, PID1)
-        if ! $FOLD4_LAUNCHED; then
-            if ! kill -0 $PID0 2>/dev/null || ! kill -0 $PID1 2>/dev/null; then
-                log "${ARCH}-R${ROUND}-nc: GPU0 has a free slot, launching fold4 on GPU0"
-                train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 4 0 &
-                local PID4=$!
-                FOLD4_LAUNCHED=true
-            fi
-            if ! kill -0 $PID2 2>/dev/null || ! kill -0 $PID3 2>/dev/null; then
-                log "${ARCH}-R${ROUND}-nc: GPU1 has a free slot, launching fold4 on GPU1"
-                train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 4 1 &
-                local PID4=$!
-                FOLD4_LAUNCHED=true
-            fi
-        fi
-        # Check if all done
-        local ALIVE=0
-        kill -0 $PID0 2>/dev/null && ALIVE=$((ALIVE+1))
-        kill -0 $PID1 2>/dev/null && ALIVE=$((ALIVE+1))
-        kill -0 $PID2 2>/dev/null && ALIVE=$((ALIVE+1))
-        kill -0 $PID3 2>/dev/null && ALIVE=$((ALIVE+1))
-        $FOLD4_LAUNCHED && kill -0 $PID4 2>/dev/null && ALIVE=$((ALIVE+1))
-        [ $ALIVE -eq 0 ] && break
-        sleep 10
-    done
-    log "${ARCH}-R${ROUND}-nc: all folds done"
+    # Wave 2: fold2 (GPU0) + fold3 (GPU1)
+    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 2 0 &
+    PID_A=$!
+    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 3 1 &
+    PID_B=$!
+    log "${ARCH}-R${ROUND}-nc: wave 2 (fold2 GPU0, fold3 GPU1)"
+    wait $PID_A $PID_B
+
+    # Wave 3: fold4 (GPU0)
+    train_fold_gpu "$CONFIG" "$ARCH" "$ROUND" 4 0
+    log "${ARCH}-R${ROUND}-nc: wave 3 (fold4 GPU0)"
 
     # Verify
     local DONE=0
@@ -172,6 +151,7 @@ gen_nc_pseudo() {
         --confidence_weighting \
         --disagreement_mining \
         --soft_labels \
+        --nonaves_perch_only \
         --percentile 95 --gamma 2.0 \
         --out "$OUT" \
         > "${LOG}/gen_nc_pseudo_$(basename $OUT .csv).log" 2>&1
@@ -197,24 +177,35 @@ full_round() {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # NS baselines (used as initial blend sources)
-B0_NS_LATEST="outputs/sed-ns-b0-20s-r11"   # Latest NS B0 with npz
-PVT_NS_LATEST="outputs/sed-ns-pvt-20s-r8"  # Latest NS PVT with npz
+B0_NS_LATEST="outputs/sed-ns-b0-20s-r11"   # Latest NS B0 with npz+corr
+PVT_NS_LATEST="outputs/sed-ns-pvt-20s-r8"  # Latest NS PVT with npz+corr
 
-# NC state tracking
-# PVT R9/R10 NC were trained into NS dirs (before _nc naming convention)
-# They are valid NC models — just in the old directory naming
-B0_NC_LATEST=""
+# NC state tracking — start fresh
+B0_NC_LATEST="$B0_NS_LATEST"
 B0_NC_ROUND=11
-PVT_NC_LATEST="outputs/sed-ns-pvt-20s-r10"  # PVT R10 NC (in NS dir, has npz+corr)
+PVT_NC_LATEST="$PVT_NS_LATEST"
+PVT_NC_ROUND=8
+
+# ── PVT R9 NC (first NC round) ──────────────────────────────────────────────
+log "════════════════ PVT R9 NC (First NC Round) ════════════════"
+PVT_R9_PSEUDO="pseudo_labels/noisy_classmate_pvt_r9_nc.csv"
+gen_nc_pseudo "b0" "$B0_NC_LATEST" "pvt" "$PVT_NC_LATEST" "$PVT_R9_PSEUDO"
+full_round "configs/sed_ns_pvt_20s_r9.yaml" "pvt" 9 "$PVT_R9_PSEUDO" "$PVT_NC_LATEST"
+PVT_NC_LATEST=$(nc_dir "pvt" 9)
+PVT_NC_ROUND=9
+
+# ── PVT R10 NC ──────────────────────────────────────────────────────────────
+log "════════════════ PVT R10 NC ════════════════"
+PVT_R10_PSEUDO="pseudo_labels/noisy_classmate_pvt_r10_nc.csv"
+gen_nc_pseudo "b0" "$B0_NC_LATEST" "pvt" "$PVT_NC_LATEST" "$PVT_R10_PSEUDO"
+full_round "configs/sed_ns_pvt_20s_r10.yaml" "pvt" 10 "$PVT_R10_PSEUDO" "$PVT_NC_LATEST"
+PVT_NC_LATEST=$(nc_dir "pvt" 10)
 PVT_NC_ROUND=10
 
-# ── B0 R12 NC (first true knowledge backflow!) ──────────────────────────────
+# ── B0 R12 NC (first knowledge backflow!) ────────────────────────────────────
 log "════════════════ B0 R12 NC (First Backflow) ════════════════"
-B0_R12_PSEUDO="pseudo_labels/noisy_classmate_b0_r12.csv"
-# Pseudo already exists (PVT R10 + B0 R11 blend, generated 4/8)
-if [ ! -f "$B0_R12_PSEUDO" ]; then
-    gen_nc_pseudo "pvt" "$PVT_NC_LATEST" "b0" "$B0_NS_LATEST" "$B0_R12_PSEUDO"
-fi
+B0_R12_PSEUDO="pseudo_labels/noisy_classmate_b0_r12_nc.csv"
+gen_nc_pseudo "pvt" "$PVT_NC_LATEST" "b0" "$B0_NC_LATEST" "$B0_R12_PSEUDO"
 full_round "configs/sed_ns_b0_20s_r12.yaml" "b0" 12 "$B0_R12_PSEUDO" "$B0_NS_LATEST"
 B0_NC_LATEST=$(nc_dir "b0" 12)
 B0_NC_ROUND=12

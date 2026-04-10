@@ -1,7 +1,7 @@
 # BirdCLEF 2026 — Noisy Classmate Training Framework
 
 Kaggle competition: multi-label bird/amphibian/insect species classification from 5-second soundscape segments.
-**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.942**
+**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.943**
 
 ---
 
@@ -177,9 +177,13 @@ training:
 |------|---------|
 | `scripts/gen_noisy_classmate_pseudo.py` | Phase 1–4: ensemble blend + confidence + disagreement + soft labels |
 | `train_sed_ns.py` | `NCDistillLoss`, `_nc_weight` in `PseudoSoundscapeDataset` |
-| `scripts/auto_nc_full.sh` | Phase 5: bidirectional B0↔PVT co-evolution (6 generations) |
+| `scripts/auto_nc_dual_gpu.sh` | Phase 5: bidirectional B0↔PVT co-evolution, dual GPU |
+| `scripts/auto_nc2_dual_gpu.sh` | NC v2: confidence-preserved (no disagreement/KLD) |
+| `scripts/batch_export_onnx.sh` | Batch ONNX FP32 + INT8 export for all rounds |
 | `scripts/monitor_nc.sh` | Pipeline monitoring |
+| `scripts/watchdog_nc.sh` | Auto-recovery monitoring |
 | `reports/noisy_classmate_plan.html` | Research plan with theoretical justification |
+| `reports/vlom_analysis.tex` | VLOM blend weight statistical analysis |
 
 ---
 
@@ -222,7 +226,14 @@ SED_CHECKPOINTS = [
 
 | Date | Config | LB | Key Change |
 |------|--------|----|-----------|
-| 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R6 f3 | **0.942** | Max round diversity (R6 vs R12 = 6 rounds) |
+| Date | Config | LB | Key Change |
+|------|--------|----|-----------|
+| 2026-04-08 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, VLOM 0.70/0.30 | **0.943** | Best: fold2 PVT + VLOM weight tuning |
+| 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R6 f3 | 0.942 | Max round diversity |
+| 2026-04-08 | VLOM 0.75/0.25 | 0.942 | Slightly worse than 0.70 |
+| 2026-04-08 | NC PVT R9 f0 replaces PVT slot | 0.941 | NC confidence problem |
+| 2026-04-08 | NC PVT R9 f2 replaces PVT slot | 0.941 | NC = 0.941 ceiling |
+| 2026-04-08 | NC B0 R12 f0 replaces B0 slot | 0.941 | NC regardless of position |
 | 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R8 f3 | 0.941 | fold0 + late round |
 | 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R12 f2 | 0.940 | Same-round penalty |
 | 2026-04-06 | B0 R10 f2 + PVT R5 f4 + B0 R8 f3 | 0.938 | Same fold upgrade |
@@ -272,8 +283,25 @@ BirdClef-2026-Codebase/
 
 ---
 
+## VLOM Ensemble Blend
+
+VLOM (Variance-weighted Log-Odds Mean) blends SED and Perch predictions in logit space.
+
+**Per-class VLOM** (P3 notebook):
+- Aves (162 species): SED=0.70, Perch=0.30
+- Non-Aves (72 species): SED=0.30, Perch=0.70
+
+**Key finding**: CV-LB inversion — CV favors 0.50/0.50, LB favors 0.70/0.30. Root cause: SED logit magnitude is 2.33× Perch on hidden test but 1.0× on CV.
+
+## NC Confidence Problem
+
+NC v1 models have mean prediction probability = 35% of NS (0.019 vs 0.054). In 3-model ensemble, NC contributes only ~12% signal. Root cause: disagreement mining + KLD loss smooths predictions.
+
+**NC v2** removes disagreement mining and KLD (beta=0.0), uses gamma=3.0 and student-weighted blend (0.3/0.7) to preserve confidence.
+
 ## Constraints
 
-- All training: **GPU1** (`CUDA_VISIBLE_DEVICES=1`)
+- All training: **GPU0 + GPU1** (dual GPU pipeline)
 - Only **nohuman models** evaluated/submitted
 - **No competitor model weights** — only self-trained models
+- Submit threshold: individual SED soundscape val AUC > 0.9193

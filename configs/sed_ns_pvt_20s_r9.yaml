@@ -10,7 +10,7 @@ data:
   taxonomy_csv:           birdclef-2026/taxonomy.csv
   audio_dir:              birdclef-2026/train_audio
   soundscape_dir:         birdclef-2026/train_soundscapes
-  pseudo_labels_csv:      pseudo_labels/noisy_classmate_pvt_r9.csv
+  pseudo_labels_csv:      pseudo_labels/nc2_pvt_r9.csv
   n_folds:                5
 
 model:
