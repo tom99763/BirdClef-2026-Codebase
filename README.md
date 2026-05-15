@@ -1,7 +1,7 @@
 # BirdCLEF 2026 — Noisy Classmate Training Framework
 
 Kaggle competition: multi-label bird/amphibian/insect species classification from 5-second soundscape segments.
-**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.944**
+**Metric**: Macro-averaged ROC-AUC over 234 species. **Current Best LB: 0.953**
 
 ---
 
@@ -187,6 +187,147 @@ training:
 
 ---
 
+## Tucker SED — Distilled Student with Unlabeled NS
+
+Tucker SED is a standalone EfficientNet-B0 model trained via Perch-v2 MSE distillation, optimized to match the inference protocol of the public `bc2026-distilled-sed` notebook (which achieves 0.946 LB on its own).
+
+### Architecture
+
+```
+5s audio clip (32kHz, int16 cache)
+  → MelSpec(n_mels=128, n_fft=1024, hop=320, fmin=50, fmax=14000, slaney norm)
+  → per-sample z-score normalization
+  → tf_efficientnet_b0.ns_jft_in1k → GEMFreqPool(p=3) → AttentionSEDHead
+  → clip_logit (234-d) + framewise_logit (T×234)
+  → inference blend: 0.5 × sigmoid(clip) + 0.5 × sigmoid(fmax(framewise))
+  → 5-fold ensemble average
+```
+
+Training uses two data streams with MSE distillation from Perch-v2:
+```
+focal clips (GT labels, train_audio/)     ← 85% of batch
+labeled soundscapes (66 files, GT labels) ← 15% of batch
++ MSE distillation loss on Perch teacher probabilities
+```
+
+### Tucker NS — Noisy Student on Unlabeled Soundscapes
+
+Tucker NS extends the BASE model with correct NS design: pseudo labels are applied **only to unlabeled soundscapes** (10,592 files). The 66 GT-labeled soundscapes and focal clip GT labels are never modified.
+
+```
+Tucker BASE
+  │
+  ├─ infer unlabeled SS cache (2000 files × 12 windows = 24,000 rows)
+  │   └─ tucker_ns_b0_unlabeled_r0.csv   ← BASE predictions (fixed teacher)
+  │
+  ├─ R1: pseudo = BASE predictions (50/50 blend base/student at first)
+  │       train 3-stream:
+  │         focal clips 85% (GT)
+  │         labeled SC  7.5% (66 files, GT unchanged)
+  │         unlabeled SC 7.5% (2000 cached files, pseudo labels)
+  │       EMA decay=0.99, early stop patience=3
+  │
+  ├─ R2: blend = 0.30×BASE + 0.70×R1_student → new pseudo CSV
+  │       train (same 3-stream setup)
+  │
+  └─ R3+: blend = 0.05×BASE + 0.95×R(n-1)_student → pseudo CSV
+          train (same 3-stream setup)
+```
+
+Pseudo label blend schedule (BASE is always the fixed teacher):
+
+| Round | Base Weight | Student Weight | Notes |
+|-------|-------------|----------------|-------|
+| R1    | 0.50        | 0.50           | bootstrap from BASE predictions |
+| R2    | 0.30        | 0.70           | student gains majority |
+| R3+   | 0.05        | 0.95           | near-pure self-training |
+
+Unlabeled soundscape cache preparation (one-time):
+
+```bash
+python scripts/cache_unlabeled_ss.py --n 2000
+# Outputs: birdclef-2026/unlabeled_ss_cache/*.pt + unlabeled_ss_cache_meta.csv
+# 2000 files × 12 windows (5s each) = 24,000 rows; stored as int16 .pt tensors
+```
+
+Launch Tucker NS chain:
+
+```bash
+GPU=0 START_ROUND=1 END_ROUND=8 \
+  nohup bash scripts/auto_tucker_ns.sh > outputs/logs/tucker_ns_b0.log 2>&1 &
+```
+
+---
+
+## 0.953 LB — Rank-Blend with Tucker SED
+
+LB 0.953 (2026-05-09) is achieved by rank-normalizing and blending our VLOM pipeline with Tucker SED predictions. Direct linear blending fails because the two pipelines have a 7× probability scale mismatch (Tucker mean=0.010 vs our mean=0.070); rank-percentile converts both to a uniform [0,1] scale before combining.
+
+```
+╔══════════════════════════════════════════════════════════════════════╗
+║               0.953 LB — Rank-Blend Inference Pipeline               ║
+╠══════════════════════════════════════════════════════════════════════╣
+║                                                                      ║
+║  ┌─────────────────────────────────────┐                             ║
+║  │         OUR VLOM PIPELINE           │                             ║
+║  │                                     │                             ║
+║  │  B0 R11 fold0 (ONNX)               │                             ║
+║  │  PVT R7  fold4 (ONNX)              │                             ║
+║  │          ↓                          │                             ║
+║  │  VLOM blend (logit space):          │                             ║
+║  │    Aves    → 0.70×SED + 0.30×Perch │                             ║
+║  │    non-Aves→ 0.30×SED + 0.70×Perch │                             ║
+║  │          ↓                          │                             ║
+║  │  V17 sharpening  ← applied HERE    │                             ║
+║  │  (before rank conversion)           │                             ║
+║  └───────────────┬─────────────────────┘                             ║
+║                  │                                                    ║
+║                  │  percentile-rank                                   ║
+║                  ↓                                                    ║
+║  our_rank[0,1] ──────────────┐                                        ║
+║                              │  weighted sum                          ║
+║                              │  OUR_W = 0.60                          ║
+║  ┌─────────────────────────┐ │  TUCKER_W = 0.40                       ║
+║  │    TUCKER SED (public)  │ │                                        ║
+║  │                         │ │                                        ║
+║  │  5-fold B0 checkpoints  │ │                                        ║
+║  │  (sed_fold[0-4].onnx)   │ │                                        ║
+║  │  5s sliding window      │ │                                        ║
+║  │  0.5×clip+0.5×fmax      │ │                                        ║
+║  └──────────┬──────────────┘ │                                        ║
+║             │                │                                        ║
+║             │  percentile-rank                                        ║
+║             ↓                │                                        ║
+║  tucker_rank[0,1] ───────────┘                                        ║
+║                              │                                        ║
+║                              ↓                                        ║
+║                     blended_rank[0,1]                                 ║
+║                              │                                        ║
+║              post-processing │                                        ║
+║              ┌───────────────┼───────────────┐                        ║
+║              ↓               ↓               ↓                        ║
+║       PROTO_CONT        SED_ONLY        Sonotype mirror               ║
+║       (prototype       (rank>0.95      + rare suppress                ║
+║        continuity)      boost)                                        ║
+║              └───────────────┼───────────────┘                        ║
+║                              ↓                                        ║
+║                   Final predictions → LB 0.953                       ║
+╚══════════════════════════════════════════════════════════════════════╝
+```
+
+**Why rank-blend works**: Tucker SED (mean prob=0.010, p99=0.19) vs our VLOM (mean=0.070, p99=0.44) have a 7× scale difference — linear blending would let our pipeline dominate 87% of the signal. Percentile-rank converts both distributions to uniform [0,1], so OUR_W=0.60 actually means 60/40 influence. Per-species rank correlation median=0.35, confirming sufficient diversity between the two pipelines.
+
+**Key parameters (battle-tested, do not change)**:
+- `OUR_W=0.60`, Tucker weight=0.40
+- `FAKE_ONLY_THR=0.50, SED_LOW_THR=0.05, FAKE_ONLY_BLEND=0.08`
+- PROTO_CONT: `RADIUS=3, DF=2.0, SCALE=1.20, RANK_THR=0.88, LOCAL=0.75, LOW=0.12, BLEND=0.15`
+- SED_ONLY: `RANK=0.95, LOW=0.80, BLEND=0.12`
+- Sharpening is applied **before** rank conversion (v1 ordering — confirmed better)
+
+**Notebook**: `birdclef-2026/notebook resource/new direction/notebooks/test-model-family-onnx-perch-tucker-rankblend.ipynb`
+
+---
+
 ## ONNX Export & Submission
 
 ### Export
@@ -226,8 +367,8 @@ SED_CHECKPOINTS = [
 
 | Date | Config | LB | Key Change |
 |------|--------|----|-----------|
-| Date | Config | LB | Key Change |
-|------|--------|----|-----------|
+| 2026-05-09 | VLOM + Tucker SED rank-blend (OUR_W=0.60) | **0.953** | Rank-blend normalizes 7× scale gap; Tucker SED diversity |
+| 2026-04-16 | B0 R11 f0 + PVT R7 f4, Perch-style post-proc, top_k=2 | 0.949 | top_k=2, Perch-style SED smoothing |
 | 2026-04-10 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, per-class VLOM | **0.944** | Per-class VLOM: Aves 0.7/0.3, non-Aves 0.3/0.7 |
 | 2026-04-08 | B0 R12 f0 + PVT R5 f2 + B0 R6 f3, VLOM 0.70/0.30 | 0.943 | Uniform VLOM |
 | 2026-04-07 | B0 R12 f0 + PVT R5 f4 + B0 R6 f3 | 0.942 | Max round diversity |
@@ -316,5 +457,5 @@ Pipeline: B0+PVT as teachers (Phase 0) → 5-model blend (Phase 1) → 3-way NC 
 
 - All training: **GPU0 + GPU1** (dual GPU pipeline)
 - Only **nohuman models** evaluated/submitted
-- **No competitor model weights** — only self-trained models
+- Competitor weights allowed for submission ensemble, KD teacher, and as pretraining starting points (policy from 2026-03-30)
 - Submit threshold: individual SED soundscape val AUC > 0.9193
